@@ -1,0 +1,66 @@
+{
+  "name": "interview-ai-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Privacy-first Interview AI Assistant with real-time local Whisper, multi-LLM streaming, OCR, and stealth overlay",
+  "main": "electron/main.js",
+  "scripts": {
+  "postinstall": "node ./scripts/postinstall.js",
+  "setup:py": "py -3 -m venv .venv && .\\.venv\\Scripts\\python.exe -m pip install -r python/requirements.txt",
+  "dev": "concurrently -k -n py,app \".\\.venv\\Scripts\\python.exe python/server.py\" \"electron .\"",
+  "prod": "concurrently -k -n py,app \".\\.venv\\Scripts\\python.exe python/launch_server.py\" \"electron .\"",
+  "test": "node ./scripts/smoke-test.js",
+  "test:comprehensive": "cd python && python run_tests.py",
+  "check:env": "cd python && python check_environment.py",
+  "cleanup:duplicates": "node ./scripts/cleanup-duplicates.js",
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:compact-bar": "cd compact-bar-app && npm install && npm run build",
+    "pack": "electron-builder --dir",
+    "lint": "echo 'No linter configured'"
+  },
+  "build": {
+    "appId": "com.example.interviewaiassistant",
+    "productName": "Interview AI Assistant",
+    "files": [
+      "electron/**/*",
+      "renderer/**/*",
+      "python/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "python/",
+        "to": "python",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": ["nsis"],
+      "publisherName": "Your Company",
+      "requestedExecutionLevel": "asInvoker"
+    }
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "eventsource-parser": "^1.1.2",
+    "node-fetch": "^3.3.2",
+    "tesseract.js": "^5.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^31.3.1",
+    "electron-builder": "^24.13.3",
+    "wait-on": "^8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mohitsagar236/interview-ai.git"
+  },
+  "homepage": "https://github.com/Mohitsagar236/interview-ai#readme",
+  "bugs": {
+    "url": "https://github.com/Mohitsagar236/interview-ai/issues"
+  }
+}

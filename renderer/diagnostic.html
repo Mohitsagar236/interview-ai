@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Diagnostic</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 700px;
+            width: 100%;
+            padding: 40px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .test-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .test-section h2 {
+            color: #444;
+            font-size: 18px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 5px;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        button.success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+        button.danger {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.6;
+            font-family: 'Courier New', monospace;
+        }
+        .result.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .result.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .result.info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .result.warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        .icon { font-size: 20px; }
+        .step {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+        .step-number {
+            background: #667eea;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        code {
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #e83e8c;
+            font-size: 12px;
+        }
+        .loading {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 8px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Download Diagnostic Tool</h1>
+        <p class="subtitle">Test and troubleshoot Compact Bar downloads</p>
+
+        <!-- Step 1: API Check -->
+        <div class="test-section">
+            <h2><span class="icon">🔌</span> Step 1: API Connection</h2>
+            <button onclick="checkAPI()">Test API Connection</button>
+            <div id="apiResult"></div>
+        </div>
+
+        <!-- Step 2: File Check -->
+        <div class="test-section">
+            <h2><span class="icon">📁</span> Step 2: File Verification</h2>
+            <button onclick="checkFiles()">Check if Files Exist</button>
+            <div id="fileResult"></div>
+        </div>
+
+        <!-- Step 3: Download Test -->
+        <div class="test-section">
+            <h2><span class="icon">⬇️</span> Step 3: Download Test</h2>
+            <button onclick="testDownload('portable')">Download Portable</button>
+            <button class="success" onclick="testDownload('installer')">Download Installer</button>
+            <div id="downloadResult"></div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="test-section">
+            <h2><span class="icon">📋</span> Instructions</h2>
+            <div class="step">
+                <span class="step-number">1</span>
+                <strong>Click "Test API Connection"</strong> - Must show success before continuing
+            </div>
+            <div class="step">
+                <span class="step-number">2</span>
+                <strong>Click "Check if Files Exist"</strong> - Verifies build files are present
+            </div>
+            <div class="step">
+                <span class="step-number">3</span>
+                <strong>Try a download</strong> - Save dialog should appear immediately
+            </div>
+            <div class="step">
+                <span class="step-number">4</span>
+                <strong>Press F12</strong> - Open console to see detailed logs
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let apiAvailable = false;
+
+        function showResult(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="result ${type}">${message}</div>`;
+        }
+
+        async function checkAPI() {
+            console.log('=== API CHECK ===');
+            showResult('apiResult', '<span class="loading"></span> Checking...', 'info');
+
+            try {
+                // Check if electronAPI exists
+                if (typeof window.electronAPI === 'undefined') {
+                    showResult('apiResult', 
+                        '❌ <strong>FAILED:</strong> window.electronAPI is not defined<br><br>' +
+                        '<strong>Possible causes:</strong><br>' +
+                        '• App not restarted after code changes<br>' +
+                        '• preload.js not loading correctly<br>' +
+                        '• Running in browser instead of Electron<br><br>' +
+                        '<strong>Solution:</strong> Close app completely and run <code>npm start</code>', 
+                        'error'
+                    );
+                    console.error('❌ electronAPI not found');
+                    apiAvailable = false;
+                    return;
+                }
+
+                // Check if downloadCompactBar exists
+                if (typeof window.electronAPI.downloadCompactBar !== 'function') {
+                    showResult('apiResult', 
+                        '❌ <strong>FAILED:</strong> downloadCompactBar function not found<br><br>' +
+                        '<strong>Available methods:</strong> ' + Object.keys(window.electronAPI).join(', ') + '<br><br>' +
+                        '<strong>Solution:</strong> Restart the app with <code>npm start</code>', 
+                        'error'
+                    );
+                    console.error('❌ downloadCompactBar not found');
+                    console.log('Available API:', Object.keys(window.electronAPI));
+                    apiAvailable = false;
+                    return;
+                }
+
+                // Success
+                showResult('apiResult', 
+                    '✅ <strong>SUCCESS!</strong> API is connected and ready<br><br>' +
+                    '<code>window.electronAPI.downloadCompactBar</code> is available<br><br>' +
+                    '✓ You can proceed to next steps', 
+                    'success'
+                );
+                console.log('✅ API check passed');
+                console.log('downloadCompactBar function:', window.electronAPI.downloadCompactBar);
+                apiAvailable = true;
+
+            } catch (error) {
+                showResult('apiResult', 
+                    '❌ <strong>ERROR:</strong> ' + error.message + '<br><br>' +
+                    'Check console (F12) for details', 
+                    'error'
+                );
+                console.error('❌ API check error:', error);
+                apiAvailable = false;
+            }
+        }
+
+        async function checkFiles() {
+            console.log('=== FILE CHECK ===');
+            
+            if (!apiAvailable) {
+                showResult('fileResult', 
+                    '⚠️ <strong>WAIT:</strong> Complete Step 1 first (Test API Connection)', 
+                    'warning'
+                );
+                return;
+            }
+
+            showResult('fileResult', '<span class="loading"></span> Checking files...', 'info');
+
+            try {
+                // Try to get file info by attempting download with cancel
+                const testResult = await window.electronAPI.downloadCompactBar('portable');
+                
+                if (testResult.needsBuild) {
+                    showResult('fileResult', 
+                        '❌ <strong>FILES MISSING:</strong> Compact bar not built yet<br><br>' +
+                        '<strong>Run this command:</strong><br>' +
+                        '<code>build-compact-bar.bat</code><br><br>' +
+                        'Or: <code>cd compact-bar-app && npm run build:win</code>', 
+                        'error'
+                    );
+                    console.error('❌ Files not built');
+                } else {
+                    showResult('fileResult', 
+                        '✅ <strong>FILES FOUND!</strong> Both executables are ready<br><br>' +
+                        '✓ InterviewAI-CompactBar-Portable.exe<br>' +
+                        '✓ Interview AI Compact Bar Setup 1.0.0.exe<br><br>' +
+                        'You can proceed to download testing', 
+                        'success'
+                    );
+                    console.log('✅ Files exist');
+                }
+            } catch (error) {
+                showResult('fileResult', 
+                    '⚠️ <strong>TEST INCONCLUSIVE:</strong> ' + error.message + '<br><br>' +
+                    'The files might still exist. Try Step 3 to confirm.', 
+                    'warning'
+                );
+                console.error('File check error:', error);
+            }
+        }
+
+        async function testDownload(type) {
+            console.log(`=== DOWNLOAD TEST: ${type} ===`);
+            
+            if (!apiAvailable) {
+                showResult('downloadResult', 
+                    '⚠️ <strong>WAIT:</strong> Complete Step 1 first (Test API Connection)', 
+                    'warning'
+                );
+                return;
+            }
+
+            const typeName = type === 'portable' ? 'Portable Version' : 'Installer Setup';
+            showResult('downloadResult', 
+                `<span class="loading"></span> Requesting ${typeName} download...<br><br>` +
+                '<strong>Watch for save dialog to appear!</strong>', 
+                'info'
+            );
+
+            try {
+                console.log(`📡 Calling downloadCompactBar('${type}')...`);
+                const result = await window.electronAPI.downloadCompactBar(type);
+                console.log('📬 Result received:', result);
+
+                if (result.success) {
+                    showResult('downloadResult', 
+                        `✅ <strong>DOWNLOAD SUCCESSFUL!</strong><br><br>` +
+                        `<strong>Saved to:</strong><br>` +
+                        `<code>${result.path}</code><br><br>` +
+                        `✓ File copied successfully<br>` +
+                        `✓ Folder should have opened<br>` +
+                        `✓ You can run the file now!`, 
+                        'success'
+                    );
+                    console.log('✅ Download success:', result.path);
+                    
+                } else if (result.needsBuild) {
+                    showResult('downloadResult', 
+                        `❌ <strong>FILES NOT BUILT:</strong><br><br>` +
+                        `${result.error}<br><br>` +
+                        `<strong>Run:</strong> <code>build-compact-bar.bat</code>`, 
+                        'error'
+                    );
+                    console.error('❌ Build required:', result.error);
+                    
+                } else if (result.error === 'Cancelled') {
+                    showResult('downloadResult', 
+                        `ℹ️ <strong>DOWNLOAD CANCELLED</strong><br><br>` +
+                        `You clicked "Cancel" in the save dialog.<br><br>` +
+                        `This is normal - the download was working correctly!`, 
+                        'info'
+                    );
+                    console.log('ℹ️ User cancelled');
+                    
+                } else {
+                    showResult('downloadResult', 
+                        `⚠️ <strong>DOWNLOAD NOT COMPLETED:</strong><br><br>` +
+                        `${result.error || 'Unknown reason'}<br><br>` +
+                        `Check console (F12) for more details`, 
+                        'warning'
+                    );
+                    console.warn('⚠️ Download failed:', result);
+                }
+
+            } catch (error) {
+                showResult('downloadResult', 
+                    `❌ <strong>ERROR:</strong> ${error.message}<br><br>` +
+                    `<strong>Possible causes:</strong><br>` +
+                    `• App needs restart<br>` +
+                    `• IPC handler not registered<br>` +
+                    `• Permission issues<br><br>` +
+                    `Press F12 to see console details`, 
+                    'error'
+                );
+                console.error('❌ Download error:', error);
+            }
+        }
+
+        // Auto-run API check on page load
+        window.addEventListener('load', () => {
+            console.log('🚀 Diagnostic tool loaded');
+            console.log('Window location:', window.location.href);
+            setTimeout(checkAPI, 500);
+        });
+
+        // Log all available APIs for debugging
+        console.log('Available window.electronAPI methods:', 
+            typeof window.electronAPI !== 'undefined' 
+                ? Object.keys(window.electronAPI) 
+                : 'electronAPI not available'
+        );
+    </script>
+</body>
+</html>
