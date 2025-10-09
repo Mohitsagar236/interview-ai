@@ -10,6 +10,9 @@ package-lock.json
 dist/
 release/
 *.asar
+build-temp/
+python-dist/
+*.spec
 
 # Logs
 logs/
@@ -17,7 +20,10 @@ logs/
 
 # Environment
 .env
-.env.*
+.env.local
+.env.*.local
+# Keep .env.example for documentation
+!.env.example
 
 # Python
 .venv/

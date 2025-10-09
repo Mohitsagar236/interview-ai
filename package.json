@@ -5,16 +5,19 @@
   "description": "Privacy-first Interview AI Assistant with real-time local Whisper, multi-LLM streaming, OCR, and stealth overlay",
   "main": "electron/main.js",
   "scripts": {
-  "postinstall": "node ./scripts/postinstall.js",
-  "setup:py": "py -3 -m venv .venv && .\\.venv\\Scripts\\python.exe -m pip install -r python/requirements.txt",
-  "dev": "concurrently -k -n py,app \".\\.venv\\Scripts\\python.exe python/server.py\" \"electron .\"",
-  "prod": "concurrently -k -n py,app \".\\.venv\\Scripts\\python.exe python/launch_server.py\" \"electron .\"",
-  "test": "node ./scripts/smoke-test.js",
-  "test:comprehensive": "cd python && python run_tests.py",
-  "check:env": "cd python && python check_environment.py",
-  "cleanup:duplicates": "node ./scripts/cleanup-duplicates.js",
+    "postinstall": "node ./scripts/postinstall.js",
+    "setup:py": "py -3 -m venv .venv && .\\.venv\\Scripts\\python.exe -m pip install -r python/requirements.txt",
+    "dev": "concurrently -k -n py,app \".\\.venv\\Scripts\\python.exe python/server.py\" \"electron .\"",
+    "prod": "concurrently -k -n py,app \".\\.venv\\Scripts\\python.exe python/launch_server.py\" \"electron .\"",
+    "test": "node ./scripts/smoke-test.js",
+    "test:comprehensive": "cd python && python run_tests.py",
+    "check:env": "cd python && python check_environment.py",
+    "cleanup:duplicates": "node ./scripts/cleanup-duplicates.js",
     "start": "electron .",
+    "verify-build": "node ./scripts/verify-build.js",
+    "prebuild": "node ./scripts/prepare-build.js",
     "build": "electron-builder",
+    "build:standalone": "node ./scripts/build-python-standalone.js && electron-builder",
     "build:compact-bar": "cd compact-bar-app && npm install && npm run build",
     "pack": "electron-builder --dir",
     "lint": "echo 'No linter configured'"
@@ -27,17 +30,35 @@
       "renderer/**/*",
       "python/**/*",
       "assets/**/*",
-      "package.json"
+      "package.json",
+      ".env",
+      "!python/__pycache__/**/*",
+      "!**/*.pyc"
     ],
     "extraResources": [
       {
-        "from": "python/",
-        "to": "python",
-        "filter": ["**/*"]
+        "from": ".venv/Lib/site-packages/",
+        "to": "python/site-packages",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "python-dist/",
+        "to": "python-dist",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
+    "asarUnpack": [
+      "**/*.{node,dll,dylib,so}",
+      "**/python/**/*"
+    ],
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "publisherName": "Your Company",
       "requestedExecutionLevel": "asInvoker"
     }

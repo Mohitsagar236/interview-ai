@@ -2,6 +2,17 @@
 
 Privacy-first interview coach with real-time local Whisper (<500ms target), multi-LLM streaming (OpenAI, Anthropic, Groq), resume embeddings, OCR for coding problems, and stealth overlay.
 
+## 🚀 Quick Start for Desktop App
+
+The packaged desktop app now **includes the `.env` file** so it works immediately after installation:
+1. Build the app: `npm run build`
+2. Install: Run the installer from `dist/`
+3. Launch the app - **it just works!** ✅
+
+Your API keys from `.env` are bundled with the app for zero-configuration deployment.
+
+> **Note:** For public distribution, see [ENV_BUNDLING_UPDATE.md](ENV_BUNDLING_UPDATE.md) for alternative approaches.
+
 ## Features
 
 ### 🎯 ChatGPT-Style Response Quality (NEW)

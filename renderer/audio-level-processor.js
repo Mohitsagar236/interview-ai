@@ -14,6 +14,8 @@ class AudioLevelProcessor extends AudioWorkletProcessor {
     this.minGain = 0.3;
     this.gainSmooth = 0.05; // smoothing factor
     this.lastPostedGain = 1.0;
+    this.totalBytesSent = 0;
+    this.lastLogTime = 0;
     this.port.onmessage = (e) => {
       const msg = e.data || {};
       if (msg.type === 'gain_control') {
@@ -21,6 +23,7 @@ class AudioLevelProcessor extends AudioWorkletProcessor {
         if (typeof msg.targetRMS === 'number') this.targetRMS = Math.max(0.002, Math.min(0.08, msg.targetRMS));
       }
     };
+    console.log('[AudioWorklet] AudioLevelProcessor initialized');
   }
 
   static get parameterDescriptors() {
@@ -71,6 +74,7 @@ class AudioLevelProcessor extends AudioWorkletProcessor {
     if (!this.inputSampleRate) {
       this.inputSampleRate = sampleRate; // AudioWorkletGlobalScope's sampleRate
       this.resampleRatio = this.inputSampleRate / this.outputSampleRate;
+      console.log(`[AudioWorklet] Input sample rate: ${this.inputSampleRate} Hz, will downsample to ${this.outputSampleRate} Hz`);
     }
 
     // Compute RMS BEFORE gain for adaptive control
@@ -115,6 +119,14 @@ class AudioLevelProcessor extends AudioWorkletProcessor {
   // Downsample audio for transmission (use processed buffer)
   const downsampled = this.downsampleLinear(processed, this.inputSampleRate, this.outputSampleRate);
     const pcmBuffer = this.toPCM16(downsampled);
+
+    // Track and log audio transmission
+    this.totalBytesSent += pcmBuffer.byteLength;
+    const now = Date.now();
+    if (now - this.lastLogTime > 5000) {
+      this.lastLogTime = now;
+      console.log(`[AudioWorklet] Sent ${this.totalBytesSent} bytes, current RMS: ${rms.toFixed(6)}, gain: ${this.currentGain.toFixed(2)}`);
+    }
 
     // Send audio data
     this.port.postMessage({

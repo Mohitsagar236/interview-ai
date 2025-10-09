@@ -141,10 +141,18 @@ class DeepgramProvider(StreamingTranscriptionProvider):
         if not self.ws or not self.connected:
             raise ConnectionError("Not connected to Deepgram")
         
+        self.logger.info("[Deepgram] Starting to receive results...")
+        message_count = 0
+        
         try:
             async for message in self.ws:
+                message_count += 1
                 try:
                     data = json.loads(message)
+                    
+                    # Log first few messages for debugging
+                    if message_count <= 5:
+                        self.logger.info(f"[Deepgram] Message #{message_count} type: {data.get('type', 'unknown')}")
                     
                     # Handle different message types
                     if data.get("type") == "Results":
@@ -173,6 +181,10 @@ class DeepgramProvider(StreamingTranscriptionProvider):
                             words=best.get("words", []),
                             timestamp=time.time()
                         )
+                        
+                        # Log transcription results
+                        result_type = "FINAL" if result.is_final else "INTERIM"
+                        self.logger.info(f"[Deepgram] {result_type}: '{text[:80]}' (conf: {result.confidence:.2f})")
                         
                         yield result
                         
@@ -331,7 +343,8 @@ class StreamingTranscriptionEngine:
     
     def __init__(self):
         self.provider = None
-        self.provider_name = os.getenv("STREAMING_PROVIDER", "deepgram").lower()
+        # Enforce Deepgram permanently regardless of environment
+        self.provider_name = "deepgram"
         self.config = self._load_config()
         self.reconnect_delay = 1.0
         self.max_reconnect_delay = 30.0
@@ -354,51 +367,48 @@ class StreamingTranscriptionEngine:
         }
     
     async def connect(self) -> bool:
-        """Connect to streaming transcription provider with auto-retry"""
+        """Connect to streaming transcription provider with auto-retry (Deepgram only)"""
+        self.logger.info("[Engine] Starting connection to Deepgram...")
+        
         for attempt in range(3):
             try:
-                if self.provider_name == "deepgram":
-                    api_key = os.getenv("DEEPGRAM_API_KEY")
-                    if not api_key:
-                        self.logger.error("DEEPGRAM_API_KEY not set")
-                        return False
-                    self.provider = DeepgramProvider(api_key, self.config)
-                    
-                elif self.provider_name == "assemblyai":
-                    api_key = os.getenv("ASSEMBLYAI_API_KEY")
-                    if not api_key:
-                        self.logger.error("ASSEMBLYAI_API_KEY not set")
-                        return False
-                    self.provider = AssemblyAIProvider(api_key, self.config)
-                    
-                else:
-                    self.logger.error(f"Unknown provider: {self.provider_name}")
+                # Deepgram enforced
+                api_key = os.getenv("DEEPGRAM_API_KEY")
+                if not api_key:
+                    self.logger.error("DEEPGRAM_API_KEY not set - transcription will not work!")
                     return False
+                
+                self.logger.info(f"[Engine] Connection attempt {attempt + 1}/3")
+                self.provider = DeepgramProvider(api_key, self.config)
                 
                 connected = await self.provider.connect()
                 if connected:
                     self.reconnect_delay = 1.0  # Reset on success
+                    self.logger.info("[Engine] ✅ Successfully connected to Deepgram")
                     return True
+                else:
+                    self.logger.warning(f"[Engine] Connection attempt {attempt + 1} failed")
                     
             except Exception as e:
-                self.logger.warning(f"Connection attempt {attempt + 1} failed: {e}")
+                self.logger.error(f"[Engine] Connection attempt {attempt + 1} failed: {e}")
                 if attempt < 2:
                     await asyncio.sleep(self.reconnect_delay)
                     self.reconnect_delay = min(self.reconnect_delay * 2, self.max_reconnect_delay)
         
+        self.logger.error("[Engine] ❌ Failed to connect after all attempts")
         return False
     
     async def send_audio(self, audio_data: bytes):
         """Send audio data to provider with auto-reconnect"""
         if not self.provider or not self.provider.connected:
-            self.logger.warning("Provider not connected, attempting reconnect")
+            self.logger.warning("[Engine] Provider not connected, attempting reconnect")
             if not await self.connect():
                 raise ConnectionError("Failed to reconnect to transcription provider")
         
         try:
             await self.provider.send_audio(audio_data)
         except Exception as e:
-            self.logger.error(f"Failed to send audio: {e}")
+            self.logger.error(f"[Engine] Failed to send audio: {e}")
             self.provider.connected = False
             raise
     
@@ -418,8 +428,13 @@ class StreamingTranscriptionEngine:
         if not self.provider or not self.provider.connected:
             raise ConnectionError("Provider not connected")
         
+        self.logger.info("[Engine] Starting result stream...")
+        result_count = 0
+        
         try:
             async for result in self.provider.receive_results():
+                result_count += 1
+                
                 # Call appropriate callback
                 if result.type == TranscriptType.INTERIM and on_interim:
                     on_interim(result)
@@ -429,7 +444,7 @@ class StreamingTranscriptionEngine:
                 yield result
                 
         except (ConnectionClosed, ConnectionClosedError) as e:
-            self.logger.warning(f"Stream interrupted: {e}")
+            self.logger.warning(f"[Engine] Stream interrupted after {result_count} results: {e}")
             raise
     
     async def close(self):

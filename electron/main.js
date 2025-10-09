@@ -4,7 +4,64 @@ const WebSocket = require('ws');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const crypto = require('crypto');
-require('dotenv').config();
+const https = require('https');
+
+// Load .env file from project root (critical for all environment variables)
+const dotenv = require('dotenv');
+
+// Try multiple locations for .env file
+let envLoaded = false;
+const envLocations = [
+  path.join(__dirname, '..', '.env'),                    // Development: project root
+  path.join(process.resourcesPath, 'app.asar.unpacked', '.env'), // Packaged: asar unpacked
+  path.join(process.resourcesPath, '.env'),              // Packaged: resources folder (if not in asar)
+  path.join(app.getPath('userData'), '.env'),            // User data folder (user override)
+  path.join(process.cwd(), '.env')                       // Current working directory
+];
+
+console.log('[ENV] Searching for .env file...');
+for (const envPath of envLocations) {
+  console.log(`[ENV] Checking: ${envPath}`);
+  if (fs.existsSync(envPath)) {
+    const envResult = dotenv.config({ path: envPath });
+    if (!envResult.error) {
+      console.log(`[ENV] ✅ Loaded environment variables from ${envPath}`);
+      envLoaded = true;
+      break;
+    } else {
+      console.warn(`[ENV] ⚠️ Found .env but failed to load: ${envResult.error.message}`);
+    }
+  }
+}
+
+if (!envLoaded) {
+  console.warn(`[ENV] ⚠️ No .env file found in any location. Will rely on system env vars and settings.json`);
+  console.warn(`[ENV] This is OK if you configure API keys via Settings UI.`);
+}
+
+// Log critical variables to verify they're loaded
+console.log('[ENV] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+console.log('[ENV] Environment Variables Status:');
+const criticalVars = ['OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'DEFAULT_LLM', 'DEEPGRAM_API_KEY', 'USE_STREAMING_TRANSCRIPTION', 'STREAMING_PROVIDER'];
+criticalVars.forEach(v => {
+  if (process.env[v]) {
+    // Mask API keys for security
+    if (v.includes('API_KEY') || v.includes('_KEY')) {
+      const val = process.env[v];
+      if (val && val.length > 12) {
+        const masked = val.substring(0, 8) + '...' + val.substring(val.length - 4);
+        console.log(`[ENV] ✅ ${v} = ${masked}`);
+      } else {
+        console.log(`[ENV] ✅ ${v} is set`);
+      }
+    } else {
+      console.log(`[ENV] ✅ ${v} = ${process.env[v]}`);
+    }
+  } else {
+    console.log(`[ENV] ❌ ${v} is NOT set`);
+  }
+});
+console.log('[ENV] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
 let mainWindow;
 let toolbarWindow;
@@ -23,6 +80,7 @@ let settingsPath = null;
 let interviewsPath = null;
 let activitiesPath = null; // activity feed persistence
 let heartbeatInterval = null;
+let buildingMainApp = false; // guard concurrent builds
 // In-memory parsed resume store (id -> {text, chunks, meta}) for quick search (will persist later)
 let parsedResumes = new Map();
 // Semantic search index (TF-IDF lightweight)
@@ -34,6 +92,133 @@ let coachWSConnecting = false;
 let fileCache = new Map(); // path -> { data, timestamp }
 const CACHE_TTL = 5000; // 5 seconds cache
 const CACHE_MAX_SIZE = 20;
+
+// ---------------- Backend bootstrap helpers ----------------
+function getPythonScriptsRoot() {
+  // Prefer external resources path in packaged app; fallback to source tree in dev
+  try {
+    const packaged = app.isPackaged;
+    if (packaged) {
+      const p = path.join(process.resourcesPath, 'python');
+      if (fs.existsSync(p)) return p;
+    }
+  } catch {}
+  const devPath = path.join(__dirname, '..', 'python');
+  return devPath;
+}
+
+function getBundledSitePackages() {
+  // Get bundled site-packages path for packaged app
+  if (app.isPackaged) {
+    const p = path.join(process.resourcesPath, 'python', 'site-packages');
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+function getStandalonePythonExecutable() {
+  // Check if we have a standalone PyInstaller-built executable
+  if (app.isPackaged) {
+    const exeName = process.platform === 'win32' ? 'interview-ai-server.exe' : 'interview-ai-server';
+    const p = path.join(process.resourcesPath, 'python-dist', exeName);
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+function getRequirementsPath() {
+  const root = getPythonScriptsRoot();
+  const p = path.join(root, 'requirements.txt');
+  return p;
+}
+
+function getUserVenvDir() {
+  // Create a venv in userData so it survives updates
+  const base = app.getPath('userData');
+  return path.join(base, 'backend-venv');
+}
+
+function getVenvPythonExe(venvDir) {
+  return process.platform === 'win32'
+    ? path.join(venvDir, 'Scripts', 'python.exe')
+    : path.join(venvDir, 'bin', 'python');
+}
+
+function findSystemPythonCandidate() {
+  // Prefer Windows launcher 'py -3' if available; else 'python', else 'python3'
+  const candidates = process.platform === 'win32' ? ['py', 'python'] : ['python3', 'python'];
+  return candidates;
+}
+
+function trySpawnCheck(cmd, args) {
+  return new Promise((resolve) => {
+    try {
+      const p = spawn(cmd, args, { stdio: 'ignore', shell: false });
+      p.on('error', () => resolve(false));
+      p.on('exit', (code) => resolve(code === 0));
+    } catch { resolve(false); }
+  });
+}
+
+async function resolveSystemPython() {
+  const candidates = findSystemPythonCandidate();
+  for (const c of candidates) {
+    if (c === 'py') {
+      const ok = await trySpawnCheck('py', ['-3', '-V']);
+      if (ok) return { cmd: 'py', args: ['-3'] };
+    } else {
+      const ok = await trySpawnCheck(c, ['-V']);
+      if (ok) return { cmd: c, args: [] };
+    }
+  }
+  return null;
+}
+
+async function ensureVenvReady(logPrefix='[Backend]') {
+  const venvDir = getUserVenvDir();
+  const venvPy = getVenvPythonExe(venvDir);
+  if (fs.existsSync(venvPy)) return { venvDir, venvPy };
+
+  // Need to create a venv using system Python
+  const sysPy = await resolveSystemPython();
+  if (!sysPy) {
+    console.error(`${logPrefix} No system Python found. Please install Python 3.x and relaunch.`);
+    return { error: 'python-missing' };
+  }
+  console.log(`${logPrefix} Creating virtual environment at ${venvDir}`);
+  await new Promise((resolve, reject) => {
+    const args = [...sysPy.args, '-m', 'venv', venvDir];
+    const p = spawn(sysPy.cmd, args, { shell: false });
+    p.on('exit', (code) => code === 0 ? resolve() : reject(new Error('venv exit code '+code)));
+    p.on('error', reject);
+  });
+  // Upgrade pip and install requirements
+  const req = getRequirementsPath();
+  try { fs.accessSync(req, fs.constants.R_OK); } catch { console.warn(`${logPrefix} requirements.txt not found: ${req}`); return { venvDir, venvPy }; }
+  console.log(`${logPrefix} Upgrading pip...`);
+  await new Promise((resolve) => {
+    const p = spawn(venvPy, ['-m', 'pip', 'install', '--upgrade', 'pip', 'wheel', 'setuptools'], { shell: false });
+    p.stdout.on('data', d => console.log(`${logPrefix} ${d.toString().trim()}`));
+    p.stderr.on('data', d => console.log(`${logPrefix} ${d.toString().trim()}`));
+    p.on('exit', () => resolve());
+    p.on('error', () => resolve());
+  });
+  console.log(`${logPrefix} Installing backend requirements from ${req}`);
+  await new Promise((resolve, reject) => {
+    const p = spawn(venvPy, ['-m', 'pip', 'install', '-r', req], { shell: false });
+    p.stdout.on('data', d => console.log(`${logPrefix} ${d.toString().trim()}`));
+    p.stderr.on('data', d => console.log(`${logPrefix} ${d.toString().trim()}`));
+    p.on('exit', (code) => code === 0 ? resolve() : reject(new Error('pip exit code '+code)));
+    p.on('error', reject);
+  });
+  return { venvDir, venvPy };
+}
+
+function resolveServerPyPath() {
+  const root = getPythonScriptsRoot();
+  const p = path.join(root, 'server.py');
+  return fs.existsSync(p) ? p : null;
+}
 
 async function ensureCoachWS() {
   if (coachWS && coachWS.readyState === 1) return coachWS;
@@ -69,6 +254,126 @@ async function ensureCoachWS() {
       console.error('Failed to create coach WS', e.message);
       coachWSConnecting = false; resolve(null);
     }
+  });
+}
+
+// ---------------- Embedded Python (Windows) ----------------
+function getEmbeddedPythonDir() {
+  const base = app.getPath('userData');
+  const ver = '3.11.9';
+  return path.join(base, `python-embed-${ver}`);
+}
+
+function getEmbeddedPythonExe() {
+  return path.join(getEmbeddedPythonDir(), 'python.exe');
+}
+
+function downloadToFile(url, dest) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(dest);
+    https.get(url, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        // redirect
+        file.close(); fs.unlink(dest, () => {});
+        return resolve(downloadToFile(res.headers.location, dest));
+      }
+      if (res.statusCode !== 200) {
+        file.close(); fs.unlink(dest, () => {});
+        return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+      }
+      res.pipe(file);
+      file.on('finish', () => file.close(() => resolve(dest)));
+    }).on('error', (err) => { file.close(); fs.unlink(dest, () => {}); reject(err); });
+  });
+}
+
+function expandZipPowershell(zipPath, destDir) {
+  return new Promise((resolve, reject) => {
+    const ps = process.env.ComSpec && process.env.ComSpec.toLowerCase().includes('powershell')
+      ? 'powershell'
+      : 'powershell';
+    const args = ['-NoProfile', '-NonInteractive', '-Command', `Expand-Archive -LiteralPath '${zipPath.replace(/'/g, "''")}' -DestinationPath '${destDir.replace(/'/g, "''")}' -Force`];
+    const p = spawn(ps, args, { shell: false });
+    let err = '';
+    p.stderr.on('data', d => { err += d.toString(); });
+    p.on('exit', (code) => {
+      if (code === 0) resolve(); else reject(new Error(`Expand-Archive exit ${code}: ${err}`));
+    });
+    p.on('error', reject);
+  });
+}
+
+async function ensureEmbeddedPythonWindows(logPrefix='[Embed]') {
+  const embedDir = getEmbeddedPythonDir();
+  const pyExe = getEmbeddedPythonExe();
+  if (!fs.existsSync(embedDir)) fs.mkdirSync(embedDir, { recursive: true });
+  if (!fs.existsSync(pyExe)) {
+    // Download embeddable zip
+    const ver = '3.11.9';
+    const file = `python-${ver}-embed-amd64.zip`;
+    const url = `https://www.python.org/ftp/python/${ver}/${file}`;
+    const tmpZip = path.join(embedDir, file);
+    console.log(`${logPrefix} Downloading ${url}`);
+    await downloadToFile(url, tmpZip);
+    console.log(`${logPrefix} Extracting to ${embedDir}`);
+    await expandZipPowershell(tmpZip, embedDir);
+    try { fs.unlinkSync(tmpZip); } catch {}
+    // Enable site in _pth file
+    try {
+      const pth = fs.readdirSync(embedDir).find(n => /python\d+\d+\.\_pth$/i.test(n));
+      if (pth) {
+        const pthPath = path.join(embedDir, pth);
+        let txt = fs.readFileSync(pthPath, 'utf8');
+        if (!/^import site/m.test(txt)) {
+          txt = txt.replace(/#\s*import\s+site/m, 'import site');
+          fs.writeFileSync(pthPath, txt, 'utf8');
+          console.log(`${logPrefix} Enabled 'import site' in ${pth}`);
+        }
+      }
+    } catch (e) {
+      console.warn(`${logPrefix} Failed to enable site:`, e.message);
+    }
+  }
+  // Ensure pip exists
+  const hasPip = await new Promise((resolve) => {
+    try {
+      const p = spawn(pyExe, ['-m', 'pip', '--version']);
+      p.on('exit', (code) => resolve(code === 0));
+      p.on('error', () => resolve(false));
+    } catch { resolve(false); }
+  });
+  if (!hasPip) {
+    const getPip = 'https://bootstrap.pypa.io/get-pip.py';
+    const dest = path.join(embedDir, 'get-pip.py');
+    console.log(`${logPrefix} Bootstrapping pip...`);
+    await downloadToFile(getPip, dest);
+    await new Promise((resolve, reject) => {
+      const p = spawn(pyExe, [dest]);
+      p.stdout.on('data', d => console.log(`${logPrefix} ${d.toString().trim()}`));
+      p.stderr.on('data', d => console.log(`${logPrefix} ${d.toString().trim()}`));
+      p.on('exit', (code) => code === 0 ? resolve() : reject(new Error('get-pip exit '+code)));
+      p.on('error', reject);
+    });
+    try { fs.unlinkSync(dest); } catch {}
+  }
+  return { pyExe };
+}
+
+async function ensureRequirementsInstalledPython(pyExe, requirementsPath, logPrefix='[Deps]') {
+  try { fs.accessSync(requirementsPath, fs.constants.R_OK); } catch { console.warn(`${logPrefix} No requirements found at ${requirementsPath}`); return; }
+  await new Promise((resolve, reject) => {
+    const p = spawn(pyExe, ['-m', 'pip', 'install', '--upgrade', 'pip', 'wheel', 'setuptools']);
+    p.stdout.on('data', d => console.log(`${logPrefix} ${d.toString().trim()}`));
+    p.stderr.on('data', d => console.log(`${logPrefix} ${d.toString().trim()}`));
+    p.on('exit', (code) => code === 0 ? resolve() : reject(new Error('pip upgrade exit '+code)));
+    p.on('error', reject);
+  });
+  await new Promise((resolve, reject) => {
+    const p = spawn(pyExe, ['-m', 'pip', 'install', '-r', requirementsPath]);
+    p.stdout.on('data', d => console.log(`${logPrefix} ${d.toString().trim()}`));
+    p.stderr.on('data', d => console.log(`${logPrefix} ${d.toString().trim()}`));
+    p.on('exit', (code) => code === 0 ? resolve() : reject(new Error('pip install exit '+code)));
+    p.on('error', reject);
   });
 }
 
@@ -120,7 +425,7 @@ function ensureDataPaths() {
   if (!dataDir) {
     dataDir = path.join(app.getPath('userData'), 'profile_data');
     try { fs.mkdirSync(dataDir, { recursive: true }); } catch {}
-  profilePath = path.join(dataDir, 'profile.json');
+    profilePath = path.join(dataDir, 'profile.json');
   connectionsPath = path.join(dataDir, 'connections.json');
   resumesMetaPath = path.join(dataDir, 'resumes.json');
   settingsPath = path.join(dataDir, 'settings.json');
@@ -228,14 +533,6 @@ function buildActivitySummary(type, d){
 
 console.log(`🔧 Stealth overlay mode: ${forcedStealth ? 'ENABLED' : 'DISABLED'} (DISABLE_STEALTH_OVERLAY=${process.env.DISABLE_STEALTH_OVERLAY})`);
 
-function getVenvPython() {
-  try {
-    const candidate = path.join(__dirname, '..', '.venv', 'Scripts', 'python.exe');
-    if (fs.existsSync(candidate)) return candidate;
-  } catch {}
-  return process.platform === 'win32' ? 'python' : 'python3';
-}
-
 function startPythonServer() {
   if (process.env.NO_AUTO_SERVER) {
     console.log('[Server] Auto-start disabled via NO_AUTO_SERVER');
@@ -245,14 +542,262 @@ function startPythonServer() {
     console.log('[Server] Already running');
     return;
   }
-  const py = getVenvPython();
-  const serverPath = path.join(__dirname, '..', 'python', 'server.py');
-  if (!fs.existsSync(serverPath)) {
-    console.error('[Server] server.py not found');
-    return;
-  }
-  console.log(`[Server] Spawning Python server with: ${py} ${serverPath}`);
-  serverProcess = spawn(py, [serverPath], { cwd: path.join(__dirname, '..'), env: { ...process.env } });
+  (async () => {
+    // DEVELOPMENT MODE: Skip standalone executable to use latest Python code
+    // Check for standalone executable first (PyInstaller build)
+    const standaloneExe = false; // Disabled: getStandalonePythonExecutable();
+    if (standaloneExe) {
+      console.log(`[Server] Using standalone executable: ${standaloneExe}`);
+      
+      // Start with all environment variables (includes .env loaded by dotenv)
+      const env = { ...process.env };
+      
+      // Set default environment variables
+      if (!env.DEFAULT_LLM) env.DEFAULT_LLM = 'gpt-4o-mini';
+      if (!env.USE_STREAMING_TRANSCRIPTION) env.USE_STREAMING_TRANSCRIPTION = 'true';
+      if (!env.OPENAI_BASE_URL) env.OPENAI_BASE_URL = 'https://openrouter.ai/api/v1';
+      if (!env.STREAMING_PROVIDER) env.STREAMING_PROVIDER = 'deepgram';
+      if (!env.AUTO_COACH_ENABLED) env.AUTO_COACH_ENABLED = 'false';
+      if (!env.AI_TEMPERATURE) env.AI_TEMPERATURE = '0.7';
+      
+      // Override with settings from UI if available (takes precedence)
+      try {
+        ensureDataPaths();
+        const settings = readJSON(settingsPath, {});
+        
+        console.log('[Server] Loading settings from settings.json...');
+        
+        if (settings.apiKey) {
+          env.OPENAI_API_KEY = settings.apiKey;
+          env.OPENROUTER_API_KEY = settings.apiKey;
+          env.ANTHROPIC_API_KEY = settings.apiKey;
+          env.GROQ_API_KEY = settings.apiKey;
+          env.XAI_API_KEY = settings.apiKey;
+          console.log('[Server] ✅ Generic API key loaded from settings');
+        }
+        if (settings.openaiApiKey) {
+          env.OPENAI_API_KEY = settings.openaiApiKey;
+          console.log('[Server] ✅ OpenAI API key loaded from settings');
+        }
+        if (settings.openrouterApiKey) {
+          env.OPENROUTER_API_KEY = settings.openrouterApiKey;
+          console.log('[Server] ✅ OpenRouter API key loaded from settings');
+        }
+        if (settings.anthropicApiKey) {
+          env.ANTHROPIC_API_KEY = settings.anthropicApiKey;
+          console.log('[Server] ✅ Anthropic API key loaded from settings');
+        }
+        if (settings.groqApiKey) {
+          env.GROQ_API_KEY = settings.groqApiKey;
+          console.log('[Server] ✅ Groq API key loaded from settings');
+        }
+        if (settings.xaiApiKey) {
+          env.XAI_API_KEY = settings.xaiApiKey;
+          console.log('[Server] ✅ X.AI API key loaded from settings');
+        }
+        if (settings.deepgramApiKey) {
+          env.DEEPGRAM_API_KEY = settings.deepgramApiKey;
+          console.log('[Server] ✅ Deepgram API key loaded from settings');
+        }
+        if (settings.assemblyaiApiKey) {
+          env.ASSEMBLYAI_API_KEY = settings.assemblyaiApiKey;
+          console.log('[Server] ✅ AssemblyAI API key loaded from settings');
+        }
+        
+        if (settings.defaultLLM) env.DEFAULT_LLM = settings.defaultLLM;
+        
+        // Log final status
+        console.log('[Server] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('[Server] Environment Variables Status:');
+        const keys = [
+          'OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'DEEPGRAM_API_KEY',
+          'ANTHROPIC_API_KEY', 'GROQ_API_KEY', 'XAI_API_KEY',
+          'OPENAI_BASE_URL', 'DEFAULT_LLM', 'USE_STREAMING_TRANSCRIPTION',
+          'STREAMING_PROVIDER'
+        ];
+        keys.forEach(k => {
+          if (env[k]) {
+            if (k.includes('API_KEY') || k.includes('_KEY')) {
+              const val = env[k];
+              const masked = val.substring(0, 8) + '...' + val.substring(val.length - 4);
+              console.log(`[Server] ✅ ${k} = ${masked}`);
+            } else {
+              console.log(`[Server] ✅ ${k} = ${env[k]}`);
+            }
+          } else {
+            console.log(`[Server] ❌ ${k} is NOT set`);
+          }
+        });
+        console.log('[Server] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        
+        const hasAIKey = env.OPENROUTER_API_KEY || env.OPENAI_API_KEY || 
+                         env.ANTHROPIC_API_KEY || env.GROQ_API_KEY || env.XAI_API_KEY;
+        if (!hasAIKey) {
+          console.warn('[Server] ⚠️ WARNING: No AI API keys configured! Add keys in Settings.');
+        }
+      } catch (e) {
+        console.error('[Server] ❌ Could not load settings:', e.message);
+      }
+      
+      serverProcess = spawn(standaloneExe, [], { env });
+      attachServerIO();
+      return;
+    }
+    
+    // Otherwise use Python interpreter approach
+    const serverPath = resolveServerPyPath();
+    if (!serverPath) {
+      console.error('[Server] server.py not found');
+      return;
+    }
+    let py = null;
+    
+    // DEVELOPMENT MODE: Prefer venv with updated code over embedded Python
+    console.log('[Server] Checking for venv Python (preferred for development)...');
+    const prep = await ensureVenvReady('[Server.Setup]');
+    if (prep && prep.error === 'python-missing') {
+      const { dialog, shell } = require('electron');
+      await dialog.showMessageBox({
+        type: 'error',
+        title: 'Python Required',
+        message: 'Python 3 is required to run the backend and was not found on this system.',
+        detail: 'Click "Get Python" to open the official download page, then reinstall and relaunch the app.',
+        buttons: ['Get Python', 'OK'],
+        cancelId: 1,
+        defaultId: 0
+      }).then(res => { if (res.response === 0) shell.openExternal('https://www.python.org/downloads/'); });
+      return;
+    }
+    if (!prep || !prep.venvPy) {
+      console.error('[Server] Failed to prepare backend environment');
+      return;
+    }
+    py = prep.venvPy;
+    console.log(`[Server] Using venv Python: ${py}`);
+    
+    // Start with all environment variables (includes .env loaded by dotenv at startup)
+    const env = { ...process.env };
+    
+    // CRITICAL: Add python source directory to PYTHONPATH so modules can be found
+    const pythonSourceDir = getPythonScriptsRoot();
+    env.PYTHONPATH = pythonSourceDir + (env.PYTHONPATH ? path.delimiter + env.PYTHONPATH : '');
+    console.log(`[Server] Added Python source directory to PYTHONPATH: ${pythonSourceDir}`);
+    
+    // Set PYTHONPATH to include bundled packages if in production
+    const bundledPackages = getBundledSitePackages();
+    if (bundledPackages) {
+      console.log(`[Server] Using bundled packages from: ${bundledPackages}`);
+      env.PYTHONPATH = bundledPackages + path.delimiter + env.PYTHONPATH;
+    }
+    
+    // Set default environment variables for Python server
+    if (!env.DEFAULT_LLM) env.DEFAULT_LLM = 'gpt-4o-mini';
+    if (!env.USE_STREAMING_TRANSCRIPTION) env.USE_STREAMING_TRANSCRIPTION = 'true';
+    if (!env.OPENAI_BASE_URL) env.OPENAI_BASE_URL = 'https://openrouter.ai/api/v1';
+    if (!env.STREAMING_PROVIDER) env.STREAMING_PROVIDER = 'deepgram';
+    if (!env.AUTO_COACH_ENABLED) env.AUTO_COACH_ENABLED = 'false';
+    if (!env.AI_TEMPERATURE) env.AI_TEMPERATURE = '0.7';
+    
+    // Override with settings from UI if available (takes precedence over .env)
+    try {
+      ensureDataPaths();
+      const settings = readJSON(settingsPath, {});
+      
+      console.log('[Server] Loading settings from settings.json...');
+      
+      if (settings.apiKey) {
+        // Map generic apiKey to specific provider keys
+        env.OPENAI_API_KEY = settings.apiKey;
+        env.OPENROUTER_API_KEY = settings.apiKey;
+        env.ANTHROPIC_API_KEY = settings.apiKey;
+        env.GROQ_API_KEY = settings.apiKey;
+        env.XAI_API_KEY = settings.apiKey;
+        console.log('[Server] ✅ Generic API key loaded from settings');
+      }
+      // Also check for provider-specific keys
+      if (settings.openaiApiKey) {
+        env.OPENAI_API_KEY = settings.openaiApiKey;
+        console.log('[Server] ✅ OpenAI API key loaded from settings');
+      }
+      if (settings.openrouterApiKey) {
+        env.OPENROUTER_API_KEY = settings.openrouterApiKey;
+        console.log('[Server] ✅ OpenRouter API key loaded from settings');
+      }
+      if (settings.anthropicApiKey) {
+        env.ANTHROPIC_API_KEY = settings.anthropicApiKey;
+        console.log('[Server] ✅ Anthropic API key loaded from settings');
+      }
+      if (settings.groqApiKey) {
+        env.GROQ_API_KEY = settings.groqApiKey;
+        console.log('[Server] ✅ Groq API key loaded from settings');
+      }
+      if (settings.xaiApiKey) {
+        env.XAI_API_KEY = settings.xaiApiKey;
+        console.log('[Server] ✅ X.AI API key loaded from settings');
+      }
+      if (settings.deepgramApiKey) {
+        env.DEEPGRAM_API_KEY = settings.deepgramApiKey;
+        console.log('[Server] ✅ Deepgram API key loaded from settings');
+      }
+      if (settings.assemblyaiApiKey) {
+        env.ASSEMBLYAI_API_KEY = settings.assemblyaiApiKey;
+        console.log('[Server] ✅ AssemblyAI API key loaded from settings');
+      }
+      
+      // Apply other settings
+      if (settings.defaultLLM) env.DEFAULT_LLM = settings.defaultLLM;
+      
+      // Log final status of critical environment variables
+      console.log('[Server] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('[Server] Environment Variables Status:');
+      const keys = [
+        'OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'DEEPGRAM_API_KEY', 
+        'ANTHROPIC_API_KEY', 'GROQ_API_KEY', 'XAI_API_KEY',
+        'OPENAI_BASE_URL', 'DEFAULT_LLM', 'USE_STREAMING_TRANSCRIPTION',
+        'STREAMING_PROVIDER', 'AI_TEMPERATURE', 'AUTO_COACH_ENABLED'
+      ];
+      keys.forEach(k => {
+        if (env[k]) {
+          // Mask API keys for security
+          if (k.includes('API_KEY') || k.includes('_KEY')) {
+            const val = env[k];
+            const masked = val.substring(0, 8) + '...' + val.substring(val.length - 4);
+            console.log(`[Server] ✅ ${k} = ${masked}`);
+          } else {
+            console.log(`[Server] ✅ ${k} = ${env[k]}`);
+          }
+        } else {
+          console.log(`[Server] ❌ ${k} is NOT set`);
+        }
+      });
+      console.log('[Server] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      // Check if at least one AI provider is configured
+      const hasAIKey = env.OPENROUTER_API_KEY || env.OPENAI_API_KEY || 
+                       env.ANTHROPIC_API_KEY || env.GROQ_API_KEY || env.XAI_API_KEY;
+      if (!hasAIKey) {
+        console.warn('[Server] ⚠️ WARNING: No AI API keys configured!');
+        console.warn('[Server] ⚠️ Please add your API keys in Settings to enable AI features.');
+        console.warn('[Server] ⚠️ App will use fallback HuggingFace model (slower, offline).');
+      }
+      
+      const hasTranscriptionKey = env.DEEPGRAM_API_KEY || env.ASSEMBLYAI_API_KEY;
+      if (!hasTranscriptionKey) {
+        console.warn('[Server] ⚠️ WARNING: No transcription API keys configured!');
+        console.warn('[Server] ⚠️ Please add Deepgram or AssemblyAI key in Settings for transcription.');
+        console.warn('[Server] ⚠️ App will use local Whisper model (slower, but works offline).');
+      }
+    } catch (e) {
+      console.error('[Server] ❌ Could not load settings:', e.message);
+      console.error('[Server] Stack:', e.stack);
+    }
+    
+    serverProcess = spawn(py, [serverPath], { cwd: getPythonScriptsRoot(), env });
+    attachServerIO();
+  })().catch(err => console.error('[Server] setup error', err));
+}
+
+function attachServerIO() {
   serverProcess.stdout.setEncoding('utf8');
   serverProcess.stdout.on('data', (data) => {
     const lines = data.toString().split(/\r?\n/).filter(Boolean);
@@ -1187,6 +1732,65 @@ ipcMain.handle('settings-save', (_event, patch) => {
   } catch (e) { return { ok: false, error: e.message }; }
 });
 
+// ---------------- Diagnostic IPC -----------------
+ipcMain.handle('diagnostic:check-settings', () => {
+  try {
+    ensureDataPaths();
+    const exists = fs.existsSync(settingsPath);
+    const data = exists ? readJSON(settingsPath, {}) : null;
+    return {
+      exists,
+      path: settingsPath,
+      data: data ? {
+        hasApiKey: !!data.apiKey,
+        hasOpenRouterKey: !!data.openrouterApiKey,
+        hasOpenAIKey: !!data.openaiApiKey,
+        hasAnthropicKey: !!data.anthropicApiKey,
+        hasGroqKey: !!data.groqApiKey,
+        hasXAIKey: !!data.xaiApiKey,
+        hasDeepgramKey: !!data.deepgramApiKey,
+        hasAssemblyAIKey: !!data.assemblyaiApiKey,
+        defaultLLM: data.defaultLLM,
+        autoLaunchServer: data.autoLaunchServer,
+        stealthEnabled: data.stealthEnabled
+      } : null
+    };
+  } catch (e) {
+    return { exists: false, error: e.message };
+  }
+});
+
+ipcMain.handle('diagnostic:check-server', () => {
+  return {
+    running: !!serverProcess,
+    port: serverPort,
+    pythonPath: serverProcess ? getPythonScriptsRoot() : null
+  };
+});
+
+ipcMain.handle('diagnostic:check-env', () => {
+  // Return status of critical environment variables (masked for security)
+  const maskKey = (key) => {
+    if (!key) return null;
+    if (key.length <= 12) return '***';
+    return key.substring(0, 8) + '...' + key.substring(key.length - 4);
+  };
+  
+  return {
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ? maskKey(process.env.OPENROUTER_API_KEY) : null,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY ? maskKey(process.env.OPENAI_API_KEY) : null,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? maskKey(process.env.ANTHROPIC_API_KEY) : null,
+    GROQ_API_KEY: process.env.GROQ_API_KEY ? maskKey(process.env.GROQ_API_KEY) : null,
+    XAI_API_KEY: process.env.XAI_API_KEY ? maskKey(process.env.XAI_API_KEY) : null,
+    DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY ? maskKey(process.env.DEEPGRAM_API_KEY) : null,
+    ASSEMBLYAI_API_KEY: process.env.ASSEMBLYAI_API_KEY ? maskKey(process.env.ASSEMBLYAI_API_KEY) : null,
+    DEFAULT_LLM: process.env.DEFAULT_LLM,
+    USE_STREAMING_TRANSCRIPTION: process.env.USE_STREAMING_TRANSCRIPTION,
+    STREAMING_PROVIDER: process.env.STREAMING_PROVIDER,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL
+  };
+});
+
 // ---------------- Interviews IPC -----------------
 function readInterviews() { ensureDataPaths(); return readJSON(interviewsPath, { interviews: [] }); }
 function writeInterviews(data) { writeJSON(interviewsPath, data); }
@@ -1405,6 +2009,83 @@ ipcMain.handle('download-compact-bar', async (_event, type) => {
   } catch (e) { 
     console.error('Download compact bar error:', e);
     return { success: false, error: e.message }; 
+  }
+});
+
+// -------------- Main App Download IPC --------------
+ipcMain.handle('download-main-app', async (_event, options = {}) => {
+  try {
+    // Expect the main app installer to be in project root dist/ after electron-builder
+    const root = path.join(__dirname, '..');
+    const distDir = path.join(root, 'dist');
+    // Helper to locate installer
+    const findInstaller = () => {
+      if (!fs.existsSync(distDir)) return null;
+      const files = fs.readdirSync(distDir);
+      return files.find(f => /Interview\s*AI\s*Assistant.*\.exe$/i.test(f)) || files.find(f => f.endsWith('.exe')) || null;
+    };
+
+    let exe = findInstaller();
+    // Auto-build if missing
+    if (!exe) {
+      if (buildingMainApp) {
+        // Wait for ongoing build to finish (up to ~10 minutes)
+        await new Promise((resolve) => {
+          let waited = 0;
+          const iv = setInterval(() => {
+            const found = findInstaller();
+            if (found) { clearInterval(iv); resolve(); return; }
+            waited += 2000;
+            if (waited >= 10 * 60 * 1000) { clearInterval(iv); resolve(); }
+          }, 2000);
+        });
+        exe = findInstaller();
+      } else {
+        buildingMainApp = true;
+        try {
+          console.log('[Build] Desktop app not found, running npm run build...');
+          await new Promise((resolve, reject) => {
+            const cmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+            const p = spawn(cmd, ['run', 'build'], { cwd: root, shell: false });
+            p.stdout.setEncoding('utf8');
+            p.stderr.setEncoding('utf8');
+            p.stdout.on('data', (d) => console.log('[build]', d.toString().trim()));
+            p.stderr.on('data', (d) => console.error('[build.err]', d.toString().trim()));
+            p.on('exit', (code) => {
+              if (code === 0) resolve(); else reject(new Error('Build exited with code ' + code));
+            });
+            p.on('error', (err) => reject(err));
+          });
+        } catch (e) {
+          console.error('[Build] Failed:', e.message);
+          buildingMainApp = false;
+          return { success: false, error: 'Build failed: ' + e.message };
+        }
+        buildingMainApp = false;
+        exe = findInstaller();
+      }
+    }
+    if (!exe) {
+      return { success: false, error: 'Installer not found after build. Check build logs.' };
+    }
+    const sourcePath = path.join(distDir, exe);
+
+    const { dialog } = require('electron');
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save Interview AI Desktop App',
+      defaultPath: path.join(app.getPath('downloads'), exe),
+      filters: [ { name: 'Executable', extensions: ['exe'] } ]
+    });
+    if (result.canceled) {
+      return { success: false, error: 'Cancelled' };
+    }
+    fs.copyFileSync(sourcePath, result.filePath);
+    shell.showItemInFolder(result.filePath);
+    logActivity('main-app.download', { fileName: exe });
+    return { success: true, path: result.filePath };
+  } catch (e) {
+    console.error('Download main app error:', e);
+    return { success: false, error: e.message };
   }
 });
 

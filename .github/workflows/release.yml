@@ -1,0 +1,50 @@
+name: Release (Windows)
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run smoke tests
+        run: npm test
+
+      - name: Build Windows installer
+        run: npm run build
+
+      - name: Locate artifacts
+        id: artifacts
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Recurse -Path dist -Include *.exe,*.msi,*.zip | Select-Object -ExpandProperty FullName
+          if(-not $files) { throw 'No build artifacts found in dist' }
+          echo "files<<EOF" >> $env:GITHUB_OUTPUT
+          $files | ForEach-Object { echo $_ >> $env:GITHUB_OUTPUT }
+          echo "EOF" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/**/*.exe
+            dist/**/*.msi
+            dist/**/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

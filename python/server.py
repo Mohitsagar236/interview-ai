@@ -23,6 +23,21 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("server")
 
+# Additional libraries and OCR/IO dependencies
+from pypdf import PdfReader
+import docx
+from PIL import Image, ImageOps, ImageEnhance, ImageFilter, ImageStat, ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+import pytesseract
+
+# Import improved OCR utilities (optional)
+try:
+    from ocr_utils import OCRProcessor, OCRConfig
+    _has_ocr_utils = True
+except ImportError:
+    logger.warning("ocr_utils module not found, using legacy OCR processing")
+    _has_ocr_utils = False
+
 # Import our new AI providers system
 from ai_providers import initialize_ai, generate_ai_response, get_ai_status, generate_ai_response_for
 
@@ -54,7 +69,7 @@ try:
     _has_streaming = True
     logger.info("Streaming transcription module loaded successfully")
 except ImportError as e:
-    logger.warning(f"streaming_transcription module not available - will use legacy Whisper: {e}")
+    logger.error(f"streaming_transcription module not available: {e}")
     _has_streaming = False
 
 # Embedding (lazy)
@@ -64,74 +79,7 @@ try:
     import faiss  # type: ignore
     _has_faiss = True
 except Exception:
-    faiss = None  # type: ignore
     _has_faiss = False
-from pypdf import PdfReader
-import docx
-from PIL import Image, ImageOps, ImageEnhance, ImageFilter, ImageStat, ImageFile
-# Allow loading truncated images to improve robustness on uploads/captures
-ImageFile.LOAD_TRUNCATED_IMAGES = True
-import pytesseract
-
-# Import improved OCR utilities
-try:
-    from ocr_utils import OCRProcessor, OCRConfig
-    _has_ocr_utils = True
-except ImportError:
-    logger.warning("ocr_utils module not found, using legacy OCR processing")
-    _has_ocr_utils = False
-
-load_dotenv()
-
-# --- Heuristic utilities for optional image generation (auto-illustration) ---
-IMAGE_KEYWORDS = [
-    'diagram', 'flowchart', 'architecture', 'sequence diagram', 'class diagram', 'er diagram',
-    'timeline', 'gantt', 'graph', 'chart', 'ui mockup', 'wireframe', 'layout', 'component diagram',
-    'state machine', 'state diagram', 'deployment diagram', 'network topology', 'mind map',
-    'swimlane', 'journey map', 'data model', 'schema'
-]
-
-def needs_image(text: str) -> bool:
-    if not text:
-        return False
-    lt = text.lower()
-    if any(k in lt for k in IMAGE_KEYWORDS):
-        return True
-    if re.search(r"\b(draw|illustrate|visualize|sketch|show (a |an )?diagram|show (a |an )?graph)\b", lt):
-        return True
-    return False
-
-HOST = "0.0.0.0"
-PORT = 8765
-DEFAULT_LLM = os.getenv("DEFAULT_LLM", "gpt-4o-mini")
-
-# Whisper ASR (legacy fallback)
-model_size = os.getenv("WHISPER_MODEL", "small.en")
-compute_type = os.getenv("WHISPER_COMPUTE", "int8")
-asr_model: Optional[object] = None
-
-# Streaming transcription engine (new real-time system)
-streaming_engine: Optional[object] = None
-use_streaming = os.getenv("USE_STREAMING_TRANSCRIPTION", "true").lower() in ("true", "1", "yes", "on")
-
-# Vector store (init when ingesting resume)
-index = None  # type: ignore
-emb_texts: List[str] = []
-emb_matrix = None  # type: ignore  # numpy float32 [N, D] if FAISS not available
-
-# UI connections
-ui_clients: List[websockets.WebSocketServerProtocol] = []
-
-# Thread pool for blocking operations (like Whisper transcription)
-executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="whisper_")
-
-# Transcription state
-partial_text = ""
-captured_ocr_texts = []  # Store multiple OCR results
-# Read from environment - defaults to False (manual button only)
-auto_coach_enabled = os.getenv("AUTO_COACH_ENABLED", "false").lower() in ("true", "1", "yes", "on")
-coach_in_progress = False
-last_coach_question = ""
 last_coach_time = 0.0
 recent_questions: List[tuple[str, float]] = []
 current_speaker = "user1"  # Default speaker identifier
@@ -159,6 +107,53 @@ ai_initialized = False
 
 # Global OCR processor instance
 _ocr_processor = None
+# UI connections list
+ui_clients: List[websockets.WebSocketServerProtocol] = []
+
+# Transcription state
+partial_text = ""
+captured_ocr_texts: List[str] = []
+
+# Streaming transcription engine instance (Deepgram-only)
+streaming_engine = None
+
+# Auto-coach runtime flags
+auto_coach_enabled = os.getenv("AUTO_COACH", "0").lower() in ("1", "true", "yes", "on")
+coach_in_progress = False
+last_coach_question: Optional[str] = None
+
+# Embedding stores for resume/context personalization
+index = None  # faiss index when available
+emb_texts: List[str] = []
+emb_matrix = None  # numpy matrix fallback
+
+# Lazy image provider handle (may be used for diagram generation)
+image_provider = None
+
+IMAGE_KEYWORDS = [
+    'diagram', 'flowchart', 'architecture', 'sequence diagram', 'class diagram', 'er diagram',
+    'timeline', 'gantt', 'graph', 'chart', 'ui mockup', 'wireframe', 'layout', 'component diagram',
+    'state machine', 'state diagram', 'deployment diagram', 'network topology', 'mind map',
+    'swimlane', 'journey map', 'data model', 'schema'
+]
+
+def needs_image(text: str) -> bool:
+    if not text:
+        return False
+    lt = text.lower()
+    if any(k in lt for k in IMAGE_KEYWORDS):
+        return True
+    if re.search(r"\b(draw|illustrate|visualize|sketch|show (a |an )?diagram|show (a |an )?graph)\b", lt):
+        return True
+    return False
+
+# Server/network defaults
+HOST = "0.0.0.0"
+PORT = 8765
+DEFAULT_LLM = os.getenv("DEFAULT_LLM", "openai/gpt-4o-mini")
+
+# Thread pool retained for blocking operations (non-transcription)
+executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="bg_")
 
 def get_ocr_processor():
     """Get or create OCR processor instance"""
@@ -556,31 +551,8 @@ def process_ocr_image(image_bytes: bytes) -> str:
 
 
 def ensure_asr():
-    global asr_model
-    if asr_model is not None:
-        return
-    try:
-        logger.info("Loading faster-whisper model %s", model_size)
-        # Inform UIs model load started (can be several seconds on first run)
-        try:
-            # Fire and forget
-            asyncio.get_event_loop().create_task(broadcast({"type": "status", "data": {"asr": "loading", "model": model_size}}))
-        except Exception:
-            pass
-        from faster_whisper import WhisperModel  # lazy import heavy libs
-        device = os.getenv("WHISPER_DEVICE", "cpu")
-        asr_model = WhisperModel(model_size, device=device, compute_type=compute_type)
-        logger.info("Whisper model loaded (%s, device=%s)", model_size, device)
-        try:
-            asyncio.get_event_loop().create_task(broadcast({"type": "status", "data": {"asr": "ready", "model": model_size}}))
-        except Exception:
-            pass
-    except Exception as e:
-        logger.exception("Failed to load ASR model: %s", e)
-        try:
-            asyncio.get_event_loop().create_task(broadcast({"type": "status", "data": {"asr": "error", "error": str(e)}}))
-        except Exception:
-            pass
+    # Whisper ASR removed permanently; enforce Deepgram streaming usage
+    raise RuntimeError("Whisper ASR disabled. Configure DEEPGRAM_API_KEY and use streaming.")
 
 
 # Global flag to prevent duplicate auto-answers
@@ -1002,10 +974,14 @@ async def handle_ui(ws):
                                 img_bytes = base64.b64decode(result['image'])
                                 
                                 if _has_ocr_utils:
-                                    ocr_config = OCRConfig()
-                                    ocr_config.fast_mode = False
-                                    ocr_config.clean_text_only = True
-                                    text = process_image_with_ocr(img_bytes, ocr_config)
+                                    try:
+                                        # Use the improved OCR pipeline defined above
+                                        text = process_ocr_image(img_bytes)
+                                    except Exception as e:
+                                        logger.warning(f"Improved OCR failed in windows_capture path: {e}, falling back")
+                                        from PIL import Image
+                                        img = Image.open(io.BytesIO(img_bytes))
+                                        text = pytesseract.image_to_string(img)
                                 else:
                                     # Fallback to basic OCR
                                     from PIL import Image
@@ -1116,56 +1092,69 @@ async def handle_ui(ws):
                                 # Handle image upload with enhanced OCR
                                 logger.info("Starting enhanced OCR processing...")
                                 img_bytes = base64.b64decode(file_data)
-                                
-                                # Use enhanced OCR processor if available
-                                if _has_ocr_utils:
-                                    try:
-                                        # Configure OCR for better accuracy
-                                        ocr_config = OCRConfig()
-                                        ocr_config.fast_mode = False  # Use thorough processing for uploads
-                                        ocr_config.variant_budget_seconds = 6.0  # More time for better accuracy
-                                        ocr_config.min_upscale_size = 1600  # Larger upscaling
-                                        ocr_config.clean_text_only = True  # Return clean text for AI processing
-                                        
-                                        processor = OCRProcessor(ocr_config)
-                                        text = processor.process(img_bytes)
-                                        logger.info(f"Enhanced OCR completed. Extracted {len(text or '')} characters")
-                                    except Exception as ocr_error:
-                                        logger.warning(f"Enhanced OCR failed, falling back to basic: {ocr_error}")
-                                        # Fallback to basic OCR
+
+                                text = ""
+                                tnf = getattr(pytesseract, 'TesseractNotFoundError', Exception)
+                                try:
+                                    # Use enhanced OCR processor if available
+                                    if _has_ocr_utils:
+                                        try:
+                                            # Configure OCR for better accuracy
+                                            ocr_config = OCRConfig()
+                                            ocr_config.fast_mode = False  # Use thorough processing for uploads
+                                            ocr_config.variant_budget_seconds = 6.0  # More time for better accuracy
+                                            ocr_config.min_upscale_size = 1600  # Larger upscaling
+                                            ocr_config.clean_text_only = True  # Return clean text for AI processing
+
+                                            processor = OCRProcessor(ocr_config)
+                                            text = processor.process(img_bytes)
+                                            logger.info(f"Enhanced OCR completed. Extracted {len(text or '')} characters")
+                                        except Exception as ocr_error:
+                                            # If tesseract is missing, short-circuit with guidance
+                                            if isinstance(ocr_error, tnf) or 'tesseract is not installed' in str(ocr_error).lower():
+                                                raise ocr_error
+                                            logger.warning(f"Enhanced OCR failed, falling back to basic: {ocr_error}")
+                                            # Fallback to basic OCR
+                                            img = Image.open(io.BytesIO(img_bytes))
+                                            if img.mode not in ('L', 'LA'):
+                                                img = img.convert('L')
+                                            config = '--oem 3 --psm 6'
+                                            text = pytesseract.image_to_string(img, config=config)
+                                    else:
+                                        # Basic OCR path
                                         img = Image.open(io.BytesIO(img_bytes))
+                                        logger.info(f"Image loaded: {img.size}, mode: {img.mode}")
                                         if img.mode not in ('L', 'LA'):
                                             img = img.convert('L')
                                         config = '--oem 3 --psm 6'
                                         text = pytesseract.image_to_string(img, config=config)
+                                        logger.info(f"Basic OCR completed. Extracted {len(text or '')} characters")
+                                except Exception as e_ocr:
+                                    # Provide a clear, user-facing message if Tesseract is missing
+                                    msg_txt = str(e_ocr)
+                                    if isinstance(e_ocr, tnf) or 'tesseract is not installed' in msg_txt.lower() or 'not found' in msg_txt.lower():
+                                        guidance = (
+                                            "[OCR setup required] Tesseract is not installed or not on PATH. "
+                                            "Install from: https://github.com/UB-Mannheim/tesseract/wiki and restart the app. "
+                                            "If already installed, set TESSERACT_CMD in your .env to the full path (e.g., C:\\Program Files\\Tesseract-OCR\\tesseract.exe)."
+                                        )
+                                        logger.warning("Tesseract missing for image upload OCR")
+                                        file_context = f"\n\n[Image from {file_name}]:\n{guidance}"
+                                    else:
+                                        logger.exception(f"Image OCR failed: {e_ocr}")
+                                        file_context = f"\n\n[Image from {file_name}]:\n[OCR error: {msg_txt}]"
                                 else:
-                                    # Fallback to basic OCR if enhanced not available
-                                    img = Image.open(io.BytesIO(img_bytes))
-                                    logger.info(f"Image loaded: {img.size}, mode: {img.mode}")
-                                    
-                                    if img.mode not in ('L', 'LA'):
-                                        img = img.convert('L')
-                                    
-                                    config = '--oem 3 --psm 6'
-                                    text = pytesseract.image_to_string(img, config=config)
-                                    logger.info(f"Basic OCR completed. Extracted {len(text or '')} characters")
-                                
-                                # Intelligent text truncation for context management
-                                # Keep more text but structured for better AI understanding
-                                if text:
-                                    text_lines = [line.strip() for line in text.splitlines() if line.strip()]
-                                    
-                                    # Keep all text up to 8000 chars (increased from implicit limit)
-                                    if len(text) > 8000:
-                                        # Smart truncation: keep beginning and end
-                                        logger.info(f"Truncating OCR text from {len(text)} to ~8000 chars")
-                                        text = text[:7000] + "\n\n[... content truncated ...]\n\n" + text[-1000:]
-                                    
-                                    file_context = f"\n\n[Image Content from {file_name}]:\n{text or '(No text detected in image)'}"
-                                    logger.info(f"File context prepared: {len(file_context)} chars from {len(text_lines)} lines")
-                                else:
-                                    file_context = f"\n\n[Image from {file_name}]:\n(No text detected in image)"
-                                    logger.warning("No text extracted from image")
+                                    # Intelligent text truncation for context management
+                                    if text:
+                                        text_lines = [line.strip() for line in text.splitlines() if line.strip()]
+                                        if len(text) > 8000:
+                                            logger.info(f"Truncating OCR text from {len(text)} to ~8000 chars")
+                                            text = text[:7000] + "\n\n[... content truncated ...]\n\n" + text[-1000:]
+                                        file_context = f"\n\n[Image Content from {file_name}]:\n{text or '(No text detected in image)'}"
+                                        logger.info(f"File context prepared: {len(file_context)} chars from {len(text_lines)} lines")
+                                    else:
+                                        file_context = f"\n\n[Image from {file_name}]:\n(No text detected in image)"
+                                        logger.warning("No text extracted from image")
                             
                             elif file_type == "application/pdf":
                                 # Handle PDF upload (basic text extraction)
@@ -1689,29 +1678,36 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
         if context_type == "transcription":
             system = (
                 "You are an expert interview coach helping a candidate answer live interview questions. "
-                "Provide CONCISE, ACTIONABLE talking points that can be used immediately. "
-                "Keep answers SHORT and TO THE POINT (2-4 sentences or 3-5 bullet points maximum). "
-                "Focus on what the candidate should actually say, not lengthy explanations. "
-                "Get straight to the core answer - no generic advice, no filler. "
-                "For technical questions: State the key concept + 1 brief example. "
-                "For behavioral questions: Give 1 specific situation with clear outcome. "
-                "CRITICAL: Be brief! Interview responses should be concise and focused."
+                "Provide ULTRA-CONCISE, ACTIONABLE talking points. "
+                "MAXIMUM LENGTH: 2-3 sentences OR 3-4 bullet points. NO EXCEPTIONS. "
+                "Focus ONLY on what to say, not explanations or background. "
+                "Get straight to the answer - no introductions, no generic advice, no filler. "
+                "For technical questions: State key concept + 1 example in 2 sentences max. "
+                "For behavioral questions: 1 specific situation + outcome in 3 sentences max. "
+                "🔥 CRITICAL: If answer exceeds 4-5 lines, it's TOO LONG. Cut it shorter. "
+                "Interview answers should be brief and punchy - candidates need quick talking points, not essays."
                 + core_guidelines
             )
         else:
             system = (
                 "You are an expert interview coach helping a candidate prepare for job interviews. "
-                "When given an interviewer's question, provide clear, practical talking points and suggested answers. "
-                "Format your response in well-structured sections with concise headings, bullet points, and (if code is required) fenced code blocks. "
+                "Provide CONCISE, practical talking points and suggested answers. "
+                "🔥 KEY RULE: Keep answers SHORT and FOCUSED - candidates need quick guidance, not textbooks. "
+                "\nFor non-coding questions: 3-5 bullet points or 4-6 sentences maximum. "
+                "For coding questions: Brief explanation (2-3 sentences) + code + complexity. "
+                "\nFormat: Use clear headings, bullet points, and (if code is required) fenced code blocks. "
                 "Always produce the FULL answer in one pass—do not truncate or say 'continued'. "
                 "Be conversational, encouraging, and actionable. Focus on what the candidate should actually say. "
-                "If the question is technical, include: Problem Restatement, Key Points / Edge Cases, Approach (or Multiple Approaches), Complexity, and Example if helpful. "
-                "If code is requested, place final code after a short explanation under a heading and wrap it in fenced blocks with language identifier (e.g. ```python, ```cpp, ```c, etc.). "
-                "For mathematical expressions: use inline LaTeX $...$ for inline math and display LaTeX $$...$$ for block equations. "
+                "\nFor technical questions include: Brief approach + Code (if requested) + Time/Space complexity. "
+                "If code is requested, wrap it in fenced blocks with language identifier (e.g. ```python, ```cpp, ```c). "
+                "For mathematical expressions: use inline LaTeX $...$ for inline math and display LaTeX $$...$$ for blocks. "
                 "For modulo operations use \\mod or \\bmod in LaTeX. Example: $$(d - a + 7) \\bmod 7$$ "
-                "Ensure all code has proper syntax highlighting by specifying the language after triple backticks. "
-                "IMPORTANT: Provide specific advice tailored to the exact question asked, not generic interview tips. "
-                "Each question requires a unique, targeted response."
+                "\n⚡ BREVITY RULES: "
+                "- Skip obvious explanations "
+                "- No generic interview tips unless asked "
+                "- Cut any fluff or filler text "
+                "- Get to the point immediately "
+                "\nIMPORTANT: Provide specific, targeted responses to the exact question asked."
                 + core_guidelines
             )
 
@@ -2216,7 +2212,7 @@ async def stream_llm(llm_id: str, facts: str, out_type: str = "stream", mode: st
         
         if not full_text:
             logger.error("❌ ERROR: Streaming finished but collected text is empty!")
-            broadcast_sync({"type": out_type, "text": "[ERROR: No response received from AI]", "complete": True})
+            broadcast_sync({"type": out_type, "text": "[ERROR: No response received. The AI may be overloaded or unavailable. Please try again.]", "complete": True})
             return
         
         logger.info(f"📝 Full response collected: {len(full_text)} chars, first 100: '{full_text[:100]}'")
@@ -2353,28 +2349,7 @@ async def stream_llm(llm_id: str, facts: str, out_type: str = "stream", mode: st
             logger.error(f"AI generation error: {e}")
             broadcast_sync({"type": out_type, "text": f"[AI Error: {e}]", "complete": True})
 
-    # Optional image generation if question/content warrants illustration and provider available
-    try:
-        if out_type == "coach" and needs_image(facts):
-            # Lazy init image provider (reuse OpenAI key if present)
-            from ai_providers import OpenAIProvider, AIConfig  # local import to avoid cycles
-            global image_provider
-            if 'image_provider' not in globals() or image_provider is None:
-                image_provider = OpenAIProvider(AIConfig())
-                await image_provider.initialize()
-            if image_provider.is_available():
-                img_res = await image_provider.generate_image(
-                    f"Professional, minimal, high-contrast diagram illustrating: {facts[:500]}")
-                if img_res and img_res.get("b64"):
-                    await broadcast({
-                        "type": "image_result",
-                        "prompt": facts[:200],
-                        "format": img_res.get("format", "png"),
-                        "image_b64": img_res["b64"],
-                        "alt": f"Diagram for: {facts[:120]}"
-                    })
-    except Exception as ie:
-        logger.warning(f"Image generation skipped: {ie}")
+    # Image generation disabled to enforce OpenRouter-only text models
 
 
 async def handle_audio_streaming(ws):
@@ -2406,10 +2381,7 @@ async def handle_audio_streaming(ws):
         
         if not connected:
             logger.error("[Streaming] Failed to connect to streaming transcription provider")
-            await broadcast({"type": "error", "message": "Streaming transcription unavailable - check API key"})
-            # Fallback to legacy Whisper
-            logger.info("[Streaming] Falling back to legacy Whisper transcription")
-            await handle_audio(ws)
+            await broadcast({"type": "error", "message": "Streaming transcription unavailable - check DEEPGRAM_API_KEY"})
             return
         
         logger.info(f"[Streaming] Connected to {streaming_engine.provider_name} - ready for audio")
@@ -2418,8 +2390,6 @@ async def handle_audio_streaming(ws):
     except Exception as e:
         logger.error(f"[Streaming] Engine initialization failed: {e}")
         await broadcast({"type": "error", "message": f"Streaming initialization error: {e}"})
-        # Fallback to legacy
-        await handle_audio(ws)
         return
     
     # State for tracking transcription
@@ -2428,6 +2398,8 @@ async def handle_audio_streaming(ws):
     bytes_received = 0
     results_received = 0
     last_broadcast_time = time.time()
+    announced_receiving = False
+    last_ack_time = time.time()
     
     # Callback for interim results (partial transcriptions)
     def on_interim_result(result: TranscriptResult):
@@ -2466,11 +2438,11 @@ async def handle_audio_streaming(ws):
         if not text:
             return
         
-        # Append to rolling partial_text with speaker tag
-        speaker_prefix = f"[{current_speaker}] "
+        # Append to rolling partial_text without injecting speaker tags
+        # Keep the aggregated transcript clean; UI gets speaker via message fields
         if partial_text and not partial_text.endswith((" ", "\n")):
             partial_text += " "
-        partial_text += speaker_prefix + text
+        partial_text += text
         
         # Trim if too long (keep last 8000 chars)
         if len(partial_text) > 12000:
@@ -2526,6 +2498,23 @@ async def handle_audio_streaming(ws):
                 try:
                     # Forward audio chunk directly to streaming provider (zero buffering)
                     await streaming_engine.send_audio(data)
+                    # On first audio, announce receiving status to UI
+                    if not announced_receiving:
+                        announced_receiving = True
+                        asyncio.create_task(broadcast({"type": "status", "data": {"audio": "receiving"}}))
+                    
+                    # Periodic lightweight ack back to the audio WebSocket for diagnostics (every ~1s)
+                    now = time.time()
+                    if (now - last_ack_time) >= 1.0:
+                        last_ack_time = now
+                        try:
+                            # Send a small JSON text frame; renderer logs it if present
+                            asyncio.create_task(ws.send(json.dumps({
+                                "type": "audio_ack",
+                                "bytes": bytes_received
+                            })))
+                        except Exception:
+                            pass
                     
                     # Log progress every 5 seconds
                     if bytes_received % (16000 * 2 * 5) < 4096:  # ~5 sec intervals
@@ -2651,30 +2640,8 @@ async def handle_audio(ws):
             audio = np.concatenate([ring[wpos - span:], ring[:wpos]])
             
         try:
-            if asr_model is None:
-                # Retry model load (non-fatal) every few seconds
-                ensure_asr()
-                if int(now) % 5 == 0:  # periodic status ping
-                    await broadcast({"type": "status", "data": {"asr": "loading"}})
-                return
-            
-            # Run transcription in thread pool to avoid blocking the event loop
-            # This prevents WebSocket ping timeout (error 1011)
-            loop = asyncio.get_event_loop()
-            segments, info = await loop.run_in_executor(
-                executor,
-                lambda: asr_model.transcribe(
-                    audio,
-                    language="en",
-                    vad_filter=False,
-                    beam_size=3,
-                    best_of=3,
-                    condition_on_previous_text=True,
-                    no_speech_threshold=0.5,
-                )
-            )
-            text = " ".join(seg.text for seg in segments).strip()
-            logger.info(f"Transcribed: '{text[:100]}' (full_len={len(text)})")  # DEBUG: Show what was transcribed
+            # Legacy Whisper path disabled; no transcription performed here
+            return
             
             # Skip if this is very similar to what we just transcribed (Whisper repeating due to overlapping windows)
             # Use simple substring check: if new text is contained in old or vice versa, it's likely a repeat
@@ -2692,11 +2659,10 @@ async def handle_audio(ws):
                 last_transcribed_text = text  # Remember this transcription
                 emissions += 1
                 last_segment_time = now
-                # Append to rolling partial_text (with speaker tag once per emission)
-                speaker_prefix = f"[{current_speaker}] "
+                # Append to rolling partial_text without speaker tags for cleaner display
                 if partial_text and not partial_text.endswith((" ", "\n")):
                     partial_text += " "
-                partial_text += speaker_prefix + text
+                partial_text += text
                 if len(partial_text) > 12000:
                     partial_text = partial_text[-8000:]
 
@@ -2959,16 +2925,13 @@ async def ws_router(websocket, path):
     if path in ("/ui", "", "/"):
         await handle_ui(websocket)
     elif path == "/audio":
-        # Route to streaming or legacy handler based on configuration
-        if use_streaming and _has_streaming:
-            logger.info("[Router] Using streaming transcription handler")
+        # Deepgram streaming only
+        if _has_streaming:
+            logger.info("[Router] Using streaming transcription handler (Deepgram-only)")
             await handle_audio_streaming(websocket)
         else:
-            if not use_streaming:
-                logger.info("[Router] Streaming disabled, using legacy Whisper")
-            else:
-                logger.warning("[Router] Streaming unavailable, falling back to Whisper")
-            await handle_audio(websocket)
+            logger.error("[Router] Streaming module missing. Please ensure streaming_transcription.py is present.")
+            await websocket.close()
 
 
 async def main():

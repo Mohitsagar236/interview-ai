@@ -382,6 +382,37 @@
     queueResize();
   }
 
+  // Update the live transcript with an interim (partial) string without
+  // permanently appending it. We render: accumulated finals + current interim.
+  function updateLiveTranscriptInterim(content) {
+    const cleaned = (content || '').replace(/\s+/g, ' ').trim();
+    if (!cleaned) return;
+    if (!liveTranscriptMsgId) {
+      console.log('[Transcript] Creating new live transcript message');
+      const msg = { type: 'interviewer', content: '', timestamp: new Date(), id: Date.now() + Math.random() };
+      state.chatHistory.push(msg);
+      liveTranscriptMsgId = msg.id;
+      renderChatMessage(msg);
+      liveTranscriptAccumulated = '';
+    }
+    const combined = (liveTranscriptAccumulated ? (liveTranscriptAccumulated.trim() + ' ') : '') + cleaned;
+    console.log('[Transcript] Updating live transcript, new length:', combined.length);
+    const target = state.chatHistory.find(m => m.id === liveTranscriptMsgId);
+    if (target) target.content = combined;
+    if (chatMessages) {
+      const el = chatMessages.querySelector(`.chat-message[data-id="${liveTranscriptMsgId}"] .chat-content div:last-child`);
+      if (el) {
+        el.innerHTML = preserveUserFormatting(combined);
+        console.log('[Transcript] Updated DOM element for message ID:', liveTranscriptMsgId);
+      } else {
+        console.warn('[Transcript] Could not find DOM element for message ID:', liveTranscriptMsgId);
+      }
+    }
+    smartExpandChat();
+    requestScrollBottom();
+    queueResize();
+  }
+
   function finalizeLiveTranscript() {
     liveTranscriptMsgId = null;
     liveTranscriptAccumulated = '';
@@ -812,9 +843,18 @@
       try { showNotification('Chat UI not present in this layout', 'warn'); } catch {}
       return;
     }
+    
+    // Prevent collapsing chat during active recording/transcription
+    const isRecording = state.recording || state.interviewerRecording || state.studentMicOn;
     const isExpanded = container.classList.contains('expanded');
     const hasMsgs = state.chatHistory.length > 0;
+    
     if (isExpanded) {
+      if (isRecording) {
+        console.log('[Chat] Cannot collapse during recording - transcripts are active');
+        try { showNotification('Chat stays open during recording', 'info'); } catch {}
+        return;
+      }
       container.classList.remove('expanded');
       container.setAttribute('data-user-collapsed','true');
       container.setAttribute('data-collapse-time', Date.now().toString());
@@ -839,19 +879,37 @@
   function smartExpandChat() {
     if (!chatContainer) return;
     
-    // Always expand when there are messages, but respect user preference briefly
+    // IMPORTANT: When recording/transcribing, keep chat ALWAYS expanded
+    // Don't respect user-collapsed flag during active transcription
+    const isRecording = state.recording || state.interviewerRecording || state.studentMicOn;
+    
+    if (isRecording) {
+      // During recording, always keep chat expanded regardless of user preference
+      if (!chatContainer.classList.contains('expanded')) {
+        console.log('[Chat] Force expanding during recording - transcripts incoming');
+        chatContainer.classList.add('expanded');
+        // Remove any user-collapsed flags during recording
+        chatContainer.removeAttribute('data-user-collapsed');
+        chatContainer.removeAttribute('data-collapse-time');
+        queueResize();
+      }
+      state.lastChatActivity = Date.now();
+      return;
+    }
+    
+    // When not recording, respect user preference briefly
     const userCollapsedRecently = chatContainer.hasAttribute('data-user-collapsed');
     const recentCollapseTime = parseInt(chatContainer.getAttribute('data-collapse-time') || '0');
     const timeSinceCollapse = Date.now() - recentCollapseTime;
     
-    // If user manually collapsed within last 2 seconds (reduced from 5), respect that choice
+    // If user manually collapsed within last 2 seconds, respect that choice
     // But still expand for new messages after a brief cooldown
     if (userCollapsedRecently && timeSinceCollapse < 2000) {
       console.log('Chat auto-expand skipped: user collapsed recently', timeSinceCollapse + 'ms ago');
       return;
     }
     
-    // Remove the user-collapsed flag after 2 seconds (reduced from 5)
+    // Remove the user-collapsed flag after 2 seconds
     if (timeSinceCollapse > 2000) {
       console.log('Removing user-collapsed flag after', timeSinceCollapse + 'ms');
       chatContainer.removeAttribute('data-user-collapsed');
@@ -865,7 +923,7 @@
       queueResize();
     }
     
-    // Update last activity time for auto-collapse feature
+    // Update last activity time
     state.lastChatActivity = Date.now();
   }
   
@@ -1131,7 +1189,7 @@
               updateListenStudentUI();
             }
             
-            // Handle transcripts - add to chat
+            // Handle transcripts
             if (msg.type === 'transcript' && msg.text && msg.text.trim()) {
               const rawSeg = msg.text.trim();
               log.debug('[Transcript] Received:', rawSeg.substring(0, 80), 'mode:', msg.recording_mode);
@@ -1150,8 +1208,13 @@
               state._lastSegTs = nowTs;
               const mode = msg.recording_mode || 'interviewer';
               const chatType = mode === 'student' ? 'student' : 'interviewer';
-              log.debug('[Transcript] Adding to live transcript, type:', chatType);
-              appendToLiveTranscript(rawSeg);
+              log.debug('[Transcript] Updating live transcript, type:', chatType, 'interim:', !!msg.interim);
+              if (msg.interim) {
+                updateLiveTranscriptInterim(rawSeg);
+              } else {
+                // Final result: commit to accumulated transcript
+                appendToLiveTranscript(rawSeg);
+              }
               if (chatType === 'interviewer') {
                 state.interviewerSegments.push(rawSeg);
                 if (state.interviewerSegments.length > state.maxTranscriptSegments) state.interviewerSegments.shift();
@@ -1640,6 +1703,15 @@
       
       const modeText = mode === 'interviewer' ? 'Interviewer' : 'Student';
       console.log(`[Audio] Recording started (${modeText}) systemAudio=${!!state.systemAudio}`);
+      
+      // IMPORTANT: Force chat to expand when recording starts so transcripts are visible
+      if (chatContainer) {
+        chatContainer.classList.add('expanded');
+        chatContainer.removeAttribute('data-user-collapsed');
+        chatContainer.removeAttribute('data-collapse-time');
+        console.log('[Chat] Force expanded - recording started');
+      }
+      
       showNotification(`Recording ${modeText} - ${state.userNames[state.currentSpeaker]}`, 'success');
       return true;
     } catch (e) {
@@ -2286,7 +2358,51 @@
       }
     };
     chatPrompt.addEventListener('input', () => { autoSize(); updateDisabled(); });
-    chatPrompt.addEventListener('paste', () => setTimeout(()=>{autoSize(); updateDisabled();},0));
+    // Enhanced paste support: accept images (from clipboard) and plain text
+    chatPrompt.addEventListener('paste', async (e) => {
+      try {
+        const items = (e.clipboardData && e.clipboardData.items) ? Array.from(e.clipboardData.items) : [];
+        const hasImage = items.find(it => it.type && it.type.startsWith('image/'));
+        if (hasImage) {
+          // Prevent default text paste for image content
+          e.preventDefault();
+          // Read the image blob
+          const blob = hasImage.getAsFile();
+          if (!blob) return;
+          // Validate size (<=10MB)
+          if (blob.size > 10 * 1024 * 1024) {
+            try { showNotification('Pasted image is larger than 10MB', 'error'); } catch {}
+            return;
+          }
+          // Read as base64
+          const b64 = await new Promise((resolve, reject) => {
+            const fr = new FileReader();
+            fr.onload = () => resolve((fr.result || '').toString().split(',')[1] || '');
+            fr.onerror = reject;
+            fr.readAsDataURL(blob);
+          });
+          if (!b64) return;
+          // Store as pending file upload, infer name/type
+          const inferredType = blob.type || 'image/png';
+          const inferredName = `pasted-${Date.now()}.${inferredType.includes('png') ? 'png' : inferredType.includes('jpeg') ? 'jpg' : 'img'}`;
+          pendingFileUpload = { data: b64, type: inferredType, name: inferredName };
+          // Ensure chat visible
+          const container = document.getElementById('chatContainer');
+          if (container && !container.classList.contains('expanded')) { container.classList.add('expanded'); queueResize(); }
+          if (container) container.setAttribute('data-force-expanded','true');
+          // Show indicator
+          try { showFileAttachment(inferredName, inferredType); } catch {}
+          updateDisabled();
+          try { showNotification('Image pasted – ready to send', 'success'); } catch {}
+        } else {
+          // Let text paste happen; then auto-size/update
+          setTimeout(() => { autoSize(); updateDisabled(); }, 0);
+        }
+      } catch (err) {
+        console.warn('Paste handler error:', err);
+        setTimeout(() => { autoSize(); updateDisabled(); }, 0);
+      }
+    });
     chatPrompt.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();

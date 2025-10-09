@@ -96,8 +96,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Activity Feed
   listActivities: (limit) => ipcRenderer.invoke('activity-list', limit),
   onActivityUpdated: (callback) => { ipcRenderer.on('activity-updated', (_e, entry) => { try { callback(entry); } catch(err){ console.error('onActivityUpdated handler error', err); } }); },
+  // Diagnostics
+  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
   // Compact Bar Download
   downloadCompactBar: (type) => ipcRenderer.invoke('download-compact-bar', type),
+  // Main Desktop App Download
+  downloadMainApp: (options) => ipcRenderer.invoke('download-main-app', options || {}),
   
   // Event listeners for main process communications
   onQuickCaptureResult: (callback) => {

@@ -3,6 +3,7 @@ OpenAI Provider Module
 Supports OpenAI API with proper formatting and response handling.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -81,8 +82,8 @@ class MessageFormatter:
 class OpenAIProvider:
     def __init__(self, config: AIConfig):
         self.config = config
-        # Support either native OpenAI key or OpenRouter key (preferred fallback for alt models like Grok)
-        self.api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+        # Enforce OpenRouter only
+        self.api_key = os.getenv("OPENROUTER_API_KEY")
         self.initialized = False
         self.formatter = MessageFormatter()
         self._async_client: Optional[httpx.AsyncClient] = None
@@ -93,12 +94,11 @@ class OpenAIProvider:
         self._cache: Dict[str, tuple[str, float]] = {}
         self._cache_max_size = 50
         self._cache_ttl = 300  # 5 minutes
-        # Ordered fallback candidates if a model returns "No endpoints found"
+        # Fallback models - use stable, known-working models
         self._fallback_models: List[str] = [
-            os.getenv("FALLBACK_LLM_PRIMARY", "xai/grok-2"),
-            "xai/grok-2-1212",
-            "gpt-4o-mini",
-            "gpt-4o",
+            os.getenv("FALLBACK_LLM_PRIMARY", "openai/gpt-4o-mini"),
+            "openai/gpt-4o-mini",  # Reliable fallback
+            "anthropic/claude-3.5-sonnet"  # Secondary fallback
         ]
         # Track models already tried for a single request to avoid loops
         self._attempted_models: set[str] = set()
@@ -117,15 +117,15 @@ class OpenAIProvider:
 
     @staticmethod
     def _normalize_model_slug(slug: str) -> str:
-        """Normalize common alias typos (e.g., x-ai/ -> xai/)."""
-        if slug.startswith("x-ai/"):
-            return slug.replace("x-ai/", "xai/", 1)
+        """Normalize common alias typos - xAI uses 'x-ai/' prefix on OpenRouter."""
+        # No normalization needed - return as-is
+        # OpenRouter uses exact model IDs from their registry
         return slug
     
     async def initialize(self):
         """Initialize the OpenAI provider"""
         if not self.api_key:
-            logger.error("OpenAI/OpenRouter API key not set. Set OPENAI_API_KEY or OPENROUTER_API_KEY in environment.")
+            logger.error("OpenRouter API key not set. Set OPENROUTER_API_KEY in environment.")
             self.initialized = False
             return
         # Normalize model slug early
@@ -135,7 +135,8 @@ class OpenAIProvider:
             self.config.model = normalized
         if not self._async_client:
             # Reuse a single async client with connection pooling (better connection reuse / latency)
-            timeout = httpx.Timeout(30.0, connect=10.0, read=30.0, write=30.0)
+            # Increased timeouts for better reliability with OpenRouter
+            timeout = httpx.Timeout(120.0, connect=15.0, read=120.0, write=30.0)
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "User-Agent": "InterviewAI/1.0"
@@ -322,8 +323,8 @@ class OpenAIProvider:
             return f"[ERROR: {str(e)}]"
 
     
-    async def generate_stream(self, messages: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
-        """Generate streaming response from OpenAI"""
+    async def generate_stream(self, messages: List[Dict[str, str]], retry_count: int = 0) -> AsyncGenerator[str, None]:
+        """Generate streaming response from OpenAI with retry logic"""
         if not self.initialized:
             await self.initialize()
         
@@ -335,6 +336,8 @@ class OpenAIProvider:
         if not messages or not isinstance(messages, list):
             yield "[ERROR: Invalid messages format]"
             return
+        
+        max_retries = 2
         
         try:
             assert self._async_client is not None
@@ -497,13 +500,29 @@ class OpenAIProvider:
                 
                 logger.info(f"🏁 Streaming finished: {token_count} tokens total, finish_reason={finish_reason}")
                 
-        except httpx.TimeoutException:
-            yield "[ERROR: Request timed out]"
-        except httpx.TransportError as e:
-            yield f"[ERROR: Connection failed: {e}]"
+        except (httpx.TimeoutException, httpx.ConnectTimeout, httpx.ReadTimeout) as e:
+            logger.error(f"Request timed out (attempt {retry_count + 1}/{max_retries + 1}): {e}")
+            if retry_count < max_retries:
+                retry_delay = 2.0 * (retry_count + 1)  # Exponential backoff
+                logger.info(f"Retrying in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+                async for chunk in self.generate_stream(messages, retry_count + 1):
+                    yield chunk
+                return
+            yield "[ERROR: Request timed out after retries. The AI may be overloaded or unavailable. Please try again later.]"
+        except (httpx.TransportError, httpx.ConnectError) as e:
+            logger.error(f"Connection failed (attempt {retry_count + 1}/{max_retries + 1}): {e}")
+            if retry_count < max_retries:
+                retry_delay = 2.0 * (retry_count + 1)
+                logger.info(f"Retrying in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+                async for chunk in self.generate_stream(messages, retry_count + 1):
+                    yield chunk
+                return
+            yield "[ERROR: Connection failed after retries. Please check your internet connection and API configuration.]"
         except Exception as e:
-            logger.error(f"OpenAI generation error: {e}")
-            yield f"[ERROR: {e}]"
+            logger.error(f"OpenAI generation error: {e}", exc_info=True)
+            yield f"[ERROR: {str(e)}. Please try again.]"
 
 
 class AIManager:
@@ -529,9 +548,11 @@ class AIManager:
             # Only cap at extreme values to prevent abuse
             max_tokens_val = 100000
 
+        # Use OpenRouter with configurable model (default to GPT-4o-mini which is reliable)
+        # Note: x.ai/grok models may have limited availability on OpenRouter
         config = AIConfig(
-            model=os.getenv("DEFAULT_LLM", "gpt-4o-mini"),
-            base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+            model=os.getenv("DEFAULT_LLM", "openai/gpt-4o-mini"),
+            base_url="https://openrouter.ai/api/v1",
             temperature=float(os.getenv("AI_TEMPERATURE", "0.2")),
             max_new_tokens=max_tokens_val,
             allow_auto_continue=os.getenv("AI_AUTO_CONTINUE", "1").lower() not in ("0", "false", "no", "off")
@@ -543,7 +564,7 @@ class AIManager:
     async def generate_stream(self, messages: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
         """Generate streaming response using OpenAI"""
         if not self.provider or not self.provider.is_available():
-            yield "[ERROR: OpenAI not configured. Please set OPENAI_API_KEY in environment.]"
+            yield "[ERROR: OpenRouter not configured. Please set OPENROUTER_API_KEY in .env]"
             return
             
         async for token in self.provider.generate_stream(messages):
@@ -552,7 +573,7 @@ class AIManager:
     async def generate_complete_response(self, user_input: str, context: str = "") -> str:
         """Generate a complete, well-formatted response"""
         if not self.provider or not self.provider.is_available():
-            return "[ERROR: OpenAI not configured. Please set OPENAI_API_KEY in environment.]"
+            return "[ERROR: OpenRouter not configured. Please set OPENROUTER_API_KEY in .env]"
         
         # Format the messages properly
         messages = self.formatter.format_user_message(user_input, context)

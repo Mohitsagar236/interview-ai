@@ -1215,49 +1215,28 @@
 
                 <!-- Quick Actions Grid -->
                 <div style="grid-column:1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
-                    <!-- Compact Bar - Rebuilt from scratch -->
-                    <div class="section-card" style="background: linear-gradient(135deg, rgba(33, 136, 255, 0.12), rgba(33, 136, 255, 0.05)); border-color: #2188ff; position: relative; overflow: hidden;">
-                        <div style="position: absolute; top: -30%; right: -20%; width: 200px; height: 200px; background: radial-gradient(circle, rgba(33, 136, 255, 0.15), transparent); border-radius: 50%; pointer-events: none;"></div>
-                        <div style="position: relative; z-index: 1;">
-                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-                                <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(33, 136, 255, 0.2); display: flex; align-items: center; justify-content: center;">
-                                    <svg fill="none" stroke="#2188ff" viewBox="0 0 24 24" style="width: 20px; height: 20px;">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                                    </svg>
-                                </div>
-                                <h3 style="font-size: 16px; font-weight: 600; color: #e6edf3;">Compact Bar</h3>
+
+                    <!-- Desktop App -->
+                    <div class="section-card" style="background: linear-gradient(135deg, rgba(59,130,246,0.12), rgba(59,130,246,0.05)); border-color: #3b82f6;">
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(59,130,246,0.2); display: flex; align-items: center; justify-content: center;">
+                                <svg fill="none" stroke="#3b82f6" viewBox="0 0 24 24" style="width: 20px; height: 20px;">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
                             </div>
-                            <p style="color: #8b949e; margin-bottom: 16px; font-size: 13px; line-height: 1.6;">
-                                Standalone toolbar with system tray integration. Access AI anytime!
-                            </p>
-                            <div style="display: flex; flex-direction: column; gap: 10px;">
-                                <button class="btn btn-primary" id="compactBarPortable" style="width: 100%; font-size: 13px; padding: 10px 16px; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                                    </svg>
-                                    <span>Portable Version</span>
-                                </button>
-                                <button class="btn btn-secondary" id="compactBarInstaller" style="width: 100%; font-size: 13px; padding: 10px 16px; background: rgba(22, 163, 74, 0.1); color: #22c55e; border-color: rgba(22, 163, 74, 0.3); display: flex; align-items: center; justify-content: center; gap: 8px;">
-                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
-                                    </svg>
-                                    <span>Installer Setup</span>
-                                </button>
-                            </div>
-                            <div style="margin-top: 12px; padding: 10px; background: rgba(0, 0, 0, 0.2); border-radius: 6px; font-size: 11px; color: #8b949e;">
-                                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
-                                    <svg fill="currentColor" viewBox="0 0 24 24" style="width: 12px; height: 12px; color: #22c55e;">
-                                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                    </svg>
-                                    <span style="color: #e6edf3; font-weight: 500;">Hotkey:</span> Ctrl+Shift+A
-                                </div>
-                                <div style="display: flex; align-items: center; gap: 6px;">
-                                    <svg fill="currentColor" viewBox="0 0 24 24" style="width: 12px; height: 12px; color: #22c55e;">
-                                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                    </svg>
-                                    <span style="color: #e6edf3; font-weight: 500;">Status:</span> Background Mode
-                                </div>
-                            </div>
+                            <h3 style="font-size: 16px; font-weight: 600; color: #e6edf3;">Desktop App</h3>
+                        </div>
+                        <p style="color: #8b949e; margin-bottom: 16px; font-size: 13px; line-height: 1.6;">
+                            Download and install the full Interview AI desktop application.
+                        </p>
+                        <button class="btn btn-primary" id="downloadMainAppBtn" style="width: 100%; font-size: 13px; padding: 10px 16px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                            </svg>
+                            <span>Download Installer</span>
+                        </button>
+                        <div style="margin-top: 12px; font-size: 11px; color: #8b949e;">
+                            After download, run the installer to set up shortcuts and auto-updates.
                         </div>
                     </div>
 
@@ -1818,16 +1797,24 @@
                             <div style="padding: 12px 0;">
                                 <label for="settingLLM" style="font-size: 14px; font-weight: 500; color: #e6edf3; display: block; margin-bottom: 8px;">AI Model</label>
                                 <select id="settingLLM" class="form-input" style="width: 100%; background: #0d1117; border: 1px solid #30363d; color: #e6edf3; padding: 8px 12px; border-radius: 6px; cursor: pointer;">
-                                    <option value="grok-2-latest">🚀 Grok-2 Latest</option>
-                                    <option value="x-ai/grok-beta">🔬 Grok Beta</option>
-                                    <option value="gpt-4o">🤖 GPT-4o</option>
-                                    <option value="gpt-4o-mini">💨 GPT-4o Mini</option>
+                                    <option value="openai/gpt-4o-mini">⚡ GPT-4o Mini (Recommended)</option>
+                                    <option value="openai/gpt-4o">🤖 GPT-4o (Most Capable)</option>
+                                    <option value="anthropic/claude-3.5-sonnet">� Claude 3.5 Sonnet</option>
+                                    <option value="x-ai/grok-beta">🚀 Grok Beta (Experimental)</option>
+                                    <option value="google/gemini-pro-1.5">� Gemini Pro 1.5</option>
                                 </select>
                             </div>
 
                             <!-- API Key -->
                             <div style="padding: 12px 0; border-top: 1px solid #21262d;">
-                                <label for="settingAPIKey" style="font-size: 14px; font-weight: 500; color: #e6edf3; display: block; margin-bottom: 8px;">API Key</label>
+                                <label for="settingAPIKey" style="font-size: 14px; font-weight: 500; color: #e6edf3; display: block; margin-bottom: 4px;">LLM API Key</label>
+                                <p style="font-size: 12px; color: #8b949e; margin-bottom: 8px;">
+                                    Used for AI chat responses. Get your key from: 
+                                    <a href="https://platform.openai.com/api-keys" target="_blank" style="color: #58a6ff;">OpenAI</a>, 
+                                    <a href="https://console.anthropic.com/" target="_blank" style="color: #58a6ff;">Anthropic</a>, 
+                                    <a href="https://console.groq.com/" target="_blank" style="color: #58a6ff;">Groq</a>, or 
+                                    <a href="https://console.x.ai/" target="_blank" style="color: #58a6ff;">X.AI</a>
+                                </p>
                                 <div style="display: flex; gap: 8px;">
                                     <input type="password" id="settingAPIKey" class="form-input" placeholder="sk-..." style="flex: 1; background: #0d1117; border: 1px solid #30363d; color: #e6edf3; padding: 8px 12px; border-radius: 6px; font-family: monospace; font-size: 12px;">
                                     <button type="button" class="btn btn-secondary" id="toggleAPIKeyVisibility" style="padding: 8px 12px;">
@@ -1837,6 +1824,16 @@
                                         </svg>
                                     </button>
                                 </div>
+                            </div>
+                            
+                            <!-- Deepgram API Key -->
+                            <div style="padding: 12px 0; border-top: 1px solid #21262d;">
+                                <label for="settingDeepgramKey" style="font-size: 14px; font-weight: 500; color: #e6edf3; display: block; margin-bottom: 4px;">Deepgram API Key (Optional)</label>
+                                <p style="font-size: 12px; color: #8b949e; margin-bottom: 8px;">
+                                    For real-time audio transcription. Get free credits at 
+                                    <a href="https://console.deepgram.com/" target="_blank" style="color: #58a6ff;">Deepgram Console</a>
+                                </p>
+                                <input type="password" id="settingDeepgramKey" class="form-input" placeholder="Deepgram API key..." style="width: 100%; background: #0d1117; border: 1px solid #30363d; color: #e6edf3; padding: 8px 12px; border-radius: 6px; font-family: monospace; font-size: 12px;">
                             </div>
                         </div>
                     </div>
@@ -1885,8 +1882,8 @@
             hydrateSettings();
             if (window.electronAPI && window.electronAPI.onHeartbeat) { window.electronAPI.onHeartbeat(updateHeartbeat); }
             
-            // Initialize Compact Bar buttons - rebuilt from scratch
-            setupCompactBarButtons();
+            // Initialize Desktop App download button
+            setupMainAppDownload();
             
             // Profile edit/cancel buttons
             const editBtn = document.getElementById('editProfileBtn');
@@ -1969,10 +1966,10 @@
             } else if (section === 'dashboard') {
                 titleEl.textContent = 'Dashboard';
                 subtitleEl.textContent = 'Overview and quick actions';
-                // Initialize Compact Bar buttons when dashboard is loaded
-                console.log('📊 Dashboard section loaded, initializing Compact Bar buttons...');
+                // Initialize dashboard-only widgets when dashboard is loaded
+                console.log('📊 Dashboard section loaded, initializing widgets...');
                 setTimeout(() => {
-                    setupCompactBarButtons();
+                    setupMainAppDownload();
                 }, 100); // Small delay to ensure DOM is rendered
             } else {
                 titleEl.textContent = section.charAt(0).toUpperCase() + section.slice(1);
@@ -3188,6 +3185,7 @@
                 const auto = document.getElementById('settingAutoServer'); if (auto) auto.checked = s.autoLaunchServer !== false;
                 const compactBar = document.getElementById('settingCompactBar'); if (compactBar) compactBar.checked = !!s.compactBarEnabled;
                 const apiKey = document.getElementById('settingAPIKey'); if (apiKey && s.apiKey) apiKey.value = s.apiKey;
+                const deepgramKey = document.getElementById('settingDeepgramKey'); if (deepgramKey && s.deepgramApiKey) deepgramKey.value = s.deepgramApiKey;
             } catch (e) { console.error('hydrateSettings failed', e); }
         }
 
@@ -3231,12 +3229,13 @@
             const saveBtn = document.getElementById('saveAllSettings');
             if (saveBtn) {
                 saveBtn.addEventListener('click', async () => {
-                    const stealth = document.getElementById('settingStealth').checked;
-                    const defaultLLM = document.getElementById('settingLLM').value;
-                    const theme = document.getElementById('settingTheme').value;
-                    const autoLaunchServer = document.getElementById('settingAutoServer').checked;
-                    const compactBarEnabled = document.getElementById('settingCompactBar').checked;
-                    const apiKey = document.getElementById('settingAPIKey').value;
+                    const stealth = document.getElementById('settingStealth')?.checked;
+                    const defaultLLM = document.getElementById('settingLLM')?.value;
+                    const theme = document.getElementById('settingTheme')?.value;
+                    const autoLaunchServer = document.getElementById('settingAutoServer')?.checked;
+                    const compactBarEnabled = document.getElementById('settingCompactBar')?.checked;
+                    const apiKey = document.getElementById('settingAPIKey')?.value;
+                    const deepgramApiKey = document.getElementById('settingDeepgramKey')?.value;
                     
                     saveBtn.disabled = true;
                     const originalHTML = saveBtn.innerHTML;
@@ -3249,7 +3248,8 @@
                             theme, 
                             autoLaunchServer,
                             compactBarEnabled,
-                            apiKey: apiKey || undefined
+                            apiKey: apiKey || undefined,
+                            deepgramApiKey: deepgramApiKey || undefined
                         });
                         applyTheme(theme);
                         saveBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> Saved!';
@@ -3328,96 +3328,45 @@
             });
         }
 
-        // Compact Bar Download - Rebuilt from scratch with clean implementation
-        function setupCompactBarButtons() {
-            console.log('🔧 Initializing Compact Bar buttons...');
-            
-            const portableBtn = document.getElementById('compactBarPortable');
-            const installerBtn = document.getElementById('compactBarInstaller');
-            
-            if (!portableBtn || !installerBtn) {
-                console.error('❌ Compact Bar buttons not found in DOM');
+
+        // Desktop App Download handler
+        function setupMainAppDownload() {
+            const btn = document.getElementById('downloadMainAppBtn');
+            if (!btn) return;
+            if (!window.electronAPI || typeof window.electronAPI.downloadMainApp !== 'function') {
+                btn.disabled = true;
+                btn.innerHTML = '<span>Not Available</span>';
                 return;
             }
-            
-            if (!window.electronAPI?.downloadCompactBar) {
-                console.error('❌ electronAPI.downloadCompactBar not available');
-                portableBtn.disabled = true;
-                installerBtn.disabled = true;
-                portableBtn.innerHTML = '<span>Not Available</span>';
-                installerBtn.innerHTML = '<span>Not Available</span>';
-                return;
-            }
-            
-            // Portable Version Handler
-            portableBtn.addEventListener('click', async function() {
-                console.log('🚀 Portable button clicked');
-                const btnContent = this.innerHTML;
-                
+            btn.addEventListener('click', async function () {
+                const original = btn.innerHTML;
                 try {
-                    this.disabled = true;
-                    this.innerHTML = `
+                    btn.disabled = true;
+                    btn.innerHTML = `
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px; animation: spin 1s linear infinite;">
                             <circle cx="12" cy="12" r="10" stroke-width="3" stroke-dasharray="50" stroke-linecap="round" fill="none" opacity="0.25"></circle>
                             <circle cx="12" cy="12" r="10" stroke-width="3" stroke-dasharray="30" stroke-linecap="round" fill="none"></circle>
                         </svg>
-                        <span>Downloading...</span>
-                    `;
-                    
-                    const result = await window.electronAPI.downloadCompactBar('portable');
-                    console.log('📦 Download result:', result);
-                    
-                    if (result.success) {
-                        alert(`✅ Compact Bar Portable downloaded!\n\n📂 Location: ${result.path}\n\nYou can now run it independently.`);
-                    } else if (result.needsBuild) {
-                        alert('⚠️ Compact Bar needs to be built first.\n\nRun: npm run build:compact-bar');
-                    } else if (result.error && result.error !== 'Cancelled') {
-                        alert(`❌ Download failed:\n${result.error}`);
+                        <span>Preparing...</span>`;
+                    const res = await window.electronAPI.downloadMainApp();
+                    if (res && res.success) {
+                        alert(`✅ Desktop app installer saved!\n\n📂 Location: ${res.path}\n\nRun it to complete installation.`);
+                        showToast('Installer downloaded', 'success');
+                    } else if (res && res.needsBuild) {
+                        alert('⚠️ Desktop app needs to be built first.\n\nRun: npm run build');
+                        showToast('Build required before download', 'error');
+                    } else if (res && res.error && res.error !== 'Cancelled') {
+                        alert(`❌ Download failed: ${res.error}`);
+                        showToast(res.error, 'error');
                     }
-                } catch (err) {
-                    console.error('❌ Download error:', err);
-                    alert(`❌ Error: ${err.message}`);
+                } catch (e) {
+                    console.error('downloadMainApp failed', e);
+                    showToast('Download failed', 'error');
                 } finally {
-                    this.disabled = false;
-                    this.innerHTML = btnContent;
+                    btn.disabled = false;
+                    btn.innerHTML = original;
                 }
             });
-            
-            // Installer Setup Handler
-            installerBtn.addEventListener('click', async function() {
-                console.log('🚀 Installer button clicked');
-                const btnContent = this.innerHTML;
-                
-                try {
-                    this.disabled = true;
-                    this.innerHTML = `
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px; animation: spin 1s linear infinite;">
-                            <circle cx="12" cy="12" r="10" stroke-width="3" stroke-dasharray="50" stroke-linecap="round" fill="none" opacity="0.25"></circle>
-                            <circle cx="12" cy="12" r="10" stroke-width="3" stroke-dasharray="30" stroke-linecap="round" fill="none"></circle>
-                        </svg>
-                        <span>Downloading...</span>
-                    `;
-                    
-                    const result = await window.electronAPI.downloadCompactBar('installer');
-                    console.log('📦 Download result:', result);
-                    
-                    if (result.success) {
-                        alert(`✅ Compact Bar Installer downloaded!\n\n📂 Location: ${result.path}\n\nRun the installer for auto-start and system tray integration.`);
-                    } else if (result.needsBuild) {
-                        alert('⚠️ Compact Bar needs to be built first.\n\nRun: npm run build:compact-bar');
-                    } else if (result.error && result.error !== 'Cancelled') {
-                        alert(`❌ Download failed:\n${result.error}`);
-                    }
-                } catch (err) {
-                    console.error('❌ Download error:', err);
-                    alert(`❌ Error: ${err.message}`);
-                } finally {
-                    this.disabled = false;
-                    this.innerHTML = btnContent;
-                }
-            });
-            
-            console.log('✅ Compact Bar buttons initialized successfully');
         }
 
         async function hydrateConnections() {
