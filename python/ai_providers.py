@@ -33,15 +33,34 @@ class MessageFormatter:
     
     @staticmethod
     def format_user_message(content: str, context: str = "") -> List[Dict[str, str]]:
-        """Format user input into proper message format"""
+        """Format user input into proper message format with clear system instructions"""
         messages = []
         
-        # Add system context if provided
+        # Add enhanced system context with clear instructions
+        system_instruction = """You are a helpful AI assistant for technical interview preparation. 
+
+CRITICAL INSTRUCTIONS:
+1. Provide COMPLETE and ACCURATE answers to technical questions
+2. When asked for code, provide CLEAN, RUNNABLE code
+3. ONLY add code comments if explicitly requested by the user
+4. Follow the user's exact requirements - if they say "no comments", provide code WITHOUT comments
+5. If providing explanations, keep them separate from the code
+6. For algorithm problems, structure your response as:
+   - Brief problem understanding (if needed)
+   - Clean working code (without comments unless requested)
+   - Explanation of approach (after the code)
+   - Time and space complexity analysis
+7. Ensure code is syntactically correct and follows best practices
+8. Use proper formatting (code blocks with language tags, headings, bullet points)
+9. Be precise and thorough - don't cut corners or provide incomplete solutions"""
+        
         if context.strip():
-            messages.append({
-                "role": "system", 
-                "content": f"Context: {context.strip()}\n\nPlease provide clear, well-formatted responses."
-            })
+            system_instruction += f"\n\nAdditional Context: {context.strip()}"
+        
+        messages.append({
+            "role": "system", 
+            "content": system_instruction
+        })
         
         # Add user message
         messages.append({
@@ -53,19 +72,10 @@ class MessageFormatter:
     
     @staticmethod
     def clean_response(text: str) -> str:
-        """Clean and format AI response"""
-        preserve = os.getenv("AI_PRESERVE_FORMATTING", "1").lower() not in ("0", "false", "no", "off")
-        if preserve:
-            # Match GPT output closely by returning text as-is (trim trailing whitespace only)
-            return text.rstrip()
-
-        # Optional cleanup path when explicit normalization is requested
-        text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)
-        text = re.sub(r' +', ' ', text)
-        text = re.sub(r'\.(?=[A-Z])', '. ', text)
-        text = text.replace('```\n\n', '```\n')
-        text = text.replace('\n\n```', '\n```')
-        return text.strip()
+        """Clean and format AI response - preserve natural AI output"""
+        # Always preserve AI's natural formatting to avoid corruption
+        # Only strip trailing whitespace to prevent display issues
+        return text.rstrip()
     
     @staticmethod
     def is_complete_response(text: str) -> bool:
@@ -273,10 +283,11 @@ class OpenAIProvider:
                 "temperature": self.config.temperature,
                 "stream": False  # Non-streaming for complete response
             }
+            # Allow model to generate complete responses - only limit if explicitly set and reasonable
             if self.config.max_new_tokens and self.config.max_new_tokens > 0:
-                # Allow very high token limits for complete responses (up to 100k)
-                payload["max_tokens"] = min(self.config.max_new_tokens, 100000)
-            # If max_new_tokens is 0, omit max_tokens entirely - let model decide completion length
+                # Cap at reasonable maximum to allow complete responses (128k for models that support it)
+                payload["max_tokens"] = min(self.config.max_new_tokens, 128000)
+            # If max_new_tokens is 0 or not set, omit max_tokens - let model complete naturally
             
             response = requests.post(
                 f"{self.config.base_url}/chat/completions",
@@ -553,7 +564,7 @@ class AIManager:
         config = AIConfig(
             model=os.getenv("DEFAULT_LLM", "openai/gpt-4o-mini"),
             base_url="https://openrouter.ai/api/v1",
-            temperature=float(os.getenv("AI_TEMPERATURE", "0.2")),
+            temperature=float(os.getenv("AI_TEMPERATURE", "0.7")),  # Increased for better responses
             max_new_tokens=max_tokens_val,
             allow_auto_continue=os.getenv("AI_AUTO_CONTINUE", "1").lower() not in ("0", "false", "no", "off")
         )

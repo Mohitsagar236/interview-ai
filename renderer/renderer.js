@@ -171,7 +171,8 @@ class InterviewAssistant {
       
       switch (message.type) {
         case 'transcript':
-          this.updateTranscript(message.text || message.data || '');
+          // Pass the entire message so we can use interim/final and full transcript fields
+          this.updateTranscript(message);
           break;
         case 'stream':
           this.updateStream(message);
@@ -305,11 +306,37 @@ class InterviewAssistant {
     this.updateThrottles.set(key, timer);
   }
 
-  updateTranscript(text) {
+  updateTranscript(message) {
     this.throttleUpdate('transcript', () => {
       const transcriptEl = document.getElementById('transcript');
       if (!transcriptEl) return;
-      this.lastTranscript = text || '';
+      // message may be a string from legacy callers or an object from server
+      let text = '';
+      let isInterim = false;
+      let full = '';
+      try {
+        if (message && typeof message === 'object') {
+          text = String(message.text || message.data || '');
+          isInterim = Boolean(message.interim);
+          full = String(message.full || '');
+        } else {
+          text = String(message || '');
+        }
+      } catch {}
+
+      // Use server-provided full transcript when available, else accumulate locally
+      if (full) {
+        this.lastTranscript = full;
+      } else {
+        // For final segments, append to our local buffer; for interim, render non-destructively
+        if (!isInterim && text) {
+          // Append a space if needed
+          const sep = this.lastTranscript && /\S$/.test(this.lastTranscript) ? ' ' : '';
+          this.lastTranscript = (this.lastTranscript || '') + sep + text;
+        }
+      }
+
+      const renderText = full || this.lastTranscript || text || '';
       const name1 = (document.getElementById('user1Name')?.value || this.userNames.user1).trim() || 'User 1';
       const name2 = (document.getElementById('user2Name')?.value || this.userNames.user2).trim() || 'User 2';
       
@@ -319,7 +346,7 @@ class InterviewAssistant {
       container.className = 'chat-log';
       
       // Naive split: when a question mark occurs, switch to other user for the next utterance.
-      const parts = String(text).split(/([\.!?]\s+)/);
+      const parts = String(renderText).split(/([\.!?]\s+)/);
       let speaker = this.currentSpeaker;
       let buffer = '';
       

@@ -4,8 +4,10 @@ class AudioLevelProcessor extends AudioWorkletProcessor {
     this.frameCount = 0;
     this.outputSampleRate = 16000; // Target output sample rate
     this.inputSampleRate = null; // Will be set dynamically
-    this.resampleBuffer = [];
-    this.resampleRatio = 1;
+  this.resampleRatio = 1;
+  this.downsampleRemainder = new Float32Array(0);
+  this.sampleAccumulator = new Float32Array(0);
+  this.targetChunkSamples = 320; // 20ms of audio at 16kHz
     // Adaptive gain control state
     this.enableGain = false;
     this.targetRMS = 0.02; // target perceived rms after scaling
@@ -33,20 +35,40 @@ class AudioLevelProcessor extends AudioWorkletProcessor {
   // Linear downsampling function
   downsampleLinear(input, fromRate, toRate) {
     if (fromRate === toRate) return input;
-    
+
     const ratio = fromRate / toRate;
-    const outputLength = Math.floor(input.length / ratio);
+    let source;
+
+    if (this.downsampleRemainder.length) {
+      source = new Float32Array(this.downsampleRemainder.length + input.length);
+      source.set(this.downsampleRemainder, 0);
+      source.set(input, this.downsampleRemainder.length);
+    } else {
+      source = input;
+    }
+
+    if (source.length < 2) {
+      this.downsampleRemainder = source;
+      return new Float32Array(0);
+    }
+
+    const outputLength = Math.max(0, Math.floor((source.length - 1) / ratio));
+    if (outputLength === 0) {
+      this.downsampleRemainder = source;
+      return new Float32Array(0);
+    }
+
     const output = new Float32Array(outputLength);
-    
     for (let i = 0; i < outputLength; i++) {
       const srcIndex = i * ratio;
       const srcIndexFloor = Math.floor(srcIndex);
-      const srcIndexCeil = Math.min(srcIndexFloor + 1, input.length - 1);
+      const srcIndexCeil = Math.min(srcIndexFloor + 1, source.length - 1);
       const fraction = srcIndex - srcIndexFloor;
-      
-      output[i] = input[srcIndexFloor] * (1 - fraction) + input[srcIndexCeil] * fraction;
+      output[i] = source[srcIndexFloor] * (1 - fraction) + source[srcIndexCeil] * fraction;
     }
-    
+
+    const consumedSamples = Math.min(source.length, Math.floor(outputLength * ratio));
+    this.downsampleRemainder = source.slice(consumedSamples);
     return output;
   }
 
@@ -116,23 +138,32 @@ class AudioLevelProcessor extends AudioWorkletProcessor {
       });
     }
 
-  // Downsample audio for transmission (use processed buffer)
-  const downsampled = this.downsampleLinear(processed, this.inputSampleRate, this.outputSampleRate);
-    const pcmBuffer = this.toPCM16(downsampled);
+    // Downsample audio for transmission (use processed buffer)
+    const downsampled = this.downsampleLinear(processed, this.inputSampleRate, this.outputSampleRate);
+    if (downsampled.length) {
+      const combinedSamples = new Float32Array(this.sampleAccumulator.length + downsampled.length);
+      combinedSamples.set(this.sampleAccumulator, 0);
+      combinedSamples.set(downsampled, this.sampleAccumulator.length);
 
-    // Track and log audio transmission
-    this.totalBytesSent += pcmBuffer.byteLength;
-    const now = Date.now();
-    if (now - this.lastLogTime > 5000) {
-      this.lastLogTime = now;
-      console.log(`[AudioWorklet] Sent ${this.totalBytesSent} bytes, current RMS: ${rms.toFixed(6)}, gain: ${this.currentGain.toFixed(2)}`);
+      let offset = 0;
+      while (combinedSamples.length - offset >= this.targetChunkSamples) {
+        const slice = combinedSamples.subarray(offset, offset + this.targetChunkSamples);
+        const pcmBuffer = this.toPCM16(slice);
+        this.totalBytesSent += pcmBuffer.byteLength;
+        const now = Date.now();
+        if (now - this.lastLogTime > 5000) {
+          this.lastLogTime = now;
+          console.log(`[AudioWorklet] Sent ${this.totalBytesSent} bytes, current RMS: ${rms.toFixed(6)}, gain: ${this.currentGain.toFixed(2)}`);
+        }
+        this.port.postMessage({
+          type: 'audio',
+          buffer: pcmBuffer
+        }, [pcmBuffer]);
+        offset += this.targetChunkSamples;
+      }
+
+      this.sampleAccumulator = combinedSamples.slice(offset);
     }
-
-    // Send audio data
-    this.port.postMessage({
-      type: 'audio',
-      buffer: pcmBuffer
-    }, [pcmBuffer]);
 
     return true;
   }

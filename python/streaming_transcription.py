@@ -14,7 +14,7 @@ from typing import AsyncGenerator, Callable, Optional, Dict, Any
 from enum import Enum
 
 import websockets
-from websockets.exceptions import ConnectionClosed, ConnectionClosedError
+from websockets.exceptions import ConnectionClosed, ConnectionClosedError, InvalidStatusCode
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +119,20 @@ class DeepgramProvider(StreamingTranscriptionProvider):
             self.logger.info("Connected to Deepgram streaming API")
             return True
             
+        except InvalidStatusCode as e:
+            error_headers = getattr(e, "headers", {}) or {}
+            dg_message = error_headers.get("dg-message")
+            dg_request_id = error_headers.get("dg-request-id")
+            if dg_message:
+                self.logger.error(
+                    "Deepgram rejected connection: %s (request id: %s)",
+                    dg_message,
+                    dg_request_id,
+                )
+            else:
+                self.logger.error("Deepgram rejected connection with status %s", e.status_code)
+            self.connected = False
+            return False
         except Exception as e:
             self.logger.error(f"Failed to connect to Deepgram: {e}")
             self.connected = False
@@ -360,10 +374,11 @@ class StreamingTranscriptionEngine:
             "punctuate": os.getenv("STREAMING_PUNCTUATE", "true").lower() == "true",
             "smart_format": os.getenv("STREAMING_SMART_FORMAT", "true").lower() == "true",
             "language": os.getenv("STREAMING_LANGUAGE", "en-US"),
-            "model": os.getenv("STREAMING_MODEL", "nova-2"),
+            "model": os.getenv("STREAMING_MODEL", "nova-2-conversational"),
             "diarize": os.getenv("STREAMING_DIARIZE", "false").lower() == "true",
             "vad_events": os.getenv("STREAMING_VAD_EVENTS", "true").lower() == "true",
-            "endpointing": int(os.getenv("STREAMING_ENDPOINTING", "300")),
+            "endpointing": int(os.getenv("STREAMING_ENDPOINTING", "180")),
+            "filler_words": os.getenv("STREAMING_FILLER_WORDS", "false").lower() == "true",
         }
     
     async def connect(self) -> bool:

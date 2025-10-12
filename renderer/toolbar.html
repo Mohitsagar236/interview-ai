@@ -146,8 +146,8 @@
     .chat-container { 
       display: block;
       max-width: var(--chat-max-width); 
-      /* Wider responsive width: minimum 560px, scales with viewport, capped by max */
-      width: clamp(560px, 90%, var(--chat-max-width));
+  /* Wider responsive width: minimum 720px, scales with viewport, capped by max */
+  width: clamp(720px, 92%, var(--chat-max-width));
       max-height: var(--chat-max-height); 
       height: auto;
       position: fixed;
@@ -232,10 +232,12 @@
       letter-spacing: 0.01em;
     }
     .chat-content.ai pre.ai-code { 
-      background:#0d1117; border:1px solid #2b3445; border-radius:8px; padding:14px 16px; overflow:auto; max-height:50vh; font-size:14px; line-height:1.5; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; margin:12px 0 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.04); 
+      background:#0d1117; border:1px solid #2b3445; border-radius:8px; padding:14px 16px; overflow-x: auto; overflow-y: auto; max-height:50vh; font-size:14px; line-height:1.5; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; margin:12px 0 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.04); white-space: pre; 
     }
-    .chat-content.ai pre.ai-code::-webkit-scrollbar { height: 6px; }
-    .chat-content.ai code { color:#e6edf3; font-size: 14px; }
+    .chat-content.ai pre.ai-code::-webkit-scrollbar { height: 6px; width: 6px; }
+    .chat-content.ai pre.ai-code::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+    .chat-content.ai pre.ai-code::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+    .chat-content.ai code { color:#e6edf3; font-size: 14px; white-space: pre; }
     .chat-content.ai strong { color:#ffffff; font-weight:600; letter-spacing: 0.01em; }
     .chat-content.ai em { color:#d1d9e0; font-style:italic; }
     .chat-content.ai p + ul, .chat-content.ai p + ol { margin-top:-4px; }
@@ -272,6 +274,7 @@
     /* Enhanced code block with language label */
     .chat-content.ai pre.ai-code { 
       position: relative;
+      white-space: pre;
     }
     .chat-content.ai pre.ai-code[data-language]:before {
       content: attr(data-language);
@@ -356,6 +359,182 @@
     }
     .chat-input button.upload-btn:disabled {
       opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Company brief form overlay */
+    .company-brief-overlay {
+      position: fixed;
+      top: 96px;
+      left: 50%;
+      transform: translate(-50%, -16px);
+      width: min(560px, 92vw);
+      max-height: calc(100vh - 160px);
+      display: flex;
+      flex-direction: column;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: linear-gradient(145deg, rgba(18,24,39,0.94), rgba(25,32,48,0.92));
+      box-shadow: 0 20px 40px -18px rgba(0,0,0,0.65), 0 4px 18px -6px rgba(0,0,0,0.5);
+      backdrop-filter: blur(14px) saturate(160%);
+      opacity: 0;
+      visibility: hidden;
+  pointer-events: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+      transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s ease;
+      z-index: 10001;
+      -webkit-app-region: none;
+    }
+    .company-brief-overlay.show {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translate(-50%, 0);
+    }
+    .company-brief-card {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: transparent;
+      -webkit-app-region: none;
+    }
+    .company-brief-card h2 {
+      margin: 0;
+      padding: 14px 20px 10px;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: var(--fg);
+    }
+    .company-brief-card p.description {
+      margin: 0;
+      padding: 0 20px 14px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .company-brief-card form {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .company-brief-form-content {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 0 20px 18px;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(180,190,200,0.45) transparent;
+    }
+    .company-brief-form-content::-webkit-scrollbar {
+      width: 6px;
+    }
+    .company-brief-form-content::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .company-brief-form-content::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.3);
+      border-radius: 3px;
+    }
+    .company-brief-form-content::-webkit-scrollbar-thumb:hover {
+      background: rgba(255,255,255,0.5);
+    }
+    .company-brief-card label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .company-brief-card input,
+    .company-brief-card textarea {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(6,9,16,0.88);
+      color: var(--fg);
+      padding: 8px 10px;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      -webkit-app-region: no-drag;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+    }
+    .company-brief-card input:focus,
+    .company-brief-card textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px rgba(37,99,235,0.4);
+    }
+    .company-brief-card textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+    .company-brief-status {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      min-height: 14px;
+      flex: 1;
+      margin-right: 12px;
+    }
+    .company-brief-status[data-state="muted"] { color: var(--muted); }
+    .company-brief-status[data-state="info"] { color: var(--primary-light); }
+    .company-brief-status[data-state="success"] { color: var(--success); }
+    .company-brief-status[data-state="error"] { color: var(--error); }
+    .company-brief-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 20px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.05);
+      backdrop-filter: blur(8px);
+      flex-shrink: 0;
+    }
+    .company-brief-buttons {
+      display: flex;
+      gap: 10px;
+    }
+    .company-brief-actions button {
+      border-radius: 8px;
+      border: 1px solid transparent;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      -webkit-app-region: no-drag;
+    }
+    .company-brief-actions .secondary {
+      background: transparent;
+      border-color: var(--border);
+      color: var(--muted);
+    }
+    .company-brief-actions .secondary:hover {
+      color: var(--fg);
+      border-color: var(--border-hover);
+    }
+    .company-brief-actions .primary {
+      background: var(--primary);
+      color: #fff;
+    }
+    .company-brief-actions .primary:hover {
+      background: var(--primary-light);
+    }
+    .company-brief-actions .primary:disabled {
+      opacity: 0.6;
       cursor: not-allowed;
     }
     /* File attachment indicator */
@@ -682,15 +861,18 @@
       </svg>
     </button>
 
-    <!-- Settings and Calendar -->
+    <!-- Company brief + resume upload -->
     <div class="button-group">
-      <!-- Calendar button disabled per request -->
-      <button class="icon-button no-drag disabled" id="schedule" title="Calendar disabled" aria-label="Calendar disabled" role="button" disabled aria-disabled="true" tabindex="-1" style="pointer-events:none; opacity:0.35;">
+      <button class="icon-button no-drag" id="companyBrief" title="Company Brief" aria-label="Add company details for the AI" role="button">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-          <line x1="16" y1="2" x2="16" y2="6"></line>
-          <line x1="8" y1="2" x2="8" y2="6"></line>
-          <line x1="3" y1="10" x2="21" y2="10"></line>
+          <path d="M3 21V7a2 2 0 0 1 2-2h4V3h6v2h4a2 2 0 0 1 2 2v14" />
+          <path d="M3 21h18" />
+          <path d="M7 13h2" />
+          <path d="M7 17h2" />
+          <path d="M11 13h2" />
+          <path d="M11 17h2" />
+          <path d="M15 13h2" />
+          <path d="M15 17h2" />
         </svg>
       </button>
 
@@ -786,6 +968,45 @@
   <!-- Highlight.js for syntax highlighting -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+
+  <!-- Company brief overlay -->
+  <div id="companyBriefOverlay" class="company-brief-overlay" role="dialog" aria-modal="true" aria-labelledby="companyBriefTitle" aria-hidden="true" tabindex="-1">
+    <div class="company-brief-card" role="document">
+      <h2 id="companyBriefTitle">Company Brief</h2>
+      <p class="description">Fill in quick facts so the AI can lean on company context during the interview.</p>
+      <form id="companyBriefForm">
+        <div class="company-brief-form-content">
+          <div>
+            <label for="companyNameInput">Company Name *</label>
+            <input id="companyNameInput" name="companyName" placeholder="e.g. Atlassian" required />
+          </div>
+          <div>
+            <label for="companyRoleInput">Role / Team</label>
+            <input id="companyRoleInput" name="companyRole" placeholder="e.g. Senior Frontend Engineer" />
+          </div>
+          <div>
+            <label for="companyWebsiteInput">Website</label>
+            <input id="companyWebsiteInput" name="companyWebsite" placeholder="https://company.com" inputmode="url" />
+          </div>
+          <div>
+            <label for="companyOverviewInput">Overview *</label>
+            <textarea id="companyOverviewInput" name="companyOverview" placeholder="Industry, products, mission, recent news..." required></textarea>
+          </div>
+          <div>
+            <label for="companyNotesInput">Key Notes</label>
+            <textarea id="companyNotesInput" name="companyNotes" placeholder="Hiring manager tips, culture points, standout projects, competitors..."></textarea>
+          </div>
+        </div>
+        <div class="company-brief-actions">
+          <small id="companyBriefStatus" class="company-brief-status" aria-live="polite" data-state="muted"></small>
+          <div class="company-brief-buttons">
+            <button type="button" class="secondary no-drag" id="companyBriefCancel">Cancel</button>
+            <button type="submit" class="primary no-drag" id="companyBriefSave">Save &amp; Share</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script src="./toolbar.js"></script>
   <script>

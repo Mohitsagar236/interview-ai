@@ -8,6 +8,7 @@ import re
 import socket
 import struct  # unused
 import time
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Optional, List, Dict
@@ -100,6 +101,46 @@ def get_combined_ocr_text():
     if not captured_ocr_texts:
         return ""
     return "\n\n".join([f"Screen {i+1}: {text}" for i, text in enumerate(captured_ocr_texts) if text.strip()])
+
+
+def get_company_brief_text():
+    """Return concatenated company brief context"""
+    if not company_brief_chunks:
+        return ""
+    return "\n\n".join(company_brief_chunks[-10:])
+
+
+def format_company_brief(payload) -> str:
+    """Normalize a company brief payload into readable text blocks."""
+    if not payload:
+        return ""
+    try:
+        if isinstance(payload, str):
+            return payload.strip()
+        if not isinstance(payload, Mapping):
+            return ""
+
+        parts: List[str] = []
+        name = str(payload.get("name") or "").strip()
+        if name:
+            parts.append(f"Company: {name}")
+        role = str(payload.get("role") or "").strip()
+        if role:
+            parts.append(f"Role: {role}")
+        website = str(payload.get("website") or "").strip()
+        if website:
+            parts.append(f"Website: {website}")
+        overview = str(payload.get("overview") or "").strip()
+        if overview:
+            parts.append(f"Overview:\n{overview}")
+        notes = str(payload.get("notes") or "").strip()
+        if notes:
+            parts.append(f"Key Notes:\n{notes}")
+
+        return "\n\n".join(parts).strip()
+    except Exception as exc:
+        logger.warning("Failed to format company brief: %s", exc)
+        return ""
 last_student_time = 0.0
 
 # AI system initialization flag
@@ -113,6 +154,9 @@ ui_clients: List[websockets.WebSocketServerProtocol] = []
 # Transcription state
 partial_text = ""
 captured_ocr_texts: List[str] = []
+
+# Company brief context chunks (fed into embedding store)
+company_brief_chunks: List[str] = []
 
 # Streaming transcription engine instance (Deepgram-only)
 streaming_engine = None
@@ -170,6 +214,19 @@ def get_ocr_processor():
         else:
             _ocr_processor = False  # Use legacy
     return _ocr_processor if _ocr_processor else None
+
+
+def _is_blank_image_from_bytes(image_bytes: bytes) -> bool:
+    """Check if image bytes represent a blank/empty image"""
+    try:
+        from PIL import Image, ImageStat
+        img = Image.open(io.BytesIO(image_bytes))
+        stats = ImageStat.Stat(img.convert('L'))
+        min_gray, max_gray = stats.extrema[0]
+        std_dev = stats.stddev[0]
+        return (max_gray - min_gray) <= 2 and std_dev <= 1.5
+    except Exception:
+        return False
 
 
 def process_ocr_image(image_bytes: bytes) -> str:
@@ -921,17 +978,152 @@ async def handle_ui(ws):
                                 actions.append("Review extracted text for next steps")
                             structured["steps"][3]["detail"] = actions
 
-                        # Send OCR result to UI
-                        ocr_result = {
-                            "type": "ocr_result" if auto_analyze else "ocr",
-                            "text": text,
-                            "captureIndex": capture_index,
-                            "totalCaptures": len(captured_ocr_texts),
-                            "autoAnalyze": auto_analyze,
-                            "meta": meta or None,
-                            "structured": structured
-                        }
-                        await broadcast(ocr_result)
+                        # Check if OCR result looks like UI chrome instead of content
+                        # If so, automatically retry with Windows capture
+                        should_retry_windows = False
+                        ui_matches = 0
+                        word_count = 0
+                        alpha_ratio = 0.0
+                        teams_matches = 0
+                        
+                        if text and text.strip():
+                            text_lower = text.lower()
+                            # Patterns that indicate we're capturing browser/desktop UI instead of content
+                            ui_patterns = [
+                                'file edit view',  # Browser menu
+                                'new tab',  # Browser tabs
+                                'reload',  # Browser controls
+                                'back forward',  # Browser navigation
+                                'address bar',  # Browser UI
+                                'bookmarks',  # Browser UI
+                                'extensions',  # Browser UI
+                                'settings',  # Browser UI
+                                'history',  # Browser UI
+                                'downloads',  # Browser UI
+                                'zoom in', 'zoom out',  # Browser controls
+                                'minimize maximize close',  # Window controls
+                                'start menu',  # Windows UI
+                                'taskbar',  # Windows UI
+                                'notification area',  # Windows UI
+                                'system tray',  # Windows UI
+                                'desktop',  # Windows UI
+                                'recycle bin',  # Windows UI
+                                'this pc',  # Windows UI
+                                'network',  # Windows UI
+                                'control panel',  # Windows UI
+                                'meeting chat',  # Teams UI
+                                'meeting controls',  # Teams UI
+                                'participants',  # Teams UI
+                                'mute unmute',  # Teams UI
+                                'video on off',  # Teams UI
+                                'share screen',  # Teams UI
+                                'end meeting',  # Teams UI
+                            ]
+                            
+                            # Check for UI patterns
+                            ui_matches = sum(1 for pattern in ui_patterns if pattern in text_lower)
+                            
+                            # Also check for very short text with many non-alphanumeric chars (garbled capture)
+                            word_count = len(text.split())
+                            alpha_ratio = sum(1 for c in text if c.isalnum()) / len(text) if text else 0
+                            
+                            # Check for Teams-specific patterns that indicate we should capture Teams window
+                            teams_patterns = ['meeting chat', 'participants', 'mute', 'unmute', 'share screen', 'end meeting']
+                            teams_matches = sum(1 for pattern in teams_patterns if pattern in text_lower)
+                            
+                            # Retry if: many UI patterns OR very short text with low alphanumeric ratio OR Teams UI detected
+                            should_retry_windows = (
+                                ui_matches >= 3 or 
+                                (word_count < 10 and alpha_ratio < 0.3 and len(text) > 50) or
+                                teams_matches >= 2
+                            )
+                            
+                            if should_retry_windows:
+                                logger.info(f"OCR result appears to be UI chrome ({ui_matches} UI patterns, {teams_matches} Teams patterns), retrying with Windows capture")
+                        
+                        if should_retry_windows and _has_windows_capture:
+                            try:
+                                # Check if we should target a specific window (Teams)
+                                target_window = None
+                                if teams_matches >= 2:
+                                    # Try to find Teams window
+                                    from windows_capture import get_available_windows
+                                    windows = get_available_windows()
+                                    for w in windows:
+                                        if 'teams' in w['title'].lower():
+                                            target_window = w['title']
+                                            logger.info(f"Detected Teams window for capture: {target_window}")
+                                            break
+                                
+                                # Try Windows capture of specific window or foreground window
+                                logger.info(f"Retrying OCR with Windows native capture{' (Teams)' if target_window else ''}")
+                                result = capture_window_windows(window_title=target_window) if target_window else capture_window_windows()
+                                
+                                if result and not _is_blank_image_from_bytes(result['image']):
+                                    # Re-process with OCR
+                                    img_bytes = base64.b64decode(result['image'])
+                                    
+                                    if _has_ocr_utils:
+                                        try:
+                                            text = process_ocr_image(img_bytes)
+                                        except Exception as e:
+                                            logger.warning(f"Improved OCR failed in retry: {e}, falling back")
+                                            from PIL import Image
+                                            img = Image.open(io.BytesIO(img_bytes))
+                                            text = pytesseract.image_to_string(img)
+                                    else:
+                                        from PIL import Image
+                                        img = Image.open(io.BytesIO(img_bytes))
+                                        text = pytesseract.image_to_string(img)
+                                    
+                                    # Update stored text
+                                    if capture_index >= len(captured_ocr_texts):
+                                        captured_ocr_texts.append(text or "")
+                                    else:
+                                        captured_ocr_texts[capture_index] = text or ""
+                                    
+                                    logger.info(f"✅ Windows capture retry successful: {len(text or '')} characters")
+                                    
+                                    # Update structured analysis if needed
+                                    if auto_analyze and text:
+                                        sections_map = _parse_structured_ocr(text)
+                                        screen_layout_lines = sections_map.get('screen layout', [])
+                                        raw_text_lines = sections_map.get('raw text', [])
+                                        screen_layout = "\n".join(screen_layout_lines[:60]).strip()
+                                        raw_preview = "\n".join(raw_text_lines[:60]).strip()
+                                        question_lines = _parse_structured_questions(text)
+                                        key_lines_source = screen_layout_lines or raw_text_lines
+                                        key_lines = [ln.strip() for ln in key_lines_source if ln.strip()][:15]
+                                        
+                                        structured["steps"][0]["detail"] = screen_layout or raw_preview or text[:4000]
+                                        structured["steps"][1]["detail"] = key_lines
+                                        structured["steps"][2]["detail"] = question_lines[:5]
+                                        
+                                        actions = []
+                                        if question_lines:
+                                            actions.append(f"Answer detected question: {question_lines[-1]}")
+                                        elif '?' in text:
+                                            actions.append("Prepare concise answer to detected question(s)")
+                                        if any(k in text.lower() for k in ["error", "exception", "failed"]):
+                                            actions.append("Investigate highlighted error messages")
+                                        if len(actions) == 0:
+                                            actions.append("Review extracted text for next steps")
+                                        structured["steps"][3]["detail"] = actions
+                                        structured["sections"] = sections_map
+                                    
+                                    # Update meta to indicate Windows capture was used
+                                    if meta:
+                                        meta['method'] = result.get('method', 'windows_retry')
+                                    else:
+                                        meta = {'method': result.get('method', 'windows_retry')}
+                                    
+                                    ocr_result['text'] = text
+                                    ocr_result['meta'] = meta
+                                    
+                                else:
+                                    logger.warning("Windows capture retry failed or returned blank image")
+                            except Exception as retry_e:
+                                logger.warning(f"Windows capture retry failed: {retry_e}")
 
                         # Auto-trigger AI response after capture
                         # Enable by default - AI will automatically analyze captured content
@@ -1054,6 +1246,18 @@ async def handle_ui(ws):
                         txt = msg.get("text") or msg.get("resume_text") or ""
                         raw = txt.encode("utf-8", errors="ignore")
                     await ingest_resume(str(name), raw)
+                elif mtype == "context" and msg.get("context_kind") == "company":
+                    # Store company brief details so AI can use them for follow-ups
+                    try:
+                        formatted = format_company_brief(msg)
+                        if not formatted:
+                            await broadcast({"type": "context_ack", "context_kind": "company", "success": False, "error": "No company details supplied"})
+                        else:
+                            await ingest_company_brief(formatted)
+                            await broadcast({"type": "context_ack", "context_kind": "company", "success": True})
+                    except Exception as e:
+                        logger.exception("Failed processing company context")
+                        await broadcast({"type": "context_ack", "context_kind": "company", "success": False, "error": str(e)})
                 elif mtype == "parse_resume":
                     # Handle the simpler resume parsing format for testing
                     try:
@@ -1077,6 +1281,9 @@ async def handle_ui(ws):
                     if question_channel not in valid_channels:
                         question_channel = "auto"
                     
+                    company_context_payload = msg.get("company_context")
+                    company_context_text = format_company_brief(company_context_payload)
+
                     # Handle file upload if provided
                     file_upload = msg.get("file_upload")
                     file_context = ""
@@ -1390,7 +1597,16 @@ async def handle_ui(ws):
                         "contextLabel": context_label
                     })
                     # Pass the actual question directly, not prefixed with "Last question:"
-                    await stream_llm(llm, actual_question, out_type="coach", mode="coach", strict=strict, context_type=question_source)
+                    extra_company_ctx = [company_context_text] if company_context_text else None
+                    await stream_llm(
+                        llm,
+                        actual_question,
+                        out_type="coach",
+                        mode="coach",
+                        strict=strict,
+                        context_type=question_source,
+                        extra_ctx=extra_company_ctx,
+                    )
                 elif mtype == "clear_captures":
                     # Clear all captured OCR texts
                     captured_ocr_texts = []
@@ -1546,6 +1762,40 @@ async def ingest_resume(name: str, raw: bytes):
         await broadcast({"type": "resume", "text": f"Ingested {len(chunks)} resume chunks (no embeddings)"})
 
 
+async def ingest_company_brief(text: str):
+    """Persist company brief text into embedding store for personalization."""
+    global SentenceTransformer, embedder, index, emb_texts, emb_matrix, company_brief_chunks
+    clean = text.strip()
+    if not clean:
+        return
+    company_brief_chunks.append(clean)
+    if len(company_brief_chunks) > 50:
+        del company_brief_chunks[:-50]
+    # Reuse existing embedding pipeline for consistency
+    try:
+        if SentenceTransformer is None:
+            from sentence_transformers import SentenceTransformer as ST  # lazy import
+            SentenceTransformer = ST
+        if embedder is None:
+            embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        vectors = embedder.encode([clean], normalize_embeddings=True)
+        emb_texts.extend([clean])
+        if _has_faiss:
+            if index is None:
+                index = faiss.IndexFlatIP(vectors.shape[1])  # type: ignore
+            index.add(np.asarray(vectors, dtype='float32'))
+        else:
+            vecs = np.asarray(vectors, dtype='float32')
+            if emb_matrix is None:
+                emb_matrix = vecs
+            else:
+                emb_matrix = np.vstack([emb_matrix, vecs])
+        logger.info("Company brief ingested")
+    except Exception as e:
+        logger.warning("Embedding unavailable for company brief: %s", e)
+        emb_texts.extend([clean])
+
+
 def smart_truncate_content(content: str, question: str, max_total_tokens: int = 6000) -> str:
     """
     Intelligently truncate content based on question length and model capacity.
@@ -1615,6 +1865,10 @@ def smart_truncate_content(content: str, question: str, max_total_tokens: int = 
 
 def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, context_type: str = "general"):
     base_ctx = chr(10).join(ctx)
+    company_context = get_company_brief_text()
+    if company_context:
+        company_block = f"Company Brief:\n{company_context}"
+        base_ctx = f"{base_ctx}\n\n{company_block}" if base_ctx else company_block
     
     # Core response guidelines: Always respond directly with clear, polished, complete answers
     # For transcription context, enforce brevity and conciseness
@@ -1990,7 +2244,15 @@ async def ensure_ai_initialized():
             })
 
 
-async def stream_llm(llm_id: str, facts: str, out_type: str = "stream", mode: str = "assistant", strict: bool = False, context_type: str = "general"):
+async def stream_llm(
+    llm_id: str,
+    facts: str,
+    out_type: str = "stream",
+    mode: str = "assistant",
+    strict: bool = False,
+    context_type: str = "general",
+    extra_ctx: Optional[List[str]] = None,
+):
     """Stream LLM response using open source AI providers"""
     
     # Ensure AI is initialized
@@ -2025,6 +2287,9 @@ async def stream_llm(llm_id: str, facts: str, out_type: str = "stream", mode: st
         else:
             # Fallback to first few chunks if no query context yet
             ctx = emb_texts[:5]
+
+    if extra_ctx:
+        ctx.extend([chunk for chunk in extra_ctx if chunk])
 
     system, user = build_prompts(mode, facts, ctx, strict=strict, context_type=context_type)
     
@@ -2234,6 +2499,8 @@ async def stream_llm(llm_id: str, facts: str, out_type: str = "stream", mode: st
         except Exception as hist_err:
             logger.warning(f"Failed to save conversation history: {hist_err}")
         
+        completion_sent = False
+
         # Post-filter for strict mode: remove generic filler & enforce brevity
         if strict and mode == "coach" and full_text:
             original = full_text
@@ -2261,68 +2528,74 @@ async def stream_llm(llm_id: str, facts: str, out_type: str = "stream", mode: st
                 broadcast_sync({"type": out_type, "text": full_text})
                 broadcast_sync({"type": out_type, "text": "", "complete": True, "strictFiltered": True})
         
-        # Send final completion signal
-        logger.info(f"🏁 Sending completion signal for {out_type}")
-        broadcast_sync({"type": out_type, "text": "", "complete": True})
+            # Send final completion signal
+            logger.info(f"🏁 Sending completion signal for {out_type}")
+            broadcast_sync({"type": out_type, "text": "", "complete": True})
+            completion_sent = True
 
-        # Auto-continue detection with recursive passes (up to 3)
-        try:
-            passes = 0
-            aggregate_text = full_text
-            # Allow disabling via AI_AUTO_CONTINUE=0
-            auto_continue_enabled = os.getenv('AI_AUTO_CONTINUE', '0').lower() not in ('0','false','no','off')
-            max_passes = int(os.getenv('AI_CONTINUE_PASSES', '3')) if auto_continue_enabled else 0
-            while passes < max_passes and aggregate_text:
-                trimmed = aggregate_text.rstrip()
-                incomplete = False
-                
-                # EXTREMELY conservative - only continue for OBVIOUS truncation
-                if truncated_by_length:
-                    # Only if explicitly truncated by token limit
-                    incomplete = True
-                    logger.warning("Detected explicit token length truncation")
-                elif trimmed.count("```") % 2 == 1:
-                    # Unclosed code block - this is a real issue
-                    incomplete = True
-                    logger.warning("Detected unclosed code block")
-                elif re.search(r"\.\.\.$", trimmed):
-                    # Ends with ellipsis - clear continuation indicator
-                    incomplete = True
-                    logger.warning("Detected ellipsis continuation indicator")
-                
-                # DO NOT continue for these (they're valid endings):
-                # - Ends with ) or } (code)
-                # - Ends with numbers/notation like O(1), O(n log n)
-                # - Ends with punctuation like : ; - /
-                # - Doesn't end with period
-                # - Ends with technical terms
-                
-                if not incomplete:
-                    logger.info("Response appears complete - no auto-continue needed")
-                    break
-                passes += 1
-                logger.info(f"Auto-continue pass {passes} (potential truncation)")
-                continuation_user = aggregate_text[-1200:]
-                cont_messages = [
-                    {"role": "system", "content": "Continue the prior answer seamlessly. Only provide the missing remainder. Do NOT repeat previously sent content."},
-                    {"role": "user", "content": f"Tail context to continue from (do not repeat):\n{continuation_user}\n\nContinue:"}
-                ]
-                broadcast_sync({"type": out_type, "text": "", "reset": False, "continuation_pass": passes})
-                cont_gen = generate_ai_response_for(llm_id, cont_messages) if use_override else generate_ai_response(cont_messages)
-                cont_collected: List[str] = []
-                async for ctoken in cont_gen:
-                    if ctoken == "[[TRUNCATED_BY_LENGTH]]":
-                        truncated_by_length = True
-                        continue
-                    if ctoken:
-                        cont_collected.append(ctoken)
-                        broadcast_sync({"type": out_type, "text": ctoken})
-                addition = "".join(cont_collected).strip()
-                aggregate_text += ("\n" if addition else "") + addition
-                truncated_by_length = False
-                broadcast_sync({"type": out_type, "text": "", "complete": True, "continuation": True, "pass": passes})
-        except Exception as ce:
-            logger.warning(f"Auto-continue logic failed: {ce}")
+            # Auto-continue detection with recursive passes (up to 3)
+            try:
+                passes = 0
+                aggregate_text = full_text
+                # Allow disabling via AI_AUTO_CONTINUE=0
+                auto_continue_enabled = os.getenv('AI_AUTO_CONTINUE', '0').lower() not in ('0','false','no','off')
+                max_passes = int(os.getenv('AI_CONTINUE_PASSES', '3')) if auto_continue_enabled else 0
+                while passes < max_passes and aggregate_text:
+                    trimmed = aggregate_text.rstrip()
+                    incomplete = False
+                    
+                    # EXTREMELY conservative - only continue for OBVIOUS truncation
+                    if truncated_by_length:
+                        # Only if explicitly truncated by token limit
+                        incomplete = True
+                        logger.warning("Detected explicit token length truncation")
+                    elif trimmed.count("```") % 2 == 1:
+                        # Unclosed code block - this is a real issue
+                        incomplete = True
+                        logger.warning("Detected unclosed code block")
+                    elif re.search(r"\.\.\.$", trimmed):
+                        # Ends with ellipsis - clear continuation indicator
+                        incomplete = True
+                        logger.warning("Detected ellipsis continuation indicator")
+                    
+                    # DO NOT continue for these (they're valid endings):
+                    # - Ends with ) or } (code)
+                    # - Ends with numbers/notation like O(1), O(n log n)
+                    # - Ends with punctuation like : ; - /
+                    # - Doesn't end with period
+                    # - Ends with technical terms
+                    
+                    if not incomplete:
+                        logger.info("Response appears complete - no auto-continue needed")
+                        break
+                    passes += 1
+                    logger.info(f"Auto-continue pass {passes} (potential truncation)")
+                    continuation_user = aggregate_text[-1200:]
+                    cont_messages = [
+                        {"role": "system", "content": "Continue the prior answer seamlessly. Only provide the missing remainder. Do NOT repeat previously sent content."},
+                        {"role": "user", "content": f"Tail context to continue from (do not repeat):\n{continuation_user}\n\nContinue:"}
+                    ]
+                    broadcast_sync({"type": out_type, "text": "", "reset": False, "continuation_pass": passes})
+                    cont_gen = generate_ai_response_for(llm_id, cont_messages) if use_override else generate_ai_response(cont_messages)
+                    cont_collected: List[str] = []
+                    async for ctoken in cont_gen:
+                        if ctoken == "[[TRUNCATED_BY_LENGTH]]":
+                            truncated_by_length = True
+                            continue
+                        if ctoken:
+                            cont_collected.append(ctoken)
+                            broadcast_sync({"type": out_type, "text": ctoken})
+                    addition = "".join(cont_collected).strip()
+                    aggregate_text += ("\n" if addition else "") + addition
+                    truncated_by_length = False
+                    broadcast_sync({"type": out_type, "text": "", "complete": True, "continuation": True, "pass": passes})
+            except Exception as ce:
+                logger.warning(f"Auto-continue logic failed: {ce}")
+
+        if not completion_sent:
+            # Ensure non-strict flows still notify the UI that streaming completed
+            logger.info(f"🏁 (non-strict) Sending completion signal for {out_type}")
+            broadcast_sync({"type": out_type, "text": "", "complete": True})
         
     except Exception as e:
         # Attempt to detect common rate-limit patterns
@@ -2349,7 +2622,7 @@ async def stream_llm(llm_id: str, facts: str, out_type: str = "stream", mode: st
             logger.error(f"AI generation error: {e}")
             broadcast_sync({"type": out_type, "text": f"[AI Error: {e}]", "complete": True})
 
-    # Image generation disabled to enforce OpenRouter-only text models
+    return
 
 
 async def handle_audio_streaming(ws):
@@ -2410,7 +2683,7 @@ async def handle_audio_streaming(ws):
         
         # Throttle interim broadcasts to avoid UI overload (max 10/sec)
         now = time.time()
-        if (now - last_broadcast_time) < 0.1:  # 100ms throttle
+        if (now - last_broadcast_time) < 0.07:  # 70ms throttle for snappier interims
             return
         
         last_broadcast_time = now

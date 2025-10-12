@@ -50,6 +50,9 @@ def test_screen_capture():
     print("\n🔍 Testing screen capture...")
     try:
         from python.windows_capture import capture_screen_windows
+        import base64
+        from PIL import Image
+        from io import BytesIO
         
         result = capture_screen_windows(monitor_index=0)
         
@@ -59,6 +62,16 @@ def test_screen_capture():
             print(f"   Format: {result['format']}")
             print(f"   Method: {result['method']}")
             print(f"   Data: {len(result['image'])} bytes (base64)")
+            
+            # Save the image for inspection
+            try:
+                img_data = base64.b64decode(result['image'])
+                img = Image.open(BytesIO(img_data))
+                img.save("test_capture.png")
+                print(f"   💾 Saved capture to: test_capture.png")
+            except Exception as save_err:
+                print(f"   ⚠️  Could not save image: {save_err}")
+            
             return True
         else:
             print("❌ Screen capture returned None")
@@ -97,14 +110,30 @@ def test_window_capture():
     print("\n🔍 Testing window capture...")
     try:
         from python.windows_capture import capture_window_windows, get_available_windows
+        import base64
+        from PIL import Image
+        from io import BytesIO
         
-        # Get first available window
+        # Get available windows
         windows = get_available_windows()
         if not windows:
             print("⚠️  No windows available to test")
             return False
         
-        test_window = windows[0]
+        # Try to find Teams window
+        teams_window = None
+        for w in windows:
+            if 'teams' in w['title'].lower():
+                teams_window = w
+                break
+        
+        if teams_window:
+            test_window = teams_window
+            print(f"   Found Teams window: {test_window['title']}")
+        else:
+            test_window = windows[0]
+            print(f"   Using first window: {test_window['title']}")
+        
         print(f"   Attempting to capture: {test_window['title']}")
         
         result = capture_window_windows(window_title=test_window['title'])
@@ -113,6 +142,26 @@ def test_window_capture():
             print(f"✅ Window captured successfully")
             print(f"   Window: {result['window_title']}")
             print(f"   Size: {result['width']}x{result['height']}")
+            print(f"   Method: {result['method']}")
+            
+            # Save the image for inspection
+            try:
+                img_data = base64.b64decode(result['image'])
+                img = Image.open(BytesIO(img_data))
+                img.save("test_window_capture.png")
+                print(f"   💾 Saved capture to: test_window_capture.png")
+                
+                # Check if blank
+                from PIL import ImageStat
+                stats = ImageStat.Stat(img.convert('L'))
+                min_gray, max_gray = stats.extrema[0]
+                std_dev = stats.stddev[0]
+                is_blank = (max_gray - min_gray) <= 2 and std_dev <= 1.5
+                print(f"   Blank check: min={min_gray}, max={max_gray}, std={std_dev:.2f}, is_blank={is_blank}")
+                
+            except Exception as save_err:
+                print(f"   ⚠️  Could not save image: {save_err}")
+            
             return True
         else:
             print("❌ Window capture returned None")

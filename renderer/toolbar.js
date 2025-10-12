@@ -9,21 +9,29 @@
     audioContext: null,
     processor: null,
     mediaStream: null,
-    currentSpeaker: 'user1', // Track current speaker
-    userNames: { user1: 'User 1', user2: 'User 2' }, // Default names
+    currentSpeaker: "user1", // Track current speaker
+    userNames: { user1: "User 1", user2: "User 2" }, // Default names
     serverPort: 8765, // Port used by UI + audio sockets
     capturedScreens: [], // Store multiple screen captures
     captureCount: 0, // Track number of captures
     chatHistory: [], // Store chat messages
-    lastContext: '', // Store last context for AI queries
+    lastContext: "", // Store last context for AI queries
     lastChatActivity: Date.now(), // Track last chat activity for auto-collapse
     micEnabled: false, // Student mic on/off toggle
     interviewerRecording: false, // Track interviewer recording state separately
     studentMicOn: false, // Track student mic state separately
     autoTriggerAI: false, // Flag to auto-trigger AI after capture
     forceCaptureRequest: false, // Route next AI request through capture channel
-    lastQuestionContext: 'general' // Track the context of the last AI question for follow-ups
+    lastQuestionContext: "general", // Track the context of the last AI question for follow-ups
+    companyBrief: null, // Persisted company brief payload shared with AI
+    pendingCompanyBrief: null, // Company brief awaiting server acknowledgement
+    companyBriefSilentSync: false, // Suppress UI noise when auto-syncing stored brief
+    companyBriefConfirmedForSession: false, // Require a fresh confirmation each interview session
+    companyBriefPendingAction: null, // Deferred action awaiting company brief completion
+    companyBriefConfirmationPending: false, // Awaiting server ack for submitted brief
   };
+
+  const COMPANY_BRIEF_STORAGE_KEY = "company_brief_context";
 
   // Separate transcript buffers (recent segments)
   state.interviewerSegments = [];
@@ -34,15 +42,23 @@
   // ==========================================
   // ENHANCEMENTS FOR 100% SCORE
   // ==========================================
-  
+
   // 1. LOG LEVEL SYSTEM
   const LOG_LEVELS = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
-  const CURRENT_LOG_LEVEL = localStorage.getItem('log_level') || 'INFO';
+  const CURRENT_LOG_LEVEL = localStorage.getItem("log_level") || "INFO";
   const log = {
-    debug: (...args) => LOG_LEVELS[CURRENT_LOG_LEVEL] <= LOG_LEVELS.DEBUG && console.log('[DEBUG]', ...args),
-    info: (...args) => LOG_LEVELS[CURRENT_LOG_LEVEL] <= LOG_LEVELS.INFO && console.info('[INFO]', ...args),
-    warn: (...args) => LOG_LEVELS[CURRENT_LOG_LEVEL] <= LOG_LEVELS.WARN && console.warn('[WARN]', ...args),
-    error: (...args) => LOG_LEVELS[CURRENT_LOG_LEVEL] <= LOG_LEVELS.ERROR && console.error('[ERROR]', ...args)
+    debug: (...args) =>
+      LOG_LEVELS[CURRENT_LOG_LEVEL] <= LOG_LEVELS.DEBUG &&
+      console.log("[DEBUG]", ...args),
+    info: (...args) =>
+      LOG_LEVELS[CURRENT_LOG_LEVEL] <= LOG_LEVELS.INFO &&
+      console.info("[INFO]", ...args),
+    warn: (...args) =>
+      LOG_LEVELS[CURRENT_LOG_LEVEL] <= LOG_LEVELS.WARN &&
+      console.warn("[WARN]", ...args),
+    error: (...args) =>
+      LOG_LEVELS[CURRENT_LOG_LEVEL] <= LOG_LEVELS.ERROR &&
+      console.error("[ERROR]", ...args),
   };
 
   // 2. FILE SIZE VALIDATION
@@ -50,7 +66,10 @@
   function validateFileSize(file) {
     if (file.size > MAX_FILE_SIZE) {
       const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-      showNotification(`File too large (${sizeMB}MB). Maximum size is 10MB.`, 'error');
+      showNotification(
+        `File too large (${sizeMB}MB). Maximum size is 10MB.`,
+        "error",
+      );
       return false;
     }
     return true;
@@ -62,20 +81,22 @@
     maxPerMinute: 10,
     check() {
       const now = Date.now();
-      this.requests = this.requests.filter(t => now - t < 60000);
+      this.requests = this.requests.filter((t) => now - t < 60000);
       return this.requests.length < this.maxPerMinute;
     },
-    add() { this.requests.push(Date.now()); },
+    add() {
+      this.requests.push(Date.now());
+    },
     getRemainingRequests() {
       const now = Date.now();
-      this.requests = this.requests.filter(t => now - t < 60000);
+      this.requests = this.requests.filter((t) => now - t < 60000);
       return this.maxPerMinute - this.requests.length;
     },
     getResetTime() {
       if (this.requests.length === 0) return 0;
       const oldest = Math.min(...this.requests);
       return Math.max(0, Math.ceil((oldest + 60000 - Date.now()) / 1000));
-    }
+    },
   };
 
   // 4. CONNECTION HEALTH MONITORING
@@ -89,22 +110,29 @@
       this.lastPongTime = Date.now();
       this.missedPongs = 0;
       this.pingInterval = setInterval(() => {
-        if (!state.connected || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+        if (
+          !state.connected ||
+          !state.ws ||
+          state.ws.readyState !== WebSocket.OPEN
+        )
+          return;
         const timeSinceLastPong = Date.now() - this.lastPongTime;
         if (timeSinceLastPong > 35000) {
           this.missedPongs++;
-          log.warn(`Missed pong #${this.missedPongs}. Connection may be unstable.`);
+          log.warn(
+            `Missed pong #${this.missedPongs}. Connection may be unstable.`,
+          );
           if (this.missedPongs >= this.maxMissedPongs) {
-            log.error('Too many missed pongs. Reconnecting...');
+            log.error("Too many missed pongs. Reconnecting...");
             state.ws.close();
             return;
           }
         }
         try {
-          send({ type: 'ping', timestamp: Date.now() });
-          log.debug('Sent ping');
+          send({ type: "ping", timestamp: Date.now() });
+          log.debug("Sent ping");
         } catch (e) {
-          log.error('Failed to send ping:', e);
+          log.error("Failed to send ping:", e);
         }
       }, 30000);
     },
@@ -117,8 +145,8 @@
     receivedPong() {
       this.lastPongTime = Date.now();
       this.missedPongs = 0;
-      log.debug('Received pong');
-    }
+      log.debug("Received pong");
+    },
   };
 
   // 5. PERFORMANCE METRICS
@@ -135,7 +163,7 @@
           const duration = performance.now() - this.startTime;
           performanceMetrics.recordMetric(this.operation, duration);
           return duration;
-        }
+        },
       };
     },
     recordMetric(type, duration) {
@@ -154,9 +182,9 @@
         avg: sum / metrics.length,
         min: sorted[0],
         max: sorted[sorted.length - 1],
-        median: sorted[Math.floor(sorted.length / 2)]
+        median: sorted[Math.floor(sorted.length / 2)],
       };
-    }
+    },
   };
 
   // 6. USAGE STATISTICS
@@ -169,7 +197,7 @@
     increment(type) {
       if (this[type] !== undefined) {
         this[type]++;
-        localStorage.setItem('usage_stats', JSON.stringify(this.getSnapshot()));
+        localStorage.setItem("usage_stats", JSON.stringify(this.getSnapshot()));
       }
     },
     getSnapshot() {
@@ -177,98 +205,238 @@
         transcriptions: this.transcriptions,
         captures: this.captures,
         aiQueries: this.aiQueries,
-        messagesReceived: this.messagesReceived
+        messagesReceived: this.messagesReceived,
       };
     },
     load() {
-      const saved = localStorage.getItem('usage_stats');
+      const saved = localStorage.getItem("usage_stats");
       if (saved) {
         try {
           const data = JSON.parse(saved);
           Object.assign(this, data);
         } catch (e) {
-          log.warn('Failed to load usage stats:', e);
+          log.warn("Failed to load usage stats:", e);
         }
       }
-    }
+    },
   };
+
+  function normalizeCompanyBriefPayload(data) {
+    if (!data || typeof data !== "object") return null;
+    const normalized = { context_kind: "company" };
+    const fields = ["name", "role", "website", "overview", "notes"];
+    for (const key of fields) {
+      const raw = data[key];
+      if (typeof raw === "string") {
+        const trimmed = raw.trim();
+        if (trimmed) normalized[key] = trimmed;
+      }
+    }
+    return Object.keys(normalized).length > 1 ? normalized : null;
+  }
+
+  function persistCompanyBrief(data) {
+    const normalized = normalizeCompanyBriefPayload(data);
+    if (!normalized) {
+      state.companyBrief = null;
+      state.companyBriefConfirmedForSession = false;
+      state.companyBriefConfirmationPending = false;
+      try {
+        localStorage.removeItem(COMPANY_BRIEF_STORAGE_KEY);
+      } catch (e) {
+        log.warn("Failed to clear company brief cache", e);
+      }
+      return null;
+    }
+    state.companyBrief = normalized;
+    try {
+      localStorage.setItem(
+        COMPANY_BRIEF_STORAGE_KEY,
+        JSON.stringify(normalized),
+      );
+    } catch (e) {
+      log.warn("Failed to persist company brief", e);
+    }
+    return normalized;
+  }
+
+  function hydrateCompanyBriefFromStorage() {
+    try {
+      const raw = localStorage.getItem(COMPANY_BRIEF_STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      const normalized = normalizeCompanyBriefPayload(data);
+      if (normalized) {
+        state.companyBrief = normalized;
+        state.companyBriefConfirmedForSession = false;
+        log.info("Restored company brief from storage");
+      }
+    } catch (e) {
+      log.warn("Failed to restore company brief from storage", e);
+    }
+  }
 
   // ==========================================
   // END ENHANCEMENTS
   // ==========================================
 
   const $ = (id) => document.getElementById(id);
-  
+
   // Legacy element references for compatibility
-  const dot = $('dot');
-  const statusText = $('statusText');
-  const toggleRecord = $('toggleRecord');
-  const recLabel = $('recLabel');
-  const recIcon = $('recIcon');
-  const captureBtn = $('capture');
-  const uploadInput = $('uploadScreenshots');
-  const scheduleBtn = $('schedule');
+  const dot = $("dot");
+  const statusText = $("statusText");
+  const toggleRecord = $("toggleRecord");
+  const recLabel = $("recLabel");
+  const recIcon = $("recIcon");
+  const captureBtn = $("capture");
+  const uploadInput = $("uploadScreenshots");
+  const companyBriefBtn = $("companyBrief");
+  const companyBriefOverlay = $("companyBriefOverlay");
+  const companyBriefForm = $("companyBriefForm");
+  const companyNameInput = $("companyNameInput");
+  const companyRoleInput = $("companyRoleInput");
+  const companyWebsiteInput = $("companyWebsiteInput");
+  const companyOverviewInput = $("companyOverviewInput");
+  const companyNotesInput = $("companyNotesInput");
+  const companyBriefStatus = $("companyBriefStatus");
+  const companyBriefCancel = $("companyBriefCancel");
+  const companyBriefSave = $("companyBriefSave");
   // Settings button replaced by resume upload button
-  const resumeUploadBtn = $('resumeUpload');
-  const resumeFileInput = $('resumeFileInput');
-  const visibilityBtn = $('visibility');
-  const toggleStudentBtn = $('toggleStudent');
-  const sendBtn = $('send');
-  const promptInput = $('prompt');
-  const clearBtn = $('clear');
-  const hideBtn = $('hide');
-  const answerEl = $('answer');
-  const copyBtn = $('copyAnswer');
-  const compactBtn = $('compact');
-  const askAiBtn = document.getElementById('askAI');
-  const barEl = document.querySelector('.bar');
-  const speakerUser1 = $('speakerUser1');
-  const speakerUser2 = $('speakerUser2');
-  const statusDots = document.querySelector('.status-dots');
-  
+  const resumeUploadBtn = $("resumeUpload");
+  const resumeFileInput = $("resumeFileInput");
+  const visibilityBtn = $("visibility");
+  const toggleStudentBtn = $("toggleStudent");
+  const sendBtn = $("send");
+  const promptInput = $("prompt");
+  const clearBtn = $("clear");
+  const hideBtn = $("hide");
+  const answerEl = $("answer");
+  const copyBtn = $("copyAnswer");
+  const compactBtn = $("compact");
+  const askAiBtn = document.getElementById("askAI");
+  const barEl = document.querySelector(".bar");
+  const speakerUser1 = $("speakerUser1");
+  const speakerUser2 = $("speakerUser2");
+  const statusDots = document.querySelector(".status-dots");
+
   // New UI element references
-  const recordInterviewerBtn = $('recordInterviewer');
-  const listenStudentBtn = $('listenStudent');
-  const captureAnalyzeBtn = $('captureAnalyze');
-  const toggleChatBtn = $('toggleChat');
-  const chatContainer = $('chatContainer');
-  const chatMessages = $('chatMessages');
-  const clearChatBtn = $('clearChat');
-  
+  const recordInterviewerBtn = $("recordInterviewer");
+  const listenStudentBtn = $("listenStudent");
+  const captureAnalyzeBtn = $("captureAnalyze");
+  const toggleChatBtn = $("toggleChat");
+  const chatContainer = $("chatContainer");
+  const chatMessages = $("chatMessages");
+  const clearChatBtn = $("clearChat");
+
+  function populateCompanyBriefFormFromState() {
+    if (!state.companyBrief) return;
+    const mapping = [
+      [companyNameInput, "name"],
+      [companyRoleInput, "role"],
+      [companyWebsiteInput, "website"],
+      [companyOverviewInput, "overview"],
+      [companyNotesInput, "notes"],
+    ];
+    for (const [el, key] of mapping) {
+      if (!el) continue;
+      const stored = state.companyBrief[key] || "";
+      if (!el.value) {
+        el.value = stored;
+      }
+    }
+  }
+
+  function companyBriefIsReady() {
+    const normalized = normalizeCompanyBriefPayload(state.companyBrief);
+    if (!normalized) return false;
+    if (state.companyBriefConfirmationPending) return false;
+    return !!state.companyBriefConfirmedForSession;
+  }
+
+  function ensureCompanyBriefReady(onReady, reason = "starting the interview") {
+    if (companyBriefIsReady()) return true;
+
+    if (typeof onReady === "function") {
+      state.companyBriefPendingAction = onReady;
+    } else {
+      state.companyBriefPendingAction = null;
+    }
+
+    const normalized = normalizeCompanyBriefPayload(state.companyBrief) || {};
+    const message = state.companyBriefConfirmationPending
+      ? "Company brief syncing… please wait a moment."
+      : "Fill the company form before " + reason + ".";
+
+    try {
+      showNotification(
+        message,
+        state.companyBriefConfirmationPending ? "info" : "warn",
+      );
+    } catch (notifyErr) {
+      log.warn("Failed to show company brief notification", notifyErr);
+    }
+
+    if (companyBriefStatus) {
+      const statusMessage = state.companyBriefConfirmationPending
+        ? "Awaiting confirmation from the server…"
+        : "Complete and share the company brief to continue.";
+      resetCompanyBriefStatus(
+        statusMessage,
+        state.companyBriefConfirmationPending ? "info" : "warn",
+      );
+    }
+
+    // Prefill the form with any stored data so the user only confirms/upates
+    populateCompanyBriefFormFromState();
+    if (
+      companyBriefOverlay &&
+      !companyBriefOverlay.classList.contains("show")
+    ) {
+      toggleCompanyBrief(true);
+    }
+    return false;
+  }
+
   // Initialize enhancements
   usageStats.load();
-  log.info('Toolbar initialized with enhancements enabled');
-  log.debug('UI Elements found:', {
+  hydrateCompanyBriefFromStorage();
+  log.info("Toolbar initialized with enhancements enabled");
+  log.debug("UI Elements found:", {
     recordInterviewerBtn: !!recordInterviewerBtn,
     listenStudentBtn: !!listenStudentBtn,
     captureAnalyzeBtn: !!captureAnalyzeBtn,
     toggleChatBtn: !!toggleChatBtn,
+    companyBriefBtn: !!companyBriefBtn,
     chatContainer: !!chatContainer,
     chatMessages: !!chatMessages,
     clearChatBtn: !!clearChatBtn,
-    askAiBtn: !!askAiBtn
+    askAiBtn: !!askAiBtn,
   });
 
   // ---------- Dynamic window sizing (width & height) ----------
   let resizeQueued = false;
-  function queueResize(){
-    if (resizeQueued) return; resizeQueued = true;
-    requestAnimationFrame(() => { resizeQueued = false; performResize(); });
+  function queueResize() {
+    if (resizeQueued) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => {
+      resizeQueued = false;
+      performResize();
+    });
   }
-  function performResize(){
+  function performResize() {
     try {
       const bar = barEl;
       if (!bar) return;
       const barRect = bar.getBoundingClientRect();
       let targetW = barRect.width + 12; // padding
       let targetH = barRect.height + 12; // base height
-      if (chatContainer && chatContainer.classList.contains('expanded')) {
+      if (chatContainer && chatContainer.classList.contains("expanded")) {
         const chatRect = chatContainer.getBoundingClientRect();
         // Increase width if chat wider
         targetW = Math.max(targetW, chatRect.width + 12);
         // Total height = toolbar top offset + chat full height (chat is positioned below toolbar via transform)
         // Chat top is relative to viewport; ensure we capture its visual height below the bar
-        targetH = Math.max(targetH, (chatRect.bottom - barRect.top) + 12);
+        targetH = Math.max(targetH, chatRect.bottom - barRect.top + 12);
       }
       // Clamp and round
       targetW = Math.min(Math.max(260, Math.round(targetW)), 1600);
@@ -276,21 +444,25 @@
       if (window.electronAPI && window.electronAPI.resizeToolbarDimensions) {
         window.electronAPI.resizeToolbarDimensions(targetW, targetH);
       }
-    } catch (e) { console.warn('performResize failed', e); }
+    } catch (e) {
+      console.warn("performResize failed", e);
+    }
   }
   // Observe size changes on toolbar + chat
   try {
     const ro = new ResizeObserver(() => queueResize());
     if (barEl) ro.observe(barEl);
     if (chatContainer) ro.observe(chatContainer);
-  } catch (e) { console.log('ResizeObserver not available', e); }
+  } catch (e) {
+    console.log("ResizeObserver not available", e);
+  }
   // Initial
   queueResize();
-  
+
   let listenStudent = false;
 
   // Initialize state variable for current AI response
-  state.currentAIResponse = '';
+  state.currentAIResponse = "";
   // Track a live (streaming) AI message element
   let streamingAIEl = null;
   let streamingAIStartTs = null;
@@ -310,34 +482,34 @@
 
   // Chat message functions
   function addChatMessage(type, content, timestamp = null) {
-    console.log('Adding chat message:', type, content.substring(0, 50) + '...');
-    
+    console.log("Adding chat message:", type, content.substring(0, 50) + "...");
+
     if (!timestamp) timestamp = new Date();
-    
+
     const message = {
       type,
       content,
       timestamp,
-      id: Date.now() + Math.random()
+      id: Date.now() + Math.random(),
     };
-    
+
     state.chatHistory.push(message);
-    
+
     // Update last context for AI queries
-    if (type === 'interviewer' || type === 'analysis') {
+    if (type === "interviewer" || type === "analysis") {
       state.lastContext = content;
     }
-    
+
     renderChatMessage(message);
     // Always update last activity when any message arrives (even if user recently collapsed)
     state.lastChatActivity = Date.now();
     // Only expand automatically if not AI OR user hasn't just collapsed, AI gets forced expansion below
-    if (type === 'ai') {
-      console.log('AI response received - forcing chat expansion');
+    if (type === "ai") {
+      console.log("AI response received - forcing chat expansion");
       if (chatContainer) {
-        chatContainer.removeAttribute('data-user-collapsed');
-        chatContainer.removeAttribute('data-collapse-time');
-        chatContainer.classList.add('expanded');
+        chatContainer.removeAttribute("data-user-collapsed");
+        chatContainer.removeAttribute("data-collapse-time");
+        chatContainer.classList.add("expanded");
       }
     } else {
       smartExpandChat();
@@ -348,33 +520,47 @@
 
   // Maintain a single live transcript (all speakers) until AI button pressed
   let liveTranscriptMsgId = null;
-  let liveTranscriptAccumulated = '';
+  let liveTranscriptAccumulated = "";
   function appendToLiveTranscript(content) {
     if (!content) return;
-    console.log('[appendToLiveTranscript] Adding:', content.substring(0, 50));
+    console.log("[appendToLiveTranscript] Adding:", content.substring(0, 50));
     if (!liveTranscriptMsgId) {
-      console.log('[appendToLiveTranscript] Creating new transcript message');
-      const msg = { type: 'interviewer', content: '', timestamp: new Date(), id: Date.now() + Math.random() };
+      console.log("[appendToLiveTranscript] Creating new transcript message");
+      const msg = {
+        type: "interviewer",
+        content: "",
+        timestamp: new Date(),
+        id: Date.now() + Math.random(),
+      };
       state.chatHistory.push(msg);
       liveTranscriptMsgId = msg.id;
       renderChatMessage(msg);
-      liveTranscriptAccumulated = '';
+      liveTranscriptAccumulated = "";
     }
     // Single paragraph: normalize whitespace and append with a space
-    const cleaned = content.replace(/\s+/g,' ').trim();
+    const cleaned = content.replace(/\s+/g, " ").trim();
     if (cleaned) {
-      if (liveTranscriptAccumulated && !liveTranscriptAccumulated.endsWith(' ')) liveTranscriptAccumulated += ' ';
+      if (liveTranscriptAccumulated && !liveTranscriptAccumulated.endsWith(" "))
+        liveTranscriptAccumulated += " ";
       liveTranscriptAccumulated += cleaned;
     }
-    const target = state.chatHistory.find(m => m.id === liveTranscriptMsgId);
+    const target = state.chatHistory.find((m) => m.id === liveTranscriptMsgId);
     if (target) target.content = liveTranscriptAccumulated;
     if (chatMessages) {
-      const el = chatMessages.querySelector(`.chat-message[data-id="${liveTranscriptMsgId}"] .chat-content div:last-child`);
+      const el = chatMessages.querySelector(
+        `.chat-message[data-id="${liveTranscriptMsgId}"] .chat-content div:last-child`,
+      );
       if (el) {
         el.innerHTML = preserveUserFormatting(liveTranscriptAccumulated.trim());
-        console.log('[appendToLiveTranscript] Updated DOM, total length:', liveTranscriptAccumulated.length);
+        console.log(
+          "[appendToLiveTranscript] Updated DOM, total length:",
+          liveTranscriptAccumulated.length,
+        );
       } else {
-        console.warn('[appendToLiveTranscript] Could not find DOM element for message', liveTranscriptMsgId);
+        console.warn(
+          "[appendToLiveTranscript] Could not find DOM element for message",
+          liveTranscriptMsgId,
+        );
       }
     }
     smartExpandChat();
@@ -385,27 +571,46 @@
   // Update the live transcript with an interim (partial) string without
   // permanently appending it. We render: accumulated finals + current interim.
   function updateLiveTranscriptInterim(content) {
-    const cleaned = (content || '').replace(/\s+/g, ' ').trim();
+    const cleaned = (content || "").replace(/\s+/g, " ").trim();
     if (!cleaned) return;
     if (!liveTranscriptMsgId) {
-      console.log('[Transcript] Creating new live transcript message');
-      const msg = { type: 'interviewer', content: '', timestamp: new Date(), id: Date.now() + Math.random() };
+      console.log("[Transcript] Creating new live transcript message");
+      const msg = {
+        type: "interviewer",
+        content: "",
+        timestamp: new Date(),
+        id: Date.now() + Math.random(),
+      };
       state.chatHistory.push(msg);
       liveTranscriptMsgId = msg.id;
       renderChatMessage(msg);
-      liveTranscriptAccumulated = '';
+      liveTranscriptAccumulated = "";
     }
-    const combined = (liveTranscriptAccumulated ? (liveTranscriptAccumulated.trim() + ' ') : '') + cleaned;
-    console.log('[Transcript] Updating live transcript, new length:', combined.length);
-    const target = state.chatHistory.find(m => m.id === liveTranscriptMsgId);
+    const combined =
+      (liveTranscriptAccumulated
+        ? liveTranscriptAccumulated.trim() + " "
+        : "") + cleaned;
+    console.log(
+      "[Transcript] Updating live transcript, new length:",
+      combined.length,
+    );
+    const target = state.chatHistory.find((m) => m.id === liveTranscriptMsgId);
     if (target) target.content = combined;
     if (chatMessages) {
-      const el = chatMessages.querySelector(`.chat-message[data-id="${liveTranscriptMsgId}"] .chat-content div:last-child`);
+      const el = chatMessages.querySelector(
+        `.chat-message[data-id="${liveTranscriptMsgId}"] .chat-content div:last-child`,
+      );
       if (el) {
         el.innerHTML = preserveUserFormatting(combined);
-        console.log('[Transcript] Updated DOM element for message ID:', liveTranscriptMsgId);
+        console.log(
+          "[Transcript] Updated DOM element for message ID:",
+          liveTranscriptMsgId,
+        );
       } else {
-        console.warn('[Transcript] Could not find DOM element for message ID:', liveTranscriptMsgId);
+        console.warn(
+          "[Transcript] Could not find DOM element for message ID:",
+          liveTranscriptMsgId,
+        );
       }
     }
     smartExpandChat();
@@ -415,70 +620,73 @@
 
   function finalizeLiveTranscript() {
     liveTranscriptMsgId = null;
-    liveTranscriptAccumulated = '';
+    liveTranscriptAccumulated = "";
   }
-  
+
   function expandChatContainer() {
     // Use the smart expand function for better behavior
     smartExpandChat();
     queueResize();
   }
-  
+
   function adjustChatHeight() {
     // With the new CSS approach, we don't need to manipulate display
     // The container is always in the DOM, just hidden/shown via opacity and visibility
     if (!chatContainer) return;
-    
+
     // Ensure the chat is properly expanded if it has content
     if (chatMessages && chatMessages.children.length > 0) {
       smartExpandChat();
     }
   }
-  
+
   function renderChatMessage(message) {
-    const messageEl = document.createElement('div');
-    messageEl.className = 'chat-message';
-    messageEl.setAttribute('data-id', message.id);
-    
-    const avatarEl = document.createElement('div');
+    const messageEl = document.createElement("div");
+    messageEl.className = "chat-message";
+    messageEl.setAttribute("data-id", message.id);
+
+    const avatarEl = document.createElement("div");
     avatarEl.className = `chat-avatar ${message.type}`;
-    
-    const contentEl = document.createElement('div');
+
+    const contentEl = document.createElement("div");
     contentEl.className = `chat-content ${message.type}`;
-    
-    const timestampEl = document.createElement('div');
-    timestampEl.className = 'chat-timestamp';
-    timestampEl.textContent = message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
-    const textEl = document.createElement('div');
+
+    const timestampEl = document.createElement("div");
+    timestampEl.className = "chat-timestamp";
+    timestampEl.textContent = message.timestamp.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const textEl = document.createElement("div");
     // Apply formatting for AI messages; for questions/analysis preserve basic structure
-    if (message.type === 'ai') {
+    if (message.type === "ai") {
       textEl.innerHTML = formatAIResponse(message.content);
     } else {
       textEl.innerHTML = preserveUserFormatting(message.content);
     }
-    
+
     // Set avatar emoji and content
     switch (message.type) {
-      case 'interviewer':
-        avatarEl.textContent = '👤';
+      case "interviewer":
+        avatarEl.textContent = "👤";
         break;
-      case 'student':
-        avatarEl.textContent = '🧑‍🎓';
+      case "student":
+        avatarEl.textContent = "🧑‍🎓";
         break;
-      case 'analysis':
-        avatarEl.textContent = '📸';
+      case "analysis":
+        avatarEl.textContent = "📸";
         break;
-      case 'ai':
-        avatarEl.textContent = '🤖';
+      case "ai":
+        avatarEl.textContent = "🤖";
         break;
     }
-    
+
     contentEl.appendChild(timestampEl);
     contentEl.appendChild(textEl);
     messageEl.appendChild(avatarEl);
     messageEl.appendChild(contentEl);
-    
+
     if (chatMessages) {
       chatMessages.appendChild(messageEl);
       // Apply syntax highlighting and math rendering after adding to DOM
@@ -488,132 +696,152 @@
 
   // Preserve user question formatting: line breaks, simple bullets, numbered lists
   function preserveUserFormatting(raw) {
-    if (!raw) return '';
-    let text = raw.replace(/\r\n/g, '\n');
+    if (!raw) return "";
+    let text = raw.replace(/\r\n/g, "\n");
     // Escape HTML
-    text = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    text = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
     const lines = text.split(/\n/);
     let out = [];
     let buffer = [];
     let listType = null; // 'ul' or 'ol'
-    function flushList(){
-      if (buffer.length){ out.push(`<${listType}>`+buffer.join('')+`</${listType}>`); buffer=[]; listType=null; }
+    function flushList() {
+      if (buffer.length) {
+        out.push(`<${listType}>` + buffer.join("") + `</${listType}>`);
+        buffer = [];
+        listType = null;
+      }
     }
-    for (const line of lines){
+    for (const line of lines) {
       const bulletMatch = /^[-*]\s+(.+)$/.exec(line);
       const numMatch = /^(\d+)\.\s+(.+)$/.exec(line);
-      if (bulletMatch){
-        if (listType && listType !== 'ul') flushList();
-        listType = 'ul';
+      if (bulletMatch) {
+        if (listType && listType !== "ul") flushList();
+        listType = "ul";
         buffer.push(`<li>${bulletMatch[1]}</li>`);
         continue;
-      } else if (numMatch){
-        if (listType && listType !== 'ol') flushList();
-        listType = 'ol';
+      } else if (numMatch) {
+        if (listType && listType !== "ol") flushList();
+        listType = "ol";
         buffer.push(`<li>${numMatch[2]}</li>`);
         continue;
       } else {
         flushList();
-        if (line.trim().length){
+        if (line.trim().length) {
           // Preserve inline spacing; join multiple spaces
-          out.push(`<p>${line.replace(/\s{2,}/g,' ').trim()}</p>`);
+          out.push(`<p>${line.replace(/\s{2,}/g, " ").trim()}</p>`);
         }
       }
     }
     flushList();
-    return out.join('\n');
+    return out.join("\n");
   }
 
   // Format AI response into readable HTML (enhanced markdown + LaTeX support)
   function formatAIResponse(raw) {
-    if (!raw) return '';
+    if (!raw) return "";
     let text = raw.trim();
 
     // Normalize line endings
-    text = text.replace(/\r\n/g, '\n');
+    text = text.replace(/\r\n/g, "\n");
 
     // Store math equations temporarily to protect them from HTML escaping
     const mathStore = [];
     let mathIndex = 0;
-    
+
     // Extract display math $$...$$ (must come before inline math)
     text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, content) => {
       const placeholder = `__MATH_DISPLAY_${mathIndex}__`;
-      mathStore.push({ type: 'display', content: content.trim(), placeholder });
+      mathStore.push({ type: "display", content: content.trim(), placeholder });
       mathIndex++;
       return placeholder;
     });
-    
+
     // Extract inline math $...$
     text = text.replace(/\$([^\$\n]+?)\$/g, (match, content) => {
       const placeholder = `__MATH_INLINE_${mathIndex}__`;
-      mathStore.push({ type: 'inline', content: content.trim(), placeholder });
+      mathStore.push({ type: "inline", content: content.trim(), placeholder });
       mathIndex++;
       return placeholder;
     });
 
     // Escape HTML to prevent injection
     text = text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
 
     // Re-enable fenced code blocks ```lang\ncode``` with language detection
-    text = text.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
-      const unescapedCode = code.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
-      const language = lang || 'plaintext';
-      return `<pre class="ai-code" data-language="${language}"><code class="language-${language}">${unescapedCode}</code></pre>`;
-    });
+    text = text.replace(
+      /```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g,
+      (match, lang, code) => {
+        const unescapedCode = code
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&amp;/g, "&");
+        const language = lang || "plaintext";
+        return `<pre class="ai-code" data-language="${language}"><code class="language-${language}">${unescapedCode}</code></pre>`;
+      },
+    );
 
     // Headings: lines starting with ###, ##, #
-    text = text.replace(/^### (.*)$/gm, '<h4>$1</h4>');
-    text = text.replace(/^## (.*)$/gm, '<h3>$1</h3>');
-    text = text.replace(/^# (.*)$/gm, '<h2>$1</h2>');
+    text = text.replace(/^### (.*)$/gm, "<h4>$1</h4>");
+    text = text.replace(/^## (.*)$/gm, "<h3>$1</h3>");
+    text = text.replace(/^# (.*)$/gm, "<h2>$1</h2>");
 
     // Bold **text**
-    text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
     // Italic *text*
-    text = text.replace(/(^|\s)\*(?!\*)([^*]+)\*(?=\s|[.,!?:;]|$)/g, '$1<em>$2</em>');
+    text = text.replace(
+      /(^|\s)\*(?!\*)([^*]+)\*(?=\s|[.,!?:;]|$)/g,
+      "$1<em>$2</em>",
+    );
 
     // Bulleted lists: convert consecutive - / * items into <ul>
-    text = wrapListBlocks(text, /^(?:[-*]) (.+)$/gm, 'ul');
+    text = wrapListBlocks(text, /^(?:[-*]) (.+)$/gm, "ul");
     // Numbered lists
-    text = wrapListBlocks(text, /^\d+\. (.+)$/gm, 'ol');
+    text = wrapListBlocks(text, /^\d+\. (.+)$/gm, "ol");
 
     // Convert remaining single line bullets to list items if inside list tags not caught
-    text = text.replace(/^(?:[-*]) (.+)$/gm, '<li>$1</li>');
-    text = text.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+    text = text.replace(/^(?:[-*]) (.+)$/gm, "<li>$1</li>");
+    text = text.replace(/^\d+\. (.+)$/gm, "<li>$1</li>");
 
     // Paragraphs: split by blank lines, avoid wrapping block elements
-    const blockTags = /^(<h[2-4]|<ul>|<ol>|<pre|<li>|<\/ul>|<\/ol>|<\/pre|<table|<\/table)/i;
+    const blockTags =
+      /^(<h[2-4]|<ul>|<ol>|<pre|<li>|<\/ul>|<\/ol>|<\/pre|<table|<\/table)/i;
     text = text
       .split(/\n{2,}/)
-      .map(seg => seg.trim())
+      .map((seg) => seg.trim())
       .filter(Boolean)
-      .map(seg => blockTags.test(seg) ? seg : '<p>' + seg.replace(/\n/g, '<br>') + '</p>')
-      .join('\n');
+      .map((seg) =>
+        blockTags.test(seg) ? seg : "<p>" + seg.replace(/\n/g, "<br>") + "</p>",
+      )
+      .join("\n");
 
     // Restore math equations and render with KaTeX
     mathStore.forEach(({ type, content, placeholder }) => {
       try {
-        if (typeof katex !== 'undefined') {
+        if (typeof katex !== "undefined") {
           const rendered = katex.renderToString(content, {
             throwOnError: false,
-            displayMode: type === 'display',
-            output: 'html'
+            displayMode: type === "display",
+            output: "html",
           });
           text = text.replace(placeholder, rendered);
         } else {
           // Fallback if KaTeX not loaded yet
-          const wrapper = type === 'display' ? 
-            `<div class="math-fallback" style="margin:12px 0;padding:10px;background:rgba(255,255,255,0.05);border-radius:4px;font-family:monospace;">$$${content}$$</div>` :
-            `<span class="math-fallback" style="font-family:monospace;">$${content}$</span>`;
+          const wrapper =
+            type === "display"
+              ? `<div class="math-fallback" style="margin:12px 0;padding:10px;background:rgba(255,255,255,0.05);border-radius:4px;font-family:monospace;">$$${content}$$</div>`
+              : `<span class="math-fallback" style="font-family:monospace;">$${content}$</span>`;
           text = text.replace(placeholder, wrapper);
         }
       } catch (err) {
-        console.warn('KaTeX rendering error:', err);
+        console.warn("KaTeX rendering error:", err);
         // Keep original notation on error
-        const orig = type === 'display' ? `$$${content}$$` : `$${content}$`;
+        const orig = type === "display" ? `$$${content}$$` : `$${content}$`;
         text = text.replace(placeholder, `<code>${orig}</code>`);
       }
     });
@@ -623,28 +851,28 @@
 
   function wrapListBlocks(text, regex, tag) {
     // Collect matches line by line
-    const lines = text.split('\n');
+    const lines = text.split("\n");
     let result = [];
     let buffer = [];
     let inList = false;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (regex.test(line)) {
-        buffer.push(line.replace(regex, '<li>$1</li>'));
+        buffer.push(line.replace(regex, "<li>$1</li>"));
         inList = true;
       } else {
         if (inList) {
-          result.push(`<${tag}>` + buffer.join('\n') + `</${tag}>`);
+          result.push(`<${tag}>` + buffer.join("\n") + `</${tag}>`);
           buffer = [];
           inList = false;
         }
         result.push(line);
       }
     }
-    if (inList) result.push(`<${tag}>` + buffer.join('\n') + `</${tag}>`);
-    return result.join('\n');
+    if (inList) result.push(`<${tag}>` + buffer.join("\n") + `</${tag}>`);
+    return result.join("\n");
   }
-  
+
   function scrollChatToBottom() {
     // Scroll to bottom and ensure the container is visible if it has content
     if (chatMessages && chatMessages.children.length > 0) {
@@ -657,79 +885,85 @@
   // Apply syntax highlighting to code blocks
   function applySyntaxHighlighting(element) {
     if (!element) return;
-    
+
     // Apply highlight.js to all code blocks
-    if (typeof hljs !== 'undefined') {
-      const codeBlocks = element.querySelectorAll('pre.ai-code code');
-      codeBlocks.forEach(block => {
+    if (typeof hljs !== "undefined") {
+      const codeBlocks = element.querySelectorAll("pre.ai-code code");
+      codeBlocks.forEach((block) => {
         try {
           hljs.highlightElement(block);
         } catch (err) {
-          console.warn('Syntax highlighting error:', err);
+          console.warn("Syntax highlighting error:", err);
         }
       });
     }
-    
+
     // Render any math that wasn't caught during initial formatting
-    if (typeof renderMathInElement !== 'undefined') {
+    if (typeof renderMathInElement !== "undefined") {
       try {
         renderMathInElement(element, {
           delimiters: [
-            {left: '$$', right: '$$', display: true},
-            {left: '$', right: '$', display: false},
-            {left: '\\[', right: '\\]', display: true},
-            {left: '\\(', right: '\\)', display: false}
+            { left: "$$", right: "$$", display: true },
+            { left: "$", right: "$", display: false },
+            { left: "\\[", right: "\\]", display: true },
+            { left: "\\(", right: "\\)", display: false },
           ],
-          throwOnError: false
+          throwOnError: false,
         });
       } catch (err) {
-        console.warn('KaTeX auto-render error:', err);
+        console.warn("KaTeX auto-render error:", err);
       }
     }
   }
 
   // --- Streaming AI helpers -------------------------------------------------
   let streamTimeout = null; // Add timeout tracker
-  
+
   function startAIStream() {
-    console.log('[AI Stream] Starting new AI stream...');
-    state.currentAIResponse = '';
+    console.log("[AI Stream] Starting new AI stream...");
+    state.currentAIResponse = "";
     streamingAIStartTs = new Date();
-    
+
     // Clear any existing timeout
     if (streamTimeout) {
       clearTimeout(streamTimeout);
       streamTimeout = null;
     }
-    
+
     // Set a 30-second timeout to auto-complete if no response
     streamTimeout = setTimeout(() => {
-      console.warn('[AI Stream] Stream timeout - no response after 30s, auto-completing');
+      console.warn(
+        "[AI Stream] Stream timeout - no response after 30s, auto-completing",
+      );
       if (streamingAIEl) {
-        const bodyEl = streamingAIEl.querySelector('.chat-body');
-        if (bodyEl && bodyEl.innerHTML === '<em>Thinking...</em>') {
+        const bodyEl = streamingAIEl.querySelector(".chat-body");
+        if (bodyEl && bodyEl.innerHTML === "<em>Thinking...</em>") {
           // Still showing "Thinking..." - replace with error
-          state.currentAIResponse = 'No response received. The AI may be overloaded or unavailable. Please try again.';
+          state.currentAIResponse =
+            "No response received. The AI may be overloaded or unavailable. Please try again.";
         }
         completeAIStream();
       }
     }, 30000);
-    
+
     // Create placeholder element for live streaming if not present
     if (!chatMessages) return;
-    streamingAIEl = document.createElement('div');
-    streamingAIEl.className = 'chat-message streaming';
-    const avatarEl = document.createElement('div');
-    avatarEl.className = 'chat-avatar ai';
-    avatarEl.textContent = '🤖';
-    const contentEl = document.createElement('div');
-    contentEl.className = 'chat-content ai';
-    const tsEl = document.createElement('div');
-    tsEl.className = 'chat-timestamp';
-    tsEl.textContent = streamingAIStartTs.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const bodyEl = document.createElement('div');
-    bodyEl.className = 'chat-body';
-    bodyEl.innerHTML = '<em>Thinking...</em>';
+    streamingAIEl = document.createElement("div");
+    streamingAIEl.className = "chat-message streaming";
+    const avatarEl = document.createElement("div");
+    avatarEl.className = "chat-avatar ai";
+    avatarEl.textContent = "🤖";
+    const contentEl = document.createElement("div");
+    contentEl.className = "chat-content ai";
+    const tsEl = document.createElement("div");
+    tsEl.className = "chat-timestamp";
+    tsEl.textContent = streamingAIStartTs.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const bodyEl = document.createElement("div");
+    bodyEl.className = "chat-body";
+    bodyEl.innerHTML = "<em>Thinking...</em>";
     contentEl.appendChild(tsEl);
     contentEl.appendChild(bodyEl);
     streamingAIEl.appendChild(avatarEl);
@@ -737,235 +971,285 @@
     chatMessages.appendChild(streamingAIEl);
     expandChatContainer();
     requestScrollBottom();
-    console.log('[AI Stream] Placeholder created with "Thinking..." message, timeout set for 30s');
+    console.log(
+      '[AI Stream] Placeholder created with "Thinking..." message, timeout set for 30s',
+    );
   }
 
   function updateAIStream(chunk) {
     if (!chunk) return; // Skip empty chunks
-    
+
     // Clear timeout since we're receiving data
     if (streamTimeout) {
       clearTimeout(streamTimeout);
       streamTimeout = null;
     }
-    
-    state.currentAIResponse = (state.currentAIResponse || '') + chunk;
+
+    state.currentAIResponse = (state.currentAIResponse || "") + chunk;
     if (!streamingAIEl) {
-      console.warn('[AI Stream] updateAIStream called but streamingAIEl is null! Starting stream...');
+      console.warn(
+        "[AI Stream] updateAIStream called but streamingAIEl is null! Starting stream...",
+      );
       startAIStream();
       return;
     }
-    const bodyEl = streamingAIEl.querySelector('.chat-body');
+    const bodyEl = streamingAIEl.querySelector(".chat-body");
     if (bodyEl) {
       // On first chunk, clear the "Thinking..." placeholder
-      const hasPlaceholder = bodyEl.querySelector('em');
+      const hasPlaceholder = bodyEl.querySelector("em");
       if (hasPlaceholder) {
-        console.log('[AI Stream] First chunk received! Clearing "Thinking..." and starting real response');
-        bodyEl.innerHTML = '';
+        console.log(
+          '[AI Stream] First chunk received! Clearing "Thinking..." and starting real response',
+        );
+        bodyEl.innerHTML = "";
       }
       // Lightweight incremental formatting: escape & < > then basic markdown emphasis
       let safe = chunk
-        .replace(/&/g,'&amp;')
-        .replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;');
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
       // Append with simple span to avoid heavy reparse each tick
-      const span = document.createElement('span');
+      const span = document.createElement("span");
       span.textContent = safe; // using textContent keeps it safe
       bodyEl.appendChild(span);
-      
+
       // Log progress periodically (every 50 chunks)
       if (state.currentAIResponse.length % 50 < chunk.length) {
-        console.log(`[AI Stream] Received ${state.currentAIResponse.length} characters so far`);
+        console.log(
+          `[AI Stream] Received ${state.currentAIResponse.length} characters so far`,
+        );
       }
     }
     requestScrollBottom();
   }
 
   function completeAIStream() {
-    console.log('[AI Stream] Completing AI stream, response length:', state.currentAIResponse?.length || 0);
-    
+    console.log(
+      "[AI Stream] Completing AI stream, response length:",
+      state.currentAIResponse?.length || 0,
+    );
+
     // Clear timeout
     if (streamTimeout) {
       clearTimeout(streamTimeout);
       streamTimeout = null;
     }
-    
+
     if (streamingAIEl) {
       // Replace placeholder streaming element with a fully formatted final message
       if (state.currentAIResponse && state.currentAIResponse.trim()) {
-        console.log('[AI Stream] Finalizing with content, first 100 chars:', state.currentAIResponse.substring(0, 100));
+        console.log(
+          "[AI Stream] Finalizing with content, first 100 chars:",
+          state.currentAIResponse.substring(0, 100),
+        );
         // Remove streaming element then add normal message for consistent structure
-        try { streamingAIEl.remove(); } catch {}
-        addChatMessage('ai', state.currentAIResponse.trim(), streamingAIStartTs || new Date());
-        
+        try {
+          streamingAIEl.remove();
+        } catch {}
+        addChatMessage(
+          "ai",
+          state.currentAIResponse.trim(),
+          streamingAIStartTs || new Date(),
+        );
+
         // Apply highlighting to the newly added message
         const lastMessage = chatMessages?.lastElementChild;
         if (lastMessage) {
           applySyntaxHighlighting(lastMessage);
         }
       } else {
-        console.warn('[AI Stream] No content received! Removing placeholder.');
+        console.warn("[AI Stream] No content received! Removing placeholder.");
         // No content; just remove placeholder
-        try { streamingAIEl.remove(); } catch {}
+        try {
+          streamingAIEl.remove();
+        } catch {}
       }
     }
     streamingAIEl = null;
-    state.currentAIResponse = '';
+    state.currentAIResponse = "";
     streamingAIStartTs = null;
     // Keep chat open if user previously interacted
     try {
-      const container = document.getElementById('chatContainer');
-      if (container && (container.getAttribute('data-force-expanded') === 'true')) {
-        container.classList.add('expanded');
+      const container = document.getElementById("chatContainer");
+      if (
+        container &&
+        container.getAttribute("data-force-expanded") === "true"
+      ) {
+        container.classList.add("expanded");
         queueResize();
       }
     } catch {}
-    console.log('[AI Stream] Stream completed and finalized');
+    console.log("[AI Stream] Stream completed and finalized");
   }
-  
+
   function clearChat() {
     state.chatHistory = [];
-    state.lastContext = '';
+    state.lastContext = "";
     if (chatMessages) {
-      chatMessages.innerHTML = '';
+      chatMessages.innerHTML = "";
     }
     // Reset transcript tracking variables so new transcriptions can be displayed
     liveTranscriptMsgId = null;
-    liveTranscriptAccumulated = '';
-    console.log('[clearChat] Chat cleared, transcript tracking reset');
-    showNotification('Chat cleared', 'success');
+    liveTranscriptAccumulated = "";
+    console.log("[clearChat] Chat cleared, transcript tracking reset");
+    showNotification("Chat cleared", "success");
   }
-  
+
   function toggleChat() {
-    let container = document.getElementById('chatContainer');
+    let container = document.getElementById("chatContainer");
     if (!container) {
-      console.warn('[Chat] toggleChat called but #chatContainer not found in DOM');
-      try { showNotification('Chat UI not present in this layout', 'warn'); } catch {}
+      console.warn(
+        "[Chat] toggleChat called but #chatContainer not found in DOM",
+      );
+      try {
+        showNotification("Chat UI not present in this layout", "warn");
+      } catch {}
       return;
     }
-    
+
     // Prevent collapsing chat during active recording/transcription
-    const isRecording = state.recording || state.interviewerRecording || state.studentMicOn;
-    const isExpanded = container.classList.contains('expanded');
+    const isRecording =
+      state.recording || state.interviewerRecording || state.studentMicOn;
+    const isExpanded = container.classList.contains("expanded");
     const hasMsgs = state.chatHistory.length > 0;
-    
+
     if (isExpanded) {
       if (isRecording) {
-        console.log('[Chat] Cannot collapse during recording - transcripts are active');
-        try { showNotification('Chat stays open during recording', 'info'); } catch {}
+        console.log(
+          "[Chat] Cannot collapse during recording - transcripts are active",
+        );
+        try {
+          showNotification("Chat stays open during recording", "info");
+        } catch {}
         return;
       }
-      container.classList.remove('expanded');
-      container.setAttribute('data-user-collapsed','true');
-      container.setAttribute('data-collapse-time', Date.now().toString());
-      console.log('[Chat] Collapsed chat');
+      container.classList.remove("expanded");
+      container.setAttribute("data-user-collapsed", "true");
+      container.setAttribute("data-collapse-time", Date.now().toString());
+      console.log("[Chat] Collapsed chat");
     } else {
-      container.classList.add('expanded');
-      console.log('[Chat] Expanded chat');
+      container.classList.add("expanded");
+      console.log("[Chat] Expanded chat");
       if (hasMsgs) scrollChatToBottom();
       queueResize();
       // Focus input if present
       try {
-        const cp = document.getElementById('chatPrompt');
-        if (cp) { cp.focus(); }
+        const cp = document.getElementById("chatPrompt");
+        if (cp) {
+          cp.focus();
+        }
         if (window.electronAPI && window.electronAPI.focusToolbar) {
           window.electronAPI.focusToolbar();
         }
       } catch {}
     }
   }
-  
+
   // Enhanced auto-expand function with smart behavior
   function smartExpandChat() {
     if (!chatContainer) return;
-    
+
     // IMPORTANT: When recording/transcribing, keep chat ALWAYS expanded
     // Don't respect user-collapsed flag during active transcription
-    const isRecording = state.recording || state.interviewerRecording || state.studentMicOn;
-    
+    const isRecording =
+      state.recording || state.interviewerRecording || state.studentMicOn;
+
     if (isRecording) {
       // During recording, always keep chat expanded regardless of user preference
-      if (!chatContainer.classList.contains('expanded')) {
-        console.log('[Chat] Force expanding during recording - transcripts incoming');
-        chatContainer.classList.add('expanded');
+      if (!chatContainer.classList.contains("expanded")) {
+        console.log(
+          "[Chat] Force expanding during recording - transcripts incoming",
+        );
+        chatContainer.classList.add("expanded");
         // Remove any user-collapsed flags during recording
-        chatContainer.removeAttribute('data-user-collapsed');
-        chatContainer.removeAttribute('data-collapse-time');
+        chatContainer.removeAttribute("data-user-collapsed");
+        chatContainer.removeAttribute("data-collapse-time");
         queueResize();
       }
       state.lastChatActivity = Date.now();
       return;
     }
-    
+
     // When not recording, respect user preference briefly
-    const userCollapsedRecently = chatContainer.hasAttribute('data-user-collapsed');
-    const recentCollapseTime = parseInt(chatContainer.getAttribute('data-collapse-time') || '0');
+    const userCollapsedRecently = chatContainer.hasAttribute(
+      "data-user-collapsed",
+    );
+    const recentCollapseTime = parseInt(
+      chatContainer.getAttribute("data-collapse-time") || "0",
+    );
     const timeSinceCollapse = Date.now() - recentCollapseTime;
-    
+
     // If user manually collapsed within last 2 seconds, respect that choice
     // But still expand for new messages after a brief cooldown
     if (userCollapsedRecently && timeSinceCollapse < 2000) {
-      console.log('Chat auto-expand skipped: user collapsed recently', timeSinceCollapse + 'ms ago');
+      console.log(
+        "Chat auto-expand skipped: user collapsed recently",
+        timeSinceCollapse + "ms ago",
+      );
       return;
     }
-    
+
     // Remove the user-collapsed flag after 2 seconds
     if (timeSinceCollapse > 2000) {
-      console.log('Removing user-collapsed flag after', timeSinceCollapse + 'ms');
-      chatContainer.removeAttribute('data-user-collapsed');
-      chatContainer.removeAttribute('data-collapse-time');
+      console.log(
+        "Removing user-collapsed flag after",
+        timeSinceCollapse + "ms",
+      );
+      chatContainer.removeAttribute("data-user-collapsed");
+      chatContainer.removeAttribute("data-collapse-time");
     }
-    
+
     // Auto-expand for new content
-    if (!chatContainer.classList.contains('expanded')) {
-      console.log('Auto-expanding chat container');
-      chatContainer.classList.add('expanded');
+    if (!chatContainer.classList.contains("expanded")) {
+      console.log("Auto-expanding chat container");
+      chatContainer.classList.add("expanded");
       queueResize();
     }
-    
+
     // Update last activity time
     state.lastChatActivity = Date.now();
   }
-  
+
   // Auto-collapse chat after period of inactivity (optional feature)
   function setupAutoCollapse() {
     // User requested: never auto-close chat interface. Function now a no-op.
-    console.log('Chat auto-collapse disabled by user preference');
+    console.log("Chat auto-collapse disabled by user preference");
   }
 
   function setConnected(connected) {
     console.log(`Setting connection state to: ${connected}`);
     state.connected = connected;
-    if (dot) dot.classList.toggle('on', connected);
+    if (dot) dot.classList.toggle("on", connected);
     if (connected) {
-      if (dot) dot.classList.remove('recording');
+      if (dot) dot.classList.remove("recording");
     }
-    if (statusText) statusText.textContent = connected ? 'Connected' : 'Disconnected';
-    
+    if (statusText)
+      statusText.textContent = connected ? "Connected" : "Disconnected";
+
     // Button enable/disable strategy revision:
     // Only strictly disable actions that REQUIRE an open server connection to function.
     // Other UI controls stay clickable and will internally warn if not connected. This avoids
     // a "dead" looking toolbar when the backend is still starting.
     if (recordInterviewerBtn) recordInterviewerBtn.disabled = !connected; // needs WS for audio
-    if (listenStudentBtn) listenStudentBtn.disabled = !connected;        // needs WS for audio
-    if (captureAnalyzeBtn) captureAnalyzeBtn.disabled = !connected;      // sends OCR to server
+    if (listenStudentBtn) listenStudentBtn.disabled = !connected; // needs WS for audio
+    if (captureAnalyzeBtn) captureAnalyzeBtn.disabled = !connected; // sends OCR to server
     // askAiBtn remains enabled; click handler already guards & shows notification
 
     // Legacy buttons: only disable those that send data to server
     if (toggleRecord) toggleRecord.disabled = !connected;
     if (captureBtn) captureBtn.disabled = !connected; // legacy capture path
     // Leave schedule/settings visible & enabled (they interact with Electron, not server)
-  if (scheduleBtn) scheduleBtn.disabled = false;
-  // Resume upload available even if not connected (will warn on click if no server)
-  if (resumeUploadBtn) resumeUploadBtn.disabled = false;
+    if (companyBriefBtn) companyBriefBtn.disabled = false;
+    // Resume upload available even if not connected (will warn on click if no server)
+    if (resumeUploadBtn) resumeUploadBtn.disabled = false;
     if (toggleStudentBtn) toggleStudentBtn.disabled = !connected; // server preference sync
     if (visibilityBtn) visibilityBtn.disabled = false; // purely local UI toggle
     if (sendBtn && promptInput) {
       // Allow user to type before connection; will warn on send attempt
       sendBtn.disabled = !promptInput.value.trim();
     }
-    if (statusDots) statusDots.classList.remove('listening','receiving');
-    
+    if (statusDots) statusDots.classList.remove("listening", "receiving");
+
     console.log(`Connection state updated. Buttons disabled: ${!connected}`);
   }
 
@@ -973,39 +1257,39 @@
     // Update new buttons
     if (recordInterviewerBtn) {
       if (state.interviewerRecording) {
-        recordInterviewerBtn.classList.add('mic-active', 'toggled');
-        recordInterviewerBtn.title = 'Stop Recording Interviewer';
+        recordInterviewerBtn.classList.add("mic-active", "toggled");
+        recordInterviewerBtn.title = "Stop Recording Interviewer";
       } else {
-        recordInterviewerBtn.classList.remove('mic-active', 'toggled');
-        recordInterviewerBtn.title = 'Record Interviewer (System Audio)';
+        recordInterviewerBtn.classList.remove("mic-active", "toggled");
+        recordInterviewerBtn.title = "Record Interviewer (System Audio)";
       }
     }
-    
+
     if (listenStudentBtn) {
       if (state.studentMicOn) {
-        listenStudentBtn.classList.add('mic-active', 'toggled');
-        listenStudentBtn.title = 'Turn Off Student Mic';
+        listenStudentBtn.classList.add("mic-active", "toggled");
+        listenStudentBtn.title = "Turn Off Student Mic";
       } else {
-        listenStudentBtn.classList.remove('mic-active', 'toggled');
-        listenStudentBtn.title = 'Turn On Student Mic';
+        listenStudentBtn.classList.remove("mic-active", "toggled");
+        listenStudentBtn.title = "Turn On Student Mic";
       }
     }
-    
+
     // Legacy UI updates for compatibility
     if (state.recording) {
-      if (recLabel) recLabel.textContent = 'Stop';
-      if (recIcon) recIcon.textContent = '⏹️';
-      dot.classList.add('recording');
-      if (toggleRecord) toggleRecord.classList.add('mic-active');
-      if (statusDots) statusDots.classList.add('recording');
+      if (recLabel) recLabel.textContent = "Stop";
+      if (recIcon) recIcon.textContent = "⏹️";
+      dot.classList.add("recording");
+      if (toggleRecord) toggleRecord.classList.add("mic-active");
+      if (statusDots) statusDots.classList.add("recording");
     } else {
-      if (recLabel) recLabel.textContent = 'Start';
-      if (recIcon) recIcon.textContent = '🎙️';
-      dot.classList.remove('recording');
-      if (toggleRecord) toggleRecord.classList.remove('mic-active');
-      if (statusDots) statusDots.classList.remove('recording');
+      if (recLabel) recLabel.textContent = "Start";
+      if (recIcon) recIcon.textContent = "🎙️";
+      dot.classList.remove("recording");
+      if (toggleRecord) toggleRecord.classList.remove("mic-active");
+      if (statusDots) statusDots.classList.remove("recording");
       if (state.connected) {
-        dot.classList.add('on');
+        dot.classList.add("on");
       }
     }
   }
@@ -1022,7 +1306,7 @@
           </svg>
           <span style="font-size: 10px; margin-left: 4px;">${count}</span>
         `;
-        captureBtn.title = `${count} screen${count > 1 ? 's' : ''} captured - Click to capture more, Ctrl+Click to clear`;
+        captureBtn.title = `${count} screen${count > 1 ? "s" : ""} captured - Click to capture more, Ctrl+Click to clear`;
       } else {
         captureBtn.innerHTML = `
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1031,136 +1315,179 @@
             <line x1="12" y1="17" x2="12" y2="21"></line>
           </svg>
         `;
-        captureBtn.title = 'Capture and analyze screen content';
+        captureBtn.title = "Capture and analyze screen content";
       }
     }
   }
-  
+
   function updateSpeakerUI() {
-    if (state.currentSpeaker === 'user1') {
-      speakerUser1.classList.add('active', 'success');
-      speakerUser1.classList.remove('ghost');
-      speakerUser2.classList.remove('active', 'success');
-      speakerUser2.classList.add('ghost');
+    if (state.currentSpeaker === "user1") {
+      speakerUser1.classList.add("active", "success");
+      speakerUser1.classList.remove("ghost");
+      speakerUser2.classList.remove("active", "success");
+      speakerUser2.classList.add("ghost");
     } else {
-      speakerUser2.classList.add('active', 'success');
-      speakerUser2.classList.remove('ghost');
-      speakerUser1.classList.remove('active', 'success');
-      speakerUser1.classList.add('ghost');
+      speakerUser2.classList.add("active", "success");
+      speakerUser2.classList.remove("ghost");
+      speakerUser1.classList.remove("active", "success");
+      speakerUser1.classList.add("ghost");
     }
   }
-  
+
   function updateListenStudentUI() {
     if (toggleStudentBtn) {
       if (listenStudent) {
-        toggleStudentBtn.classList.add('toggled');
-        toggleStudentBtn.title = 'Stop listening to student';
+        toggleStudentBtn.classList.add("toggled");
+        toggleStudentBtn.title = "Stop listening to student";
       } else {
-        toggleStudentBtn.classList.remove('toggled');
-        toggleStudentBtn.title = 'Listen to Student (on/off)';
+        toggleStudentBtn.classList.remove("toggled");
+        toggleStudentBtn.title = "Listen to Student (on/off)";
       }
     }
-    
+
     // Update new button UI as well
     if (listenStudentBtn) {
       if (listenStudent) {
-        listenStudentBtn.classList.add('toggled');
+        listenStudentBtn.classList.add("toggled");
       } else {
-        listenStudentBtn.classList.remove('toggled');
+        listenStudentBtn.classList.remove("toggled");
       }
     }
   }
 
   function connect() {
-    console.log('Attempting to connect to server...');
+    console.log("Attempting to connect to server...");
     if (!state._reconnectAttempts) state._reconnectAttempts = 0;
     try {
-      const tryConnect = (port) => new Promise((resolve) => {
-        console.log(`Trying port ${port}...`);
-        let opened = false;
-        const ws = new WebSocket(`ws://localhost:${port}/ui`);
-        ws.onopen = () => { 
-          console.log(`Connected to port ${port}`);
-          opened = true; 
-          resolve(ws); 
-        };
-        ws.onerror = (e) => {
-          console.log(`Port ${port} failed:`, e);
-          resolve(null);
-        };
-        ws.onclose = () => { 
-          if (!opened) {
-            console.log(`Port ${port} closed without opening`);
-            resolve(null); 
-          }
-        };
-      });
+      const tryConnect = (port) =>
+        new Promise((resolve) => {
+          console.log(`Trying port ${port}...`);
+          let opened = false;
+          const ws = new WebSocket(`ws://localhost:${port}/ui`);
+          ws.onopen = () => {
+            console.log(`Connected to port ${port}`);
+            opened = true;
+            resolve(ws);
+          };
+          ws.onerror = (e) => {
+            console.log(`Port ${port} failed:`, e);
+            resolve(null);
+          };
+          ws.onclose = () => {
+            if (!opened) {
+              console.log(`Port ${port} closed without opening`);
+              resolve(null);
+            }
+          };
+        });
 
       (async () => {
         // Try a wider port range (server may shift up to +9)
-        let ports = [8765, 8766, 8767, 8768, 8769, 8770, 8771, 8772, 8773, 8774];
-        
+        let ports = [
+          8765, 8766, 8767, 8768, 8769, 8770, 8771, 8772, 8773, 8774,
+        ];
+
         // First try to get the actual server port from main process
         try {
           if (window.electronAPI && window.electronAPI.getServerPort) {
             const mainPort = await window.electronAPI.getServerPort();
-            if (mainPort && typeof mainPort === 'number' && mainPort !== 8765) {
+            if (mainPort && typeof mainPort === "number" && mainPort !== 8765) {
               console.log(`Got server port from main process: ${mainPort}`);
-              ports = [mainPort, ...ports.filter(p => p !== mainPort)];
+              ports = [mainPort, ...ports.filter((p) => p !== mainPort)];
             }
           }
         } catch (e) {
-          console.log('Could not get server port from main process:', e);
+          console.log("Could not get server port from main process:", e);
         }
-        
+
         // If we previously connected on a specific port, try it first (after main port)
         try {
-          const last = parseInt(localStorage.getItem('toolbar_last_port')||'', 10);
+          const last = parseInt(
+            localStorage.getItem("toolbar_last_port") || "",
+            10,
+          );
           if (last && ports.includes(last) && last !== ports[0]) {
-            ports = [ports[0], last, ...ports.filter(p => p !== last && p !== ports[0])];
+            ports = [
+              ports[0],
+              last,
+              ...ports.filter((p) => p !== last && p !== ports[0]),
+            ];
           }
         } catch {}
-        if (statusText && !state.connected) statusText.textContent = 'Scanning...';
+        if (statusText && !state.connected)
+          statusText.textContent = "Scanning...";
         for (const p of ports) {
           const cand = await tryConnect(p);
-          if (cand) { 
-            state.ws = cand; 
-            state.serverPort = p; 
+          if (cand) {
+            state.ws = cand;
+            state.serverPort = p;
             console.log(`Successfully connected to server on port ${p}`);
-            break; 
+            break;
           }
         }
         if (!state.ws) {
-          console.error('No WebSocket connection established after scanning ports 8765-8774');
+          console.error(
+            "No WebSocket connection established after scanning ports 8765-8774",
+          );
           // Provide user feedback only once per failed sweep
-          try { if (typeof showNotification === 'function') showNotification('Server not running. Retrying...', 'error'); } catch {}
-          throw new Error('No ws connection');
+          try {
+            if (typeof showNotification === "function")
+              showNotification("Server not running. Retrying...", "error");
+          } catch {}
+          throw new Error("No ws connection");
         }
 
         state.ws.onopen = () => {
-          log.info('WebSocket connection opened successfully');
+          log.info("WebSocket connection opened successfully");
           setConnected(true);
           state._reconnectAttempts = 0;
-          try { localStorage.setItem('toolbar_last_port', String(state.serverPort)); } catch {}
+          try {
+            localStorage.setItem("toolbar_last_port", String(state.serverPort));
+          } catch {}
           if (showNotification) {
-            showNotification('Connected! Mic ready.', 'success');
+            showNotification("Connected! Mic ready.", "success");
           } else {
-            log.info('Connected! Mic ready.');
+            log.info("Connected! Mic ready.");
           }
           // Sync listen_student preference to server
-          try { send({ type: 'listen_student', enabled: !!listenStudent }); } catch {}
+          try {
+            send({ type: "listen_student", enabled: !!listenStudent });
+          } catch {}
           // Start health monitoring
           connectionHealth.start();
-          log.info('Connection health monitoring started');
+          log.info("Connection health monitoring started");
+
+          if (!state.pendingCompanyBrief && state.companyBrief) {
+            const normalized = normalizeCompanyBriefPayload(state.companyBrief);
+            if (normalized) {
+              try {
+                state.pendingCompanyBrief = { ...normalized };
+                state.companyBriefSilentSync = true;
+                state.ws.send(
+                  JSON.stringify({ type: "context", ...normalized }),
+                );
+                log.info(
+                  "Re-sent stored company brief to server after reconnect",
+                );
+              } catch (syncErr) {
+                state.companyBriefSilentSync = false;
+                state.pendingCompanyBrief = null;
+                log.warn(
+                  "Failed to sync stored company brief on connect",
+                  syncErr,
+                );
+              }
+            }
+          }
         };
         state.ws.onclose = () => {
-          log.info('WebSocket connection closed, scheduling reconnect');
+          log.info("WebSocket connection closed, scheduling reconnect");
           connectionHealth.stop();
           setConnected(false);
           scheduleReconnect();
         };
         state.ws.onerror = (e) => {
-          log.error('WebSocket error:', e);
+          log.error("WebSocket error:", e);
           connectionHealth.stop();
           setConnected(false);
           scheduleReconnect();
@@ -1168,78 +1495,172 @@
         state.ws.onmessage = (ev) => {
           try {
             const msg = JSON.parse(ev.data);
-            
+
             // Handle pong for health monitoring
-            if (msg.type === 'pong') {
+            if (msg.type === "pong") {
               connectionHealth.receivedPong();
               return;
             }
-            
-            if (msg.type === 'status' && (msg.data && msg.data.audio || msg.audio)) {
+
+            if (
+              msg.type === "status" &&
+              ((msg.data && msg.data.audio) || msg.audio)
+            ) {
               const a = (msg.data && msg.data.audio) || msg.audio;
-              statusText.textContent = a === 'listening' ? 'Listening…' : (a === 'receiving' ? 'Receiving…' : 'Connected');
+              statusText.textContent =
+                a === "listening"
+                  ? "Listening…"
+                  : a === "receiving"
+                    ? "Receiving…"
+                    : "Connected";
               if (statusDots) {
-                statusDots.classList.remove('listening','receiving');
-                if (a === 'listening') statusDots.classList.add('listening');
-                if (a === 'receiving') statusDots.classList.add('receiving');
+                statusDots.classList.remove("listening", "receiving");
+                if (a === "listening") statusDots.classList.add("listening");
+                if (a === "receiving") statusDots.classList.add("receiving");
               }
             }
-            if (msg.type === 'status' && msg.data && typeof msg.data.listen_student !== 'undefined') {
+            if (msg.type === "context_ack" && msg.context_kind === "company") {
+              const silentSync = !!state.companyBriefSilentSync;
+              state.companyBriefSilentSync = false;
+
+              if (msg.success) {
+                const pending = state.pendingCompanyBrief || state.companyBrief;
+                if (pending) persistCompanyBrief(pending);
+                state.pendingCompanyBrief = null;
+                state.companyBriefConfirmationPending = false;
+                if (!silentSync) {
+                  state.companyBriefConfirmedForSession = true;
+                }
+
+                if (companyBriefStatus && !silentSync) {
+                  companyBriefStatus.textContent = "Company brief stored.";
+                  companyBriefStatus.dataset.state = "success";
+                }
+                if (!silentSync) {
+                  if (companyBriefForm) companyBriefForm.reset();
+                  toggleCompanyBrief(false);
+                  resetCompanyBriefStatus();
+                  if (companyBriefSave) companyBriefSave.disabled = false;
+                  showNotification("Company brief shared with AI", "success");
+                } else {
+                  if (companyBriefSave) companyBriefSave.disabled = false;
+                  log.info("Company brief synced with server");
+                }
+                const resumeAction = state.companyBriefPendingAction;
+                state.companyBriefPendingAction = null;
+                if (!silentSync && typeof resumeAction === "function") {
+                  setTimeout(() => {
+                    try {
+                      resumeAction();
+                    } catch (resumeErr) {
+                      log.warn(
+                        "Company brief pending action failed",
+                        resumeErr,
+                      );
+                    }
+                  }, 60);
+                }
+              } else {
+                state.pendingCompanyBrief = null;
+                state.companyBriefConfirmationPending = false;
+                state.companyBriefConfirmedForSession = false;
+                if (companyBriefStatus && !silentSync) {
+                  companyBriefStatus.textContent =
+                    msg.error || "Failed to store company brief.";
+                  companyBriefStatus.dataset.state = "error";
+                }
+                if (companyBriefSave) companyBriefSave.disabled = false;
+                if (silentSync) {
+                  log.warn(
+                    "Automatic company brief sync failed:",
+                    msg.error || "unknown error",
+                  );
+                } else {
+                  showNotification("Failed to share company brief", "error");
+                }
+              }
+              return;
+            }
+            if (
+              msg.type === "status" &&
+              msg.data &&
+              typeof msg.data.listen_student !== "undefined"
+            ) {
               listenStudent = !!msg.data.listen_student;
               updateListenStudentUI();
             }
-            
+
             // Handle transcripts
-            if (msg.type === 'transcript' && msg.text && msg.text.trim()) {
+            if (msg.type === "transcript" && msg.text && msg.text.trim()) {
               const rawSeg = msg.text.trim();
-              log.debug('[Transcript] Received:', rawSeg.substring(0, 80), 'mode:', msg.recording_mode);
-              
+              log.debug(
+                "[Transcript] Received:",
+                rawSeg.substring(0, 80),
+                "mode:",
+                msg.recording_mode,
+              );
+
               // Track usage
-              usageStats.increment('transcriptions');
-              
+              usageStats.increment("transcriptions");
+
               // Simple duplicate guard (diff stream already handled server-side)
               state._lastSegTs = state._lastSegTs || 0;
               const nowTs = Date.now();
-              if (state._lastSegValue === rawSeg && (nowTs - state._lastSegTs) < 1200) {
-                log.debug('[Transcript] Skipping duplicate');
+              if (
+                state._lastSegValue === rawSeg &&
+                nowTs - state._lastSegTs < 1200
+              ) {
+                log.debug("[Transcript] Skipping duplicate");
                 return; // ignore rapid exact repeat
               }
               state._lastSegValue = rawSeg;
               state._lastSegTs = nowTs;
-              const mode = msg.recording_mode || 'interviewer';
-              const chatType = mode === 'student' ? 'student' : 'interviewer';
-              log.debug('[Transcript] Updating live transcript, type:', chatType, 'interim:', !!msg.interim);
+              const mode = msg.recording_mode || "interviewer";
+              const chatType = mode === "student" ? "student" : "interviewer";
+              log.debug(
+                "[Transcript] Updating live transcript, type:",
+                chatType,
+                "interim:",
+                !!msg.interim,
+              );
               if (msg.interim) {
                 updateLiveTranscriptInterim(rawSeg);
               } else {
                 // Final result: commit to accumulated transcript
                 appendToLiveTranscript(rawSeg);
               }
-              if (chatType === 'interviewer') {
+              if (chatType === "interviewer") {
                 state.interviewerSegments.push(rawSeg);
-                if (state.interviewerSegments.length > state.maxTranscriptSegments) state.interviewerSegments.shift();
-              } else if (chatType === 'student') {
+                if (
+                  state.interviewerSegments.length > state.maxTranscriptSegments
+                )
+                  state.interviewerSegments.shift();
+              } else if (chatType === "student") {
                 state.studentSegments.push(rawSeg);
-                if (state.studentSegments.length > state.maxTranscriptSegments) state.studentSegments.shift();
+                if (state.studentSegments.length > state.maxTranscriptSegments)
+                  state.studentSegments.shift();
               }
-              log.debug('[Transcript] Current accumulated length:', liveTranscriptAccumulated.length);
+              log.debug(
+                "[Transcript] Current accumulated length:",
+                liveTranscriptAccumulated.length,
+              );
             }
-            
+
             // Handle generated image results
-            if (msg.type === 'image_result' && msg.image_b64) {
-              const container = document.createElement('div');
-              container.className = 'chat-message analysis image-result';
-              const img = document.createElement('img');
-              img.src = `data:image/${msg.format || 'png'};base64,${msg.image_b64}`;
-              img.alt = msg.alt || 'Generated illustration';
-              img.style.maxWidth = '100%';
-              img.style.border = '1px solid #333';
-              img.style.borderRadius = '6px';
-              const caption = document.createElement('div');
-              caption.textContent = msg.alt || msg.prompt || 'Generated image';
-              caption.style.fontSize = '0.75rem';
-              caption.style.opacity = '0.8';
-              caption.style.marginTop = '4px';
+            if (msg.type === "image_result" && msg.image_b64) {
+              const container = document.createElement("div");
+              container.className = "chat-message analysis image-result";
+              const img = document.createElement("img");
+              img.src = `data:image/${msg.format || "png"};base64,${msg.image_b64}`;
+              img.alt = msg.alt || "Generated illustration";
+              img.style.maxWidth = "100%";
+              img.style.border = "1px solid #333";
+              img.style.borderRadius = "6px";
+              const caption = document.createElement("div");
+              caption.textContent = msg.alt || msg.prompt || "Generated image";
+              caption.style.fontSize = "0.75rem";
+              caption.style.opacity = "0.8";
+              caption.style.marginTop = "4px";
               container.appendChild(img);
               container.appendChild(caption);
               if (chatMessages) chatMessages.appendChild(container);
@@ -1247,155 +1668,197 @@
             }
 
             // Handle screen analysis results (structured)
-            if (msg.type === 'ocr_result' || msg.type === 'ocr') {
+            if (msg.type === "ocr_result" || msg.type === "ocr") {
               // Track capture usage
-              usageStats.increment('captures');
-              
+              usageStats.increment("captures");
+
               let questionLines = [];
               if (msg.structured && Array.isArray(msg.structured.steps)) {
-                const questionStep = msg.structured.steps.find(s => {
-                  const title = (s && s.title ? String(s.title) : '').toLowerCase();
-                  return s && (s.step === 3 || title.includes('question'));
+                const questionStep = msg.structured.steps.find((s) => {
+                  const title = (
+                    s && s.title ? String(s.title) : ""
+                  ).toLowerCase();
+                  return s && (s.step === 3 || title.includes("question"));
                 });
                 if (questionStep) {
                   if (Array.isArray(questionStep.detail)) {
                     questionLines = questionStep.detail
                       .filter(Boolean)
-                      .map(item => String(item).trim())
+                      .map((item) => String(item).trim())
                       .filter(Boolean);
                   } else if (questionStep.detail) {
-                    questionLines = [String(questionStep.detail).trim()].filter(Boolean);
+                    questionLines = [String(questionStep.detail).trim()].filter(
+                      Boolean,
+                    );
                   }
                 }
               }
 
-              let content = '';
+              let content = "";
               if (questionLines.length) {
-                content = questionLines.join('\n');
-              } else if (typeof msg.text === 'string' && msg.text.trim()) {
+                content = questionLines.join("\n");
+              } else if (typeof msg.text === "string" && msg.text.trim()) {
                 content = msg.text.trim();
               }
 
               if (content) {
-                addChatMessage('analysis', content);
+                addChatMessage("analysis", content);
                 state.analysisSegments.push(content);
-                if (state.analysisSegments.length > 30) state.analysisSegments.shift();
-                
+                if (state.analysisSegments.length > 30)
+                  state.analysisSegments.shift();
+
                 // DISABLED: Frontend auto-trigger removed to prevent duplicate responses
                 // The server already handles auto-answering after capture via AUTO_COACH_ON_CAPTURE
                 // This was causing TWO AI responses - one from server auto-answer, one from this click
                 state.autoTriggerAI = false; // Ensure flag is always cleared
               }
             }
-            
+
             // Display AI responses in chat (streaming aware)
-            if (msg.type === 'coach') {
+            if (msg.type === "coach") {
               // Track context type from server response for follow-up questions
               if (msg.contextType && msg.reset) {
                 state.lastQuestionContext = msg.contextType;
-                log.debug('[Context] Updated from server response:', msg.contextType);
+                log.debug(
+                  "[Context] Updated from server response:",
+                  msg.contextType,
+                );
               }
-              
+
               // Only allow AI streaming if user explicitly clicked Ask AI within last 20s
-              if (typeof window.lastUserAIRequestTs === 'undefined') window.lastUserAIRequestTs = 0;
+              if (typeof window.lastUserAIRequestTs === "undefined")
+                window.lastUserAIRequestTs = 0;
               const nowTs = Date.now();
-              const withinWindow = (nowTs - window.lastUserAIRequestTs) < 20000; // 20s
-              
-              console.log('[AI Stream] Coach message received:', { 
-                reset: msg.reset, 
-                hasText: !!msg.text, 
+              const withinWindow = nowTs - window.lastUserAIRequestTs < 20000; // 20s
+
+              console.log("[AI Stream] Coach message received:", {
+                reset: msg.reset,
+                hasText: !!msg.text,
                 textLength: msg.text?.length || 0,
-                complete: msg.complete, 
+                complete: msg.complete,
                 withinWindow,
-                timeSinceRequest: (nowTs - window.lastUserAIRequestTs) / 1000 + 's',
+                timeSinceRequest:
+                  (nowTs - window.lastUserAIRequestTs) / 1000 + "s",
                 hasStreamingEl: !!streamingAIEl,
-                contextType: msg.contextType
+                contextType: msg.contextType,
               });
 
-              if (msg.contextType === 'capture' && (msg.complete || msg.reset || msg.text)) {
+              if (
+                msg.contextType === "capture" &&
+                (msg.complete || msg.reset || msg.text)
+              ) {
                 if (state.forceCaptureRequest || state.autoTriggerAI) {
-                  log.debug('[AI] Capture response observed; clearing capture routing flags. complete=', msg.complete, 'reset=', msg.reset);
+                  log.debug(
+                    "[AI] Capture response observed; clearing capture routing flags. complete=",
+                    msg.complete,
+                    "reset=",
+                    msg.reset,
+                  );
                   state.forceCaptureRequest = false;
                   state.autoTriggerAI = false;
                 }
               }
-              
+
               // CRITICAL FIX: Always allow reset signals to pass through
               // The reset initializes the streaming element - without it, nothing works!
               if (msg.reset) {
                 if (!withinWindow) {
-                  console.warn('[AI Stream] Reset outside time window - checking if we should allow it');
+                  console.warn(
+                    "[AI Stream] Reset outside time window - checking if we should allow it",
+                  );
                   // Allow reset if it's the first message (no streaming element exists yet)
                   // This handles cases where the server response comes after 20s
                   if (!streamingAIEl) {
-                    console.log('[AI Stream] Allowing reset to initialize stream (no active stream yet)');
+                    console.log(
+                      "[AI Stream] Allowing reset to initialize stream (no active stream yet)",
+                    );
                   } else {
-                    console.warn('[AI Stream] Ignoring reset - already have active stream');
+                    console.warn(
+                      "[AI Stream] Ignoring reset - already have active stream",
+                    );
                     return;
                   }
                 } else {
-                  console.log('[AI Stream] Processing reset within time window');
+                  console.log(
+                    "[AI Stream] Processing reset within time window",
+                  );
                 }
                 finalizeLiveTranscript();
                 startAIStream();
                 return; // Don't process text in reset message
               }
-              
+
               // CRITICAL FIX: Auto-start stream if we receive text but no stream element exists
               // This is a safety net in case reset was missed or blocked
               if (msg.text && !streamingAIEl && withinWindow) {
-                console.warn('[AI Stream] Received text but no stream element - auto-starting stream');
+                console.warn(
+                  "[AI Stream] Received text but no stream element - auto-starting stream",
+                );
                 startAIStream();
               }
-              
+
               // CRITICAL FIX: Always process complete signal if we have an active stream
               // This ensures "Thinking..." gets cleared even if time window expired
               if (msg.complete) {
-                console.log('[AI Stream] Received complete signal');
+                console.log("[AI Stream] Received complete signal");
                 if (streamingAIEl) {
-                  console.log('[AI Stream] Active stream detected, completing regardless of time window');
+                  console.log(
+                    "[AI Stream] Active stream detected, completing regardless of time window",
+                  );
                   completeAIStream();
                 } else if (withinWindow) {
-                  console.log('[AI Stream] No active stream but within window, completing anyway');
+                  console.log(
+                    "[AI Stream] No active stream but within window, completing anyway",
+                  );
                   completeAIStream();
                 } else {
-                  console.warn('[AI Stream] Ignoring complete - no active stream and outside time window');
+                  console.warn(
+                    "[AI Stream] Ignoring complete - no active stream and outside time window",
+                  );
                 }
                 return;
               }
-              
+
               // CRITICAL FIX: Also accept text chunks if we have an active stream
               // The user is waiting for a response - don't ignore it just because it took too long!
               if (msg.text) {
                 if (streamingAIEl) {
-                  console.log('[AI Stream] Processing chunk for active stream (ignoring time window):', msg.text.substring(0, 50));
+                  console.log(
+                    "[AI Stream] Processing chunk for active stream (ignoring time window):",
+                    msg.text.substring(0, 50),
+                  );
                   updateAIStream(msg.text);
                 } else if (withinWindow) {
-                  console.log('[AI Stream] Processing text chunk within time window:', msg.text.substring(0, 50));
+                  console.log(
+                    "[AI Stream] Processing text chunk within time window:",
+                    msg.text.substring(0, 50),
+                  );
                   updateAIStream(msg.text);
                 } else {
-                  console.warn('[AI Stream] Ignoring chunk - no active stream and outside time window');
+                  console.warn(
+                    "[AI Stream] Ignoring chunk - no active stream and outside time window",
+                  );
                 }
               }
-            } else if (msg.type === 'stream' && msg.text) {
+            } else if (msg.type === "stream" && msg.text) {
               // Generic stream chunks (fallback)
               if (!streamingAIEl) startAIStream();
               updateAIStream(msg.text);
               if (msg.complete) completeAIStream();
             }
-            
+
             // Handle complete AI responses (non-streaming)
-            if (msg.type === 'ai_response' && msg.text && msg.text.trim()) {
-              addChatMessage('ai', msg.text.trim());
+            if (msg.type === "ai_response" && msg.text && msg.text.trim()) {
+              addChatMessage("ai", msg.text.trim());
             }
           } catch {}
         };
       })();
     } catch (e) {
-      console.error('Toolbar WS error:', e);
+      console.error("Toolbar WS error:", e);
       // Retry connection after 2 seconds
       setTimeout(() => {
-        console.log('Retrying connection...');
+        console.log("Retrying connection...");
         connect();
       }, 2000);
     }
@@ -1406,8 +1869,10 @@
     state._reconnectAttempts = (state._reconnectAttempts || 0) + 1;
     const attempt = state._reconnectAttempts;
     const delay = Math.min(10000, 1000 * Math.pow(1.4, attempt)); // capped exponential backoff
-    console.log(`Scheduling reconnect attempt ${attempt} in ${Math.round(delay)}ms`);
-    if (statusText) statusText.textContent = 'Reconnecting...';
+    console.log(
+      `Scheduling reconnect attempt ${attempt} in ${Math.round(delay)}ms`,
+    );
+    if (statusText) statusText.textContent = "Reconnecting...";
     clearTimeout(state._reconnectTimer);
     state._reconnectTimer = setTimeout(() => {
       if (!state.connected) connect();
@@ -1417,7 +1882,15 @@
   function send(message) {
     if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
     // Add current speaker to message
-    if (message && typeof message === 'object') {
+    if (message && typeof message === "object") {
+      if (message.type === "coach" && !message.company_context) {
+        const sourceBrief = state.pendingCompanyBrief || state.companyBrief;
+        const contextPayload =
+          normalizeCompanyBriefPayload(sourceBrief) || sourceBrief;
+        if (contextPayload) {
+          message.company_context = { ...contextPayload };
+        }
+      }
       message.speaker = state.currentSpeaker;
     }
     state.ws.send(JSON.stringify(message));
@@ -1429,35 +1902,43 @@
     return new Promise((resolve, reject) => {
       try {
         const port = state.serverPort || 8765;
-        console.log('[Audio] Opening audio WebSocket to port', port, '...');
+        console.log("[Audio] Opening audio WebSocket to port", port, "...");
         state.audioWs = new WebSocket(`ws://localhost:${port}/audio`);
-        state.audioWs.binaryType = 'arraybuffer';
+        state.audioWs.binaryType = "arraybuffer";
         state.audioWs.onopen = () => {
-          console.log('[Audio] Audio WebSocket OPEN');
+          console.log("[Audio] Audio WebSocket OPEN");
           state._audioReconnectAttempts = 0;
           resolve();
         };
         state.audioWs.onerror = (e) => {
-          console.error('[Audio] Audio WebSocket error', e);
+          console.error("[Audio] Audio WebSocket error", e);
           reject(e);
         };
         state.audioWs.onclose = (ev) => {
-          console.warn('[Audio] Audio WebSocket closed', ev?.code, ev?.reason || '');
+          console.warn(
+            "[Audio] Audio WebSocket closed",
+            ev?.code,
+            ev?.reason || "",
+          );
           state.audioWs = null;
           // If we were actively recording, attempt reconnection for resilience.
           if (state.recording && (ev?.code === 1005 || ev?.code === 1006)) {
-            state._audioReconnectAttempts = (state._audioReconnectAttempts || 0) + 1;
+            state._audioReconnectAttempts =
+              (state._audioReconnectAttempts || 0) + 1;
             const attempt = state._audioReconnectAttempts;
             const delay = Math.min(15000, 800 * Math.pow(1.5, attempt));
-            showNotification(`Audio stream disrupted. Reconnecting (attempt ${attempt}) in ${Math.round(delay/1000)}s`, 'warn');
+            showNotification(
+              `Audio stream disrupted. Reconnecting (attempt ${attempt}) in ${Math.round(delay / 1000)}s`,
+              "warn",
+            );
             clearTimeout(state._audioReconnectTimer);
             state._audioReconnectTimer = setTimeout(async () => {
               if (!state.recording) return; // user may have stopped
               try {
                 await connectAudioSocket();
-                console.log('[Audio] Reconnected audio socket.');
+                console.log("[Audio] Reconnected audio socket.");
               } catch (re) {
-                console.error('[Audio] Reconnect attempt failed', re);
+                console.error("[Audio] Reconnect attempt failed", re);
                 // Schedule another if still recording
                 if (state.recording) {
                   state.audioWs && state.audioWs.close();
@@ -1468,14 +1949,14 @@
         };
         state.audioWs.onmessage = (msg) => {
           // Optional: server can send ack / diagnostics
-            try {
-              if (typeof msg.data === 'string') {
-                const j = JSON.parse(msg.data);
-                if (j.type === 'audio_ack') {
-                  console.debug('[Audio] Ack frames=', j.frames);
-                }
+          try {
+            if (typeof msg.data === "string") {
+              const j = JSON.parse(msg.data);
+              if (j.type === "audio_ack") {
+                console.debug("[Audio] Ack frames=", j.frames);
               }
-            } catch {}
+            }
+          } catch {}
         };
       } catch (e) {
         reject(e);
@@ -1483,49 +1964,74 @@
     });
   }
 
-  async function startRecording(mode = 'interviewer') {
+  async function startRecording(mode = "interviewer") {
     if (!state.connected) {
-      console.warn('[Audio] startRecording called while disconnected');
+      console.warn("[Audio] startRecording called while disconnected");
       return false;
     }
     if (state.recording) {
       // If we're already recording the requested mode, ignore.
       if (state.recordingMode === mode) {
-        console.warn('[Audio] startRecording ignored: already recording mode=', state.recordingMode);
+        console.warn(
+          "[Audio] startRecording ignored: already recording mode=",
+          state.recordingMode,
+        );
         return false;
       }
       // Otherwise treat as a mode switch (e.g., interviewer -> student).
-      console.log('[Audio] Switching recording mode from', state.recordingMode, 'to', mode);
+      console.log(
+        "[Audio] Switching recording mode from",
+        state.recordingMode,
+        "to",
+        mode,
+      );
       stopRecording();
       // Give a brief pause for resources (audio context / tracks) to release cleanly.
-      await new Promise(r => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 120));
     }
     try {
       await connectAudioSocket();
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       state.audioContext = new AudioContext({ sampleRate: 16000 });
-      if (state.audioContext.state === 'suspended') {
-        try { await state.audioContext.resume(); } catch {}
+      if (state.audioContext.state === "suspended") {
+        try {
+          await state.audioContext.resume();
+        } catch {}
       }
       // If system audio capture was requested, attempt sequence: getDisplayMedia -> desktopCapturer -> mic
       if (state._pendingSystemAudio) {
-        console.log('[Audio] Attempting system/output audio capture (strategy: getDisplayMedia -> desktopCapturer -> mic)');
+        console.log(
+          "[Audio] Attempting system/output audio capture (strategy: getDisplayMedia -> desktopCapturer -> mic)",
+        );
         let acquired = false;
         // Attempt 1: Standard picker (often most reliable and grants loopback)
         if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
           try {
-            console.log('[Audio] Trying getDisplayMedia(video+audio) first');
-            const ds = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-            ds.getVideoTracks().forEach(tr => { try { tr.stop(); } catch {}; ds.removeTrack(tr); });
+            console.log("[Audio] Trying getDisplayMedia(video+audio) first");
+            const ds = await navigator.mediaDevices.getDisplayMedia({
+              video: true,
+              audio: true,
+            });
+            ds.getVideoTracks().forEach((tr) => {
+              try {
+                tr.stop();
+              } catch {}
+              ds.removeTrack(tr);
+            });
             state.mediaStream = ds;
             state.systemAudio = true;
-            console.log('[Audio] System audio capture established via getDisplayMedia');
+            console.log(
+              "[Audio] System audio capture established via getDisplayMedia",
+            );
             acquired = true;
           } catch (gdmErr) {
-            const n = gdmErr && (gdmErr.name || gdmErr.message) || 'Unknown';
-            console.warn('[Audio] getDisplayMedia denied/failed:', n);
-            if (n === 'NotAllowedError' || n === 'Permission denied') {
-              showNotification('Screen audio permission denied. Retrying alternate method...', 'warn');
+            const n = (gdmErr && (gdmErr.name || gdmErr.message)) || "Unknown";
+            console.warn("[Audio] getDisplayMedia denied/failed:", n);
+            if (n === "NotAllowedError" || n === "Permission denied") {
+              showNotification(
+                "Screen audio permission denied. Retrying alternate method...",
+                "warn",
+              );
             }
           }
         }
@@ -1533,119 +2039,258 @@
         if (!acquired) {
           try {
             if (window.electronAPI && window.electronAPI.listDesktopSources) {
-              const resp = await window.electronAPI.listDesktopSources(['screen','window']);
-              if (resp && resp.ok && Array.isArray(resp.sources) && resp.sources.length) {
+              const resp = await window.electronAPI.listDesktopSources([
+                "screen",
+                "window",
+              ]);
+              if (
+                resp &&
+                resp.ok &&
+                Array.isArray(resp.sources) &&
+                resp.sources.length
+              ) {
                 const ordered = [
-                  ...resp.sources.filter(s => s.kind === 'screen'),
-                  ...resp.sources.filter(s => s.kind !== 'screen')
+                  ...resp.sources.filter((s) => s.kind === "screen"),
+                  ...resp.sources.filter((s) => s.kind !== "screen"),
                 ];
-                console.log('[Audio] desktopCapturer sources found:', ordered.map(s => s.id+ ':' + s.name));
+                console.log(
+                  "[Audio] desktopCapturer sources found:",
+                  ordered.map((s) => s.id + ":" + s.name),
+                );
                 outerLoop: for (const src of ordered) {
                   const variants = [
-                    { label: 'video+audio', constraints: { audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: src.id } }, video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: src.id } } } },
-                    { label: 'audio-only', constraints: { audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: src.id } } } },
-                    { label: 'video-only', constraints: { video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: src.id } } } }
+                    {
+                      label: "video+audio",
+                      constraints: {
+                        audio: {
+                          mandatory: {
+                            chromeMediaSource: "desktop",
+                            chromeMediaSourceId: src.id,
+                          },
+                        },
+                        video: {
+                          mandatory: {
+                            chromeMediaSource: "desktop",
+                            chromeMediaSourceId: src.id,
+                          },
+                        },
+                      },
+                    },
+                    {
+                      label: "audio-only",
+                      constraints: {
+                        audio: {
+                          mandatory: {
+                            chromeMediaSource: "desktop",
+                            chromeMediaSourceId: src.id,
+                          },
+                        },
+                      },
+                    },
+                    {
+                      label: "video-only",
+                      constraints: {
+                        video: {
+                          mandatory: {
+                            chromeMediaSource: "desktop",
+                            chromeMediaSourceId: src.id,
+                          },
+                        },
+                      },
+                    },
                   ];
                   for (const v of variants) {
                     if (acquired) break outerLoop;
                     try {
-                      console.log(`[Audio] Trying source=${src.id} (${src.name}) variant=${v.label}`);
-                      const stream = await navigator.mediaDevices.getUserMedia(v.constraints);
+                      console.log(
+                        `[Audio] Trying source=${src.id} (${src.name}) variant=${v.label}`,
+                      );
+                      const stream = await navigator.mediaDevices.getUserMedia(
+                        v.constraints,
+                      );
                       // Remove video tracks if present
-                      stream.getVideoTracks().forEach(tr => { try { tr.stop(); } catch {}; stream.removeTrack(tr); });
+                      stream.getVideoTracks().forEach((tr) => {
+                        try {
+                          tr.stop();
+                        } catch {}
+                        stream.removeTrack(tr);
+                      });
                       // Ensure at least one audio track (if variant aimed for audio)
-                      if (v.label !== 'video-only' && !stream.getAudioTracks().length) {
-                        console.warn('[Audio] Variant produced no audio tracks, releasing and continuing');
-                        stream.getTracks().forEach(t => { try { t.stop(); } catch {}; });
+                      if (
+                        v.label !== "video-only" &&
+                        !stream.getAudioTracks().length
+                      ) {
+                        console.warn(
+                          "[Audio] Variant produced no audio tracks, releasing and continuing",
+                        );
+                        stream.getTracks().forEach((t) => {
+                          try {
+                            t.stop();
+                          } catch {}
+                        });
                         continue;
                       }
                       state.mediaStream = stream;
                       state.systemAudio = true;
-                      console.log('[Audio] System audio capture established via desktopCapturer (' + v.label + ')');
+                      console.log(
+                        "[Audio] System audio capture established via desktopCapturer (" +
+                          v.label +
+                          ")",
+                      );
                       acquired = true;
                     } catch (variantErr) {
-                      const n = variantErr?.name || variantErr?.message || String(variantErr);
-                      if (n.includes('NotAllowed') || n.includes('Permission')) {
-                        console.warn('[Audio] Permission denied for source variant', v.label, '->', n);
-                      } else if (n.includes('not capturable') || n.includes('NotReadable')) {
-                        console.warn('[Audio] Source not capturable', src.id, src.name, 'variant', v.label, '->', n);
+                      const n =
+                        variantErr?.name ||
+                        variantErr?.message ||
+                        String(variantErr);
+                      if (
+                        n.includes("NotAllowed") ||
+                        n.includes("Permission")
+                      ) {
+                        console.warn(
+                          "[Audio] Permission denied for source variant",
+                          v.label,
+                          "->",
+                          n,
+                        );
+                      } else if (
+                        n.includes("not capturable") ||
+                        n.includes("NotReadable")
+                      ) {
+                        console.warn(
+                          "[Audio] Source not capturable",
+                          src.id,
+                          src.name,
+                          "variant",
+                          v.label,
+                          "->",
+                          n,
+                        );
                       } else {
-                        console.warn('[Audio] Source variant failed', src.id, v.label, '->', n);
+                        console.warn(
+                          "[Audio] Source variant failed",
+                          src.id,
+                          v.label,
+                          "->",
+                          n,
+                        );
                       }
                     }
                   }
                 }
-                if (!acquired) console.warn('[Audio] All desktopCapturer source variants exhausted without success');
+                if (!acquired)
+                  console.warn(
+                    "[Audio] All desktopCapturer source variants exhausted without success",
+                  );
               } else {
-                console.warn('[Audio] desktopCapturer returned no sources');
+                console.warn("[Audio] desktopCapturer returned no sources");
               }
             } else {
-              console.warn('[Audio] desktopCapturer API not exposed');
+              console.warn("[Audio] desktopCapturer API not exposed");
             }
           } catch (dcErr) {
-            console.warn('[Audio] desktopCapturer overall attempt failed:', dcErr?.name || dcErr?.message || dcErr);
+            console.warn(
+              "[Audio] desktopCapturer overall attempt failed:",
+              dcErr?.name || dcErr?.message || dcErr,
+            );
           }
         }
         // Attempt 3: Microphone fallback
         if (!acquired) {
-          if (statusText) statusText.textContent = 'System audio denied; using mic';
-          showNotification('System audio unavailable – using microphone', 'warn');
+          if (statusText)
+            statusText.textContent = "System audio denied; using mic";
+          showNotification(
+            "System audio unavailable – using microphone",
+            "warn",
+          );
           try {
             state.mediaStream = await navigator.mediaDevices.getUserMedia({
-              audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+              audio: {
+                channelCount: 1,
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              },
             });
             state.systemAudio = false;
-            console.log('[Audio] Microphone fallback active');
+            console.log("[Audio] Microphone fallback active");
           } catch (micErr) {
-            console.error('[Audio] Microphone fallback failed:', micErr);
-            showNotification('Audio capture failed (no system/mic). Check permissions.', 'error');
+            console.error("[Audio] Microphone fallback failed:", micErr);
+            showNotification(
+              "Audio capture failed (no system/mic). Check permissions.",
+              "error",
+            );
             return false;
           }
         }
       } else {
         state.mediaStream = await navigator.mediaDevices.getUserMedia({
-          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+          audio: {
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
         });
         state.systemAudio = false;
       }
       state._pendingSystemAudio = false;
       // Create worklet-based processing pipeline
-      const source = state.audioContext.createMediaStreamSource(state.mediaStream);
+      const source = state.audioContext.createMediaStreamSource(
+        state.mediaStream,
+      );
       let workletLoaded = false;
       try {
-        const moduleUrl = new URL('audio-level-processor.js', window.location.href).href;
+        const moduleUrl = new URL(
+          "audio-level-processor.js",
+          window.location.href,
+        ).href;
         await state.audioContext.audioWorklet.addModule(moduleUrl);
         workletLoaded = true;
       } catch (we) {
-        console.error('[Audio] Failed to load audio worklet module:', we);
+        console.error("[Audio] Failed to load audio worklet module:", we);
       }
       if (!workletLoaded) {
-        showNotification('Audio worklet load failed', 'error');
+        showNotification("Audio worklet load failed", "error");
         stopRecording();
         return false;
       }
-      const workletNode = new AudioWorkletNode(state.audioContext, 'audio-level-processor');
+      const workletNode = new AudioWorkletNode(
+        state.audioContext,
+        "audio-level-processor",
+      );
       // Enable adaptive gain for system audio by default
-      workletNode.port.postMessage({ type: 'gain_control', enable: !!state.systemAudio, targetRMS: 0.025 });
+      workletNode.port.postMessage({
+        type: "gain_control",
+        enable: !!state.systemAudio,
+        targetRMS: 0.025,
+      });
       workletNode.port.onmessage = (ev) => {
         const msg = ev.data || {};
         if (!state.recording || state.recordingMode !== mode) return;
-        if (msg.type === 'level') {
+        if (msg.type === "level") {
           state.lastRMS = msg.rms;
           if (msg.rms !== undefined && statusText) {
-            statusText.textContent = msg.silence ? 'Listening (silence)' : 'Listening (' + msg.rms.toFixed(3) + ')';
+            statusText.textContent = msg.silence
+              ? "Listening (silence)"
+              : "Listening (" + msg.rms.toFixed(3) + ")";
           }
           if (msg.rms !== undefined) {
             if (msg.silence) {
-              console.debug('[Audio] Silence rms=', msg.rms.toFixed(6));
+              console.debug("[Audio] Silence rms=", msg.rms.toFixed(6));
             } else {
-              console.debug('[Audio] Mic rms=', msg.rms.toFixed(4));
+              console.debug("[Audio] Mic rms=", msg.rms.toFixed(4));
             }
           }
-        } else if (msg.type === 'audio' && msg.buffer) {
+        } else if (msg.type === "audio" && msg.buffer) {
           if (state.audioWs && state.audioWs.readyState === WebSocket.OPEN) {
-            try { state.audioWs.send(msg.buffer); } catch (err) {
-              console.warn('[Audio] Failed to send audio chunk:', err?.message || err);
+            try {
+              state.audioWs.send(msg.buffer);
+            } catch (err) {
+              console.warn(
+                "[Audio] Failed to send audio chunk:",
+                err?.message || err,
+              );
             }
           }
         }
@@ -1653,17 +2298,20 @@
       // Avoid feedback: route through gain(0)
       const silentGain = state.audioContext.createGain();
       silentGain.gain.value = 0;
-      source.connect(workletNode).connect(silentGain).connect(state.audioContext.destination);
+      source
+        .connect(workletNode)
+        .connect(silentGain)
+        .connect(state.audioContext.destination);
       state.processor = workletNode;
-      
+
       // Send recording mode to server
-      send({ 
-        type: 'start_audio', 
+      send({
+        type: "start_audio",
         speaker: state.currentSpeaker,
         recording_mode: mode, // 'interviewer' or 'student'
-        system_audio: !!state.systemAudio
+        system_audio: !!state.systemAudio,
       });
-      
+
       state.recording = true;
       state.recordingMode = mode;
       updateRecordingUI();
@@ -1686,37 +2334,56 @@
         if (!state._lastNonSilent) state._lastNonSilent = Date.now();
         const silenceDuration = Date.now() - state._lastNonSilent;
         if (elapsed > 2500 && silenceDuration > 6000) {
-          if (!state._lastSilenceNotice || Date.now() - state._lastSilenceNotice > 12000) {
+          if (
+            !state._lastSilenceNotice ||
+            Date.now() - state._lastSilenceNotice > 12000
+          ) {
             state._lastSilenceNotice = Date.now();
             if (state.systemAudio) {
               // Throttle low-level warning frequency already handled; reduce verbosity when gain enabled
               if (!state._gainEnabled) {
-                console.warn('[Audio] Low system audio levels (rms=' + rms.toExponential(2) + '). Is audio playing?');
+                console.warn(
+                  "[Audio] Low system audio levels (rms=" +
+                    rms.toExponential(2) +
+                    "). Is audio playing?",
+                );
               }
             } else {
-              console.warn('[Audio] No mic input detected (rms=' + rms.toExponential(2) + '). Is the correct microphone selected / permission granted?');
-              showNotification('No mic input detected. Check mic / permissions.', 'warn');
+              console.warn(
+                "[Audio] No mic input detected (rms=" +
+                  rms.toExponential(2) +
+                  "). Is the correct microphone selected / permission granted?",
+              );
+              showNotification(
+                "No mic input detected. Check mic / permissions.",
+                "warn",
+              );
             }
           }
         }
       }, 500);
-      
-      const modeText = mode === 'interviewer' ? 'Interviewer' : 'Student';
-      console.log(`[Audio] Recording started (${modeText}) systemAudio=${!!state.systemAudio}`);
-      
+
+      const modeText = mode === "interviewer" ? "Interviewer" : "Student";
+      console.log(
+        `[Audio] Recording started (${modeText}) systemAudio=${!!state.systemAudio}`,
+      );
+
       // IMPORTANT: Force chat to expand when recording starts so transcripts are visible
       if (chatContainer) {
-        chatContainer.classList.add('expanded');
-        chatContainer.removeAttribute('data-user-collapsed');
-        chatContainer.removeAttribute('data-collapse-time');
-        console.log('[Chat] Force expanded - recording started');
+        chatContainer.classList.add("expanded");
+        chatContainer.removeAttribute("data-user-collapsed");
+        chatContainer.removeAttribute("data-collapse-time");
+        console.log("[Chat] Force expanded - recording started");
       }
-      
-      showNotification(`Recording ${modeText} - ${state.userNames[state.currentSpeaker]}`, 'success');
+
+      showNotification(
+        `Recording ${modeText} - ${state.userNames[state.currentSpeaker]}`,
+        "success",
+      );
       return true;
     } catch (e) {
-      console.error('Toolbar startRecording error:', e);
-      showNotification('Failed to start recording', 'error');
+      console.error("Toolbar startRecording error:", e);
+      showNotification("Failed to start recording", "error");
       stopRecording();
       return false;
     }
@@ -1725,47 +2392,68 @@
   async function startInterviewerRecording() {
     // Prevent rapid double toggles causing restart
     const now = Date.now();
-    if (state._lastInterviewerToggle && (now - state._lastInterviewerToggle) < 600) {
-      console.log('[Audio] Ignoring rapid interviewer toggle');
+    if (
+      state._lastInterviewerToggle &&
+      now - state._lastInterviewerToggle < 600
+    ) {
+      console.log("[Audio] Ignoring rapid interviewer toggle");
       return;
     }
     state._lastInterviewerToggle = now;
 
-    if (state.interviewerRecording || (state.recording && state.recordingMode === 'interviewer')) {
+    if (
+      !ensureCompanyBriefReady(
+        () => startInterviewerRecording(),
+        "starting the interviewer recording",
+      )
+    ) {
+      return;
+    }
+
+    if (
+      state.interviewerRecording ||
+      (state.recording && state.recordingMode === "interviewer")
+    ) {
       stopInterviewerRecording();
       return;
     }
 
     // If student mic currently active, stop it before starting interviewer mode
-    if (state.recording && state.recordingMode === 'student') {
-      console.log('[Audio] Stopping student mic before starting interviewer recording');
+    if (state.recording && state.recordingMode === "student") {
+      console.log(
+        "[Audio] Stopping student mic before starting interviewer recording",
+      );
       stopStudentMic();
-      await new Promise(r => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 120));
     }
 
     // Clear capture mode state when switching to transcribe mode
-    console.log('[Audio] Switching to transcribe mode - clearing capture state');
+    console.log(
+      "[Audio] Switching to transcribe mode - clearing capture state",
+    );
     state.forceCaptureRequest = false;
     state.autoTriggerAI = false;
     state.capturedScreens = [];
     state.captureCount = 0;
-    state.lastQuestionContext = 'transcription';
+    state.lastQuestionContext = "transcription";
 
     // Interviewer / meeting audio should default to system/output capture
     state._pendingSystemAudio = true; // force system audio route
-    console.log('[Audio] Attempting to start interviewer recording (system audio preferred)');
-    const ok = await startRecording('interviewer');
+    console.log(
+      "[Audio] Attempting to start interviewer recording (system audio preferred)",
+    );
+    const ok = await startRecording("interviewer");
     if (ok) {
       state.interviewerRecording = true;
       updateRecordingUI();
     } else {
-      console.warn('[Audio] Interviewer recording failed to start');
-      showNotification('Interviewer recording failed to start', 'error');
+      console.warn("[Audio] Interviewer recording failed to start");
+      showNotification("Interviewer recording failed to start", "error");
     }
   }
-  
+
   function stopInterviewerRecording() {
-    if (state.recording && state.recordingMode === 'interviewer') {
+    if (state.recording && state.recordingMode === "interviewer") {
       stopRecording();
     }
     state.interviewerRecording = false;
@@ -1775,33 +2463,49 @@
   async function startStudentMic() {
     // Simple debounce to avoid rapid double clicks
     const now = Date.now();
-    if (state._lastStudentToggle && (now - state._lastStudentToggle) < 600) {
-      console.log('[Audio] Ignoring rapid student toggle');
+    if (state._lastStudentToggle && now - state._lastStudentToggle < 600) {
+      console.log("[Audio] Ignoring rapid student toggle");
       return;
     }
     state._lastStudentToggle = now;
 
-    if (state.studentMicOn || (state.recording && state.recordingMode === 'student')) {
+    if (
+      !ensureCompanyBriefReady(
+        () => startStudentMic(),
+        "enabling the student microphone",
+      )
+    ) {
+      return;
+    }
+
+    if (
+      state.studentMicOn ||
+      (state.recording && state.recordingMode === "student")
+    ) {
       stopStudentMic();
       return;
     }
 
     // If interviewer recording active, stop it first (mode switch)
-    if (state.recording && state.recordingMode === 'interviewer') {
-      console.log('[Audio] Stopping interviewer recording before starting student mic');
+    if (state.recording && state.recordingMode === "interviewer") {
+      console.log(
+        "[Audio] Stopping interviewer recording before starting student mic",
+      );
       stopInterviewerRecording();
-      await new Promise(r => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 120));
     }
 
     // Clear capture mode state when switching to transcribe mode
-    console.log('[Audio] Switching to transcribe mode (student) - clearing capture state');
+    console.log(
+      "[Audio] Switching to transcribe mode (student) - clearing capture state",
+    );
     state.forceCaptureRequest = false;
     state.autoTriggerAI = false;
     state.capturedScreens = [];
     state.captureCount = 0;
-    state.lastQuestionContext = 'transcription';
+    state.lastQuestionContext = "transcription";
 
-    const ok = await startRecording('student');
+    const ok = await startRecording("student");
     if (ok) {
       state.studentMicOn = true;
       updateRecordingUI();
@@ -1809,17 +2513,19 @@
       // Ensure flag not left true on failure
       state.studentMicOn = false;
       updateRecordingUI();
-      showNotification('Failed to start student mic', 'error');
+      showNotification("Failed to start student mic", "error");
     }
   }
-  
+
   function stopStudentMic() {
-    if (state.recording && state.recordingMode === 'student') {
+    if (state.recording && state.recordingMode === "student") {
       stopRecording();
     } else {
       // If not actually recording ensure internal flag consistency
       if (!state.recording) {
-        console.log('[Audio] stopStudentMic called but no active student recording; clearing flag');
+        console.log(
+          "[Audio] stopStudentMic called but no active student recording; clearing flag",
+        );
       }
     }
     state.studentMicOn = false;
@@ -1828,80 +2534,123 @@
 
   // Start student recording but attempt to capture system/output audio (remote participant)
   async function startStudentSystemRecording() {
+    if (
+      !ensureCompanyBriefReady(
+        () => startStudentSystemRecording(),
+        "capturing student audio",
+      )
+    ) {
+      return;
+    }
     state._pendingSystemAudio = true;
-    await startRecording('student');
+    await startRecording("student");
   }
 
   function stopRecording() {
-    console.log('[Audio] stopRecording invoked; wasMode=', state.recordingMode, 'recording=', state.recording);
-    try { send({ type: 'stop_audio' }); } catch {}
+    console.log(
+      "[Audio] stopRecording invoked; wasMode=",
+      state.recordingMode,
+      "recording=",
+      state.recording,
+    );
+    try {
+      send({ type: "stop_audio" });
+    } catch {}
     const wasMode = state.recordingMode;
     state.recording = false;
     state.recordingMode = null;
-    
+
     // Update individual state flags
-    if (wasMode === 'interviewer') {
+    if (wasMode === "interviewer") {
       state.interviewerRecording = false;
-    } else if (wasMode === 'student') {
+    } else if (wasMode === "student") {
       state.studentMicOn = false;
     }
     // If neither mode flagged but a partial failure occurred, clear both flags defensively
     if (!wasMode && (state.interviewerRecording || state.studentMicOn)) {
-      console.warn('[Audio] Clearing stale recording flags (no wasMode)');
+      console.warn("[Audio] Clearing stale recording flags (no wasMode)");
       state.interviewerRecording = false;
       state.studentMicOn = false;
     }
-    
+
     try {
-      if (state.processor) { 
-        try { state.processor.disconnect(); } catch {}
-        state.processor.onaudioprocess = null; 
-        state.processor = null; 
+      if (state.processor) {
+        try {
+          state.processor.disconnect();
+        } catch {}
+        state.processor.onaudioprocess = null;
+        state.processor = null;
       }
-      if (state.mediaStream) { 
-        try { state.mediaStream.getTracks().forEach(t => t.stop()); } catch {}
-        state.mediaStream = null; 
+      if (state.mediaStream) {
+        try {
+          state.mediaStream.getTracks().forEach((t) => t.stop());
+        } catch {}
+        state.mediaStream = null;
       }
-      if (state.audioContext) { try { state.audioContext.close(); } catch {}; state.audioContext = null; }
-      if (state.audioWs) { try { state.audioWs.close(); } catch {}; state.audioWs = null; }
-      clearInterval(state._silenceMonitor); state._silenceMonitor = null; state._lastNonSilent = null; state.lastRMS = 0;
-    } catch (e) { console.warn('[Audio] Cleanup error', e); }
+      if (state.audioContext) {
+        try {
+          state.audioContext.close();
+        } catch {}
+        state.audioContext = null;
+      }
+      if (state.audioWs) {
+        try {
+          state.audioWs.close();
+        } catch {}
+        state.audioWs = null;
+      }
+      clearInterval(state._silenceMonitor);
+      state._silenceMonitor = null;
+      state._lastNonSilent = null;
+      state.lastRMS = 0;
+    } catch (e) {
+      console.warn("[Audio] Cleanup error", e);
+    }
     updateRecordingUI();
     if (state.connected) {
-      const modeText = wasMode === 'interviewer' ? 'Interviewer' : (wasMode === 'student' ? 'Student Mic' : '');
-      showNotification(`Recording stopped${modeText ? ' - ' + modeText : ''}`, 'success');
+      const modeText =
+        wasMode === "interviewer"
+          ? "Interviewer"
+          : wasMode === "student"
+            ? "Student Mic"
+            : "";
+      showNotification(
+        `Recording stopped${modeText ? " - " + modeText : ""}`,
+        "success",
+      );
     }
   }
 
   // Answer helpers
   function appendAnswer(text) {
     if (!text) return;
-    
+
     // Format as chat if text contains dialogue
-    if (text.includes('?') && text.length > 50) {
+    if (text.includes("?") && text.length > 50) {
       try {
         const chatContainer = formatChatMessage(text);
         if (chatContainer) {
           // Clear the current content and append the formatted chat
-          answerEl.innerHTML = '';
+          answerEl.innerHTML = "";
           answerEl.appendChild(chatContainer);
           queueResize();
           return;
         }
       } catch (e) {
-        console.error('Error formatting chat:', e);
+        console.error("Error formatting chat:", e);
       }
     }
-    
+
     // Ensure answer panel is visible when we have content
-    if (answerEl && !answerEl.classList.contains('expanded')) answerEl.classList.add('expanded');
+    if (answerEl && !answerEl.classList.contains("expanded"))
+      answerEl.classList.add("expanded");
 
     // Default fallback: just append text
     answerEl.textContent += text;
-    
+
     // Auto scroll
     answerEl.scrollTop = answerEl.scrollHeight;
-    
+
     // Auto-resize host window to fit content
     queueResize();
   }
@@ -1909,50 +2658,52 @@
   // Format chat with speaker separation
   function formatChatMessage(text) {
     if (!text) return null;
-    
+
     // Create a container for chat bubbles
-  const container = document.createElement('div');
-  // Use distinct class to avoid clashing with main #chatContainer which controls visibility
-  container.className = 'chat-transcript-preview';
-    
+    const container = document.createElement("div");
+    // Use distinct class to avoid clashing with main #chatContainer which controls visibility
+    container.className = "chat-transcript-preview";
+
     // Get speaker names from parent window or defaults
     try {
       if (window.opener) {
-        state.userNames = window.opener.getUserNames ? window.opener.getUserNames() : state.userNames;
+        state.userNames = window.opener.getUserNames
+          ? window.opener.getUserNames()
+          : state.userNames;
       }
     } catch {}
-    
+
     // Split text into sentences for alternating speakers
     const sentences = text.split(/([.!?]\s+)/g);
     let speaker = state.currentSpeaker;
-    let buffer = '';
-    
+    let buffer = "";
+
     for (let i = 0; i < sentences.length; i++) {
       buffer += sentences[i];
       if (i % 2 === 1 || i === sentences.length - 1) {
         if (buffer.trim()) {
-          const bubble = document.createElement('div');
+          const bubble = document.createElement("div");
           bubble.className = `chat-bubble ${speaker}`;
-          
+
           // Add speaker label
-          const nameLabel = document.createElement('div');
+          const nameLabel = document.createElement("div");
           nameLabel.className = `speaker-label speaker-${speaker}`;
           nameLabel.textContent = state.userNames[speaker] || speaker;
           bubble.appendChild(nameLabel);
-          
+
           // Add message text
           bubble.appendChild(document.createTextNode(buffer.trim()));
           container.appendChild(bubble);
-          
+
           // Switch speaker on question mark or end of statement
-          if (buffer.trim().endsWith('?') || buffer.trim().endsWith('.')) {
-            speaker = speaker === 'user1' ? 'user2' : 'user1';
+          if (buffer.trim().endsWith("?") || buffer.trim().endsWith(".")) {
+            speaker = speaker === "user1" ? "user2" : "user1";
           }
         }
-        buffer = '';
+        buffer = "";
       }
     }
-    
+
     return container;
   }
 
@@ -1963,50 +2714,56 @@
   function queueResizeHeight() {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-  const bar = document.querySelector('.bar');
-  const barRect = bar ? bar.getBoundingClientRect() : { height: 0 };
-      const answerRect = answerEl ? answerEl.getBoundingClientRect() : { height: 0 };
+      const bar = document.querySelector(".bar");
+      const barRect = bar ? bar.getBoundingClientRect() : { height: 0 };
+      const answerRect = answerEl
+        ? answerEl.getBoundingClientRect()
+        : { height: 0 };
       const padding = 24; // top/bottom padding and margins
-      
+
       // Calculate the desired height based on content including chat
       let desired = barRect.height + answerRect.height + padding;
-      
+
       // Add chat container height if expanded
-      if (chatContainer && chatContainer.classList.contains('expanded')) {
+      if (chatContainer && chatContainer.classList.contains("expanded")) {
         const chatRect = chatContainer.getBoundingClientRect();
         desired += chatRect.height;
       }
-      
+
       // If there's not much content, ensure a minimum height
-      if (answerEl.textContent.trim().length < 50 && state.chatHistory.length === 0) {
+      if (
+        answerEl.textContent.trim().length < 50 &&
+        state.chatHistory.length === 0
+      ) {
         desired = Math.max(desired, 140); // Minimum height
       }
-      
+
       // Cap at a reasonable maximum height to prevent excessive growth
       desired = Math.min(desired, 700);
-      
-      if (window.electronAPI && window.electronAPI.resizeToolbar) window.electronAPI.resizeToolbar(Math.ceil(desired));
+
+      if (window.electronAPI && window.electronAPI.resizeToolbar)
+        window.electronAPI.resizeToolbar(Math.ceil(desired));
       // Also trigger width/height smart sizing pass
       queueResize();
     }, 50);
   }
-  
+
   // Notification helper
-  function showNotification(message, type = 'info') {
+  function showNotification(message, type = "info") {
     // Remove any existing notifications
-    const existing = document.querySelectorAll('.notification');
-    existing.forEach(el => el.remove());
-    
+    const existing = document.querySelectorAll(".notification");
+    existing.forEach((el) => el.remove());
+
     // Create new notification
-    const notification = document.createElement('div');
+    const notification = document.createElement("div");
     notification.className = `notification ${type}`;
     notification.textContent = message;
     document.body.appendChild(notification);
-    
+
     // Show and then fade out
-    setTimeout(() => notification.classList.add('show'), 10);
+    setTimeout(() => notification.classList.add("show"), 10);
     setTimeout(() => {
-      notification.classList.remove('show');
+      notification.classList.remove("show");
       setTimeout(() => notification.remove(), 300);
     }, 3000);
   }
@@ -2015,11 +2772,16 @@
   // Helper to ensure backend server is running and websocket connected before actions
   async function ensureServerAndConnect() {
     try {
-      if (state.connected && state.ws && state.ws.readyState === WebSocket.OPEN) return true;
+      if (state.connected && state.ws && state.ws.readyState === WebSocket.OPEN)
+        return true;
       if (window.electronAPI && window.electronAPI.serverStart) {
         const res = await window.electronAPI.serverStart();
         if (!res || !res.ok) {
-          showNotification('Failed to start server' + (res && res.error ? ': ' + res.error : ''), 'error');
+          showNotification(
+            "Failed to start server" +
+              (res && res.error ? ": " + res.error : ""),
+            "error",
+          );
           return false;
         }
       }
@@ -2028,31 +2790,35 @@
       // Wait briefly for connection
       let waited = 0;
       while (!state.connected && waited < 4000) {
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 200));
         waited += 200;
       }
       return state.connected;
     } catch (e) {
-      console.warn('ensureServerAndConnect failed', e);
+      console.warn("ensureServerAndConnect failed", e);
       return false;
     }
   }
 
   if (toggleRecord) {
-    toggleRecord.addEventListener('click', () => {
-      console.log(`Button clicked - state.connected: ${state.connected}, ws state: ${state.ws ? state.ws.readyState : 'null'}`);
+    toggleRecord.addEventListener("click", () => {
+      console.log(
+        `Button clicked - state.connected: ${state.connected}, ws state: ${state.ws ? state.ws.readyState : "null"}`,
+      );
       if (!state.connected) {
-        showNotification('Connecting...', 'info');
-        ensureServerAndConnect().then(ok => {
+        showNotification("Connecting...", "info");
+        ensureServerAndConnect().then((ok) => {
           if (!ok) return;
-          if (state.recording) stopRecording(); else startRecording();
+          if (state.recording) stopRecording();
+          else startRecording();
         });
-        return; 
+        return;
       }
-      if (state.recording) stopRecording(); else startRecording();
+      if (state.recording) stopRecording();
+      else startRecording();
     });
-    toggleRecord.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+    toggleRecord.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         toggleRecord.click();
       }
@@ -2062,7 +2828,8 @@
   async function readFileAsBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve((reader.result || '').toString().split(',')[1] || '');
+      reader.onload = () =>
+        resolve((reader.result || "").toString().split(",")[1] || "");
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
@@ -2071,138 +2838,322 @@
   async function handleFiles(files) {
     if (!files || !files.length) return;
     try {
-      showNotification(`Uploading ${files.length} screenshot(s)...`, 'success');
+      showNotification(`Uploading ${files.length} screenshot(s)...`, "success");
       for (const file of files) {
         const b64 = await readFileAsBase64(file);
         if (b64) {
-          send({ type: 'ocr', image: b64 });
+          send({ type: "ocr", image: b64 });
         }
       }
-      showNotification('OCR processing started for uploads');
+      showNotification("OCR processing started for uploads");
     } catch (e) {
-      showNotification('Failed to process selected images', 'error');
+      showNotification("Failed to process selected images", "error");
     }
   }
 
   if (uploadInput) {
-    uploadInput.addEventListener('change', async (e) => {
+    uploadInput.addEventListener("change", async (e) => {
       const files = uploadInput.files;
       await handleFiles(files);
-      uploadInput.value = '';
+      uploadInput.value = "";
     });
   }
 
-  if (captureBtn) captureBtn.addEventListener('click', async (ev) => {
-    // Ctrl-click = clear all captures. Regular click = capture screen.
-    const isCtrl = ev && (ev.ctrlKey || ev.metaKey);
-    if (isCtrl) {
-      // Clear all captures
-      state.capturedScreens = [];
-      state.captureCount = 0;
-      state.forceCaptureRequest = false;
-      state.autoTriggerAI = false;
-      updateCaptureUI();
-      // Send clear message to server
-      send({ type: 'clear_captures' });
-      showNotification('All captures cleared', 'success');
-      return;
-    }
-
-    try {
-      if (!state.connected) {
-        const ok = await ensureServerAndConnect();
-        if (!ok) return;
-      }
-      captureBtn.disabled = true;
-      captureBtn.dataset.prevTitle = captureBtn.title;
-      captureBtn.title = 'Capturing...';
-      console.log('[OCR] Initiating screen capture (recording=' + !!state.recording + ', systemAudio=' + !!state.systemAudio + ')');
-      const capResult = await window.electronAPI.captureScreen();
-      // Support both legacy (string) and new object format
-      const img = capResult && typeof capResult === 'object' ? capResult.image : capResult;
-      if (img) {
-        if (capResult && typeof capResult === 'object') {
-          console.log(`[Capture] Stored capture ${state.captureCount + 1} size=${capResult.width}x${capResult.height} requested=${capResult.requestedWidth}x${capResult.requestedHeight} scale=${capResult.scaleFactor}`);
-        }
-        if (img.length < 5000) {
-          console.warn('[OCR] Warning: very small capture payload (<5KB) may degrade OCR accuracy');
-        }
-        // Store the capture (store object for potential future re-analysis/UI details)
-        state.capturedScreens.push(capResult);
-        state.captureCount++;
+  if (captureBtn)
+    captureBtn.addEventListener("click", async (ev) => {
+      // Ctrl-click = clear all captures. Regular click = capture screen.
+      const isCtrl = ev && (ev.ctrlKey || ev.metaKey);
+      if (isCtrl) {
+        // Clear all captures
+        state.capturedScreens = [];
+        state.captureCount = 0;
+        state.forceCaptureRequest = false;
+        state.autoTriggerAI = false;
         updateCaptureUI();
-
-        // Send OCR for this capture with metadata
-        console.log('[OCR] Sending OCR payload index=' + (state.captureCount - 1) + ' bytes=' + img.length);
-        send({ 
-          type: 'ocr', 
-          image: img, 
-          captureIndex: state.captureCount - 1,
-          meta: capResult && typeof capResult === 'object' ? {
-            width: capResult.width,
-            height: capResult.height,
-            requestedWidth: capResult.requestedWidth,
-            requestedHeight: capResult.requestedHeight,
-            displayId: capResult.displayId,
-            scaleFactor: capResult.scaleFactor
-          } : undefined
-        });
-        showNotification(`Screen ${state.captureCount} captured and analyzing`, 'success');
-      } else {
-        console.error('[OCR] No image data returned from captureScreen');
+        // Send clear message to server
+        send({ type: "clear_captures" });
+        showNotification("All captures cleared", "success");
+        return;
       }
-    } catch (e) {
-      console.error('[OCR] Capture failed', e);
-      showNotification('Failed to capture screen (see console)', 'error');
-    } finally {
-      captureBtn.disabled = false;
-      if (captureBtn.dataset.prevTitle) captureBtn.title = captureBtn.dataset.prevTitle;
-    }
-  });
+
+      try {
+        if (!state.connected) {
+          const ok = await ensureServerAndConnect();
+          if (!ok) return;
+        }
+        captureBtn.disabled = true;
+        captureBtn.dataset.prevTitle = captureBtn.title;
+        captureBtn.title = "Capturing...";
+        console.log(
+          "[OCR] Initiating screen capture (recording=" +
+            !!state.recording +
+            ", systemAudio=" +
+            !!state.systemAudio +
+            ")",
+        );
+        const capResult = await window.electronAPI.captureScreen();
+        // Support both legacy (string) and new object format
+        const img =
+          capResult && typeof capResult === "object"
+            ? capResult.image
+            : capResult;
+        if (img) {
+          if (capResult && typeof capResult === "object") {
+            console.log(
+              `[Capture] Stored capture ${state.captureCount + 1} size=${capResult.width}x${capResult.height} requested=${capResult.requestedWidth}x${capResult.requestedHeight} scale=${capResult.scaleFactor}`,
+            );
+          }
+          if (img.length < 5000) {
+            console.warn(
+              "[OCR] Warning: very small capture payload (<5KB) may degrade OCR accuracy",
+            );
+          }
+          // Store the capture (store object for potential future re-analysis/UI details)
+          state.capturedScreens.push(capResult);
+          state.captureCount++;
+          updateCaptureUI();
+
+          // Send OCR for this capture with metadata
+          console.log(
+            "[OCR] Sending OCR payload index=" +
+              (state.captureCount - 1) +
+              " bytes=" +
+              img.length,
+          );
+          send({
+            type: "ocr",
+            image: img,
+            captureIndex: state.captureCount - 1,
+            meta:
+              capResult && typeof capResult === "object"
+                ? {
+                    width: capResult.width,
+                    height: capResult.height,
+                    requestedWidth: capResult.requestedWidth,
+                    requestedHeight: capResult.requestedHeight,
+                    displayId: capResult.displayId,
+                    scaleFactor: capResult.scaleFactor,
+                  }
+                : undefined,
+          });
+          showNotification(
+            `Screen ${state.captureCount} captured and analyzing`,
+            "success",
+          );
+        } else {
+          console.error("[OCR] No image data returned from captureScreen");
+        }
+      } catch (e) {
+        console.error("[OCR] Capture failed", e);
+        showNotification("Failed to capture screen (see console)", "error");
+      } finally {
+        captureBtn.disabled = false;
+        if (captureBtn.dataset.prevTitle)
+          captureBtn.title = captureBtn.dataset.prevTitle;
+      }
+    });
 
   // Add keyboard accessibility to capture button
   if (captureBtn) {
-    captureBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+    captureBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         captureBtn.click();
       }
     });
   }
 
-  // Schedule/calendar: bring main window front and navigate to in-app calendar section.
-  // Fallback: open external Google Calendar if navigation API not available.
-  if (scheduleBtn) scheduleBtn.addEventListener('click', async () => {
-    try {
-      if (window.electronAPI && window.electronAPI.navigateSection) {
-        await window.electronAPI.navigateSection('calendar');
-        showNotification('Opening calendar...', 'success');
-        return;
-      }
-      // Fallback external calendar
-      const url = 'https://calendar.google.com/';
-      if (window.electronAPI && window.electronAPI.openExternal) {
-        await window.electronAPI.openExternal(url);
-        showNotification('Opening external calendar...', 'success');
-      }
-    } catch (e) {
-      showNotification('Failed to open calendar', 'error');
+  // -------- Company Brief Capture --------
+  function toggleCompanyBrief(show) {
+    if (!companyBriefOverlay) {
+      log.error("Company brief overlay element not found");
+      return;
     }
-  });
 
-  // Add keyboard accessibility to schedule button
-  if (scheduleBtn) {
-    scheduleBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+    log.debug("Toggling company brief:", show);
+
+    if (show) {
+      // Position panel relative to toolbar so it hugs the bar like the chat panel
+      if (barEl) {
+        const barRect = barEl.getBoundingClientRect();
+        const offsetTop = Math.max(barRect.bottom + 24, 96);
+        companyBriefOverlay.style.top = `${offsetTop}px`;
+        companyBriefOverlay.style.maxHeight = `calc(100vh - ${offsetTop + 48}px)`;
+        companyBriefOverlay.style.height = `calc(100vh - ${offsetTop + 48}px)`;
+      } else {
+        companyBriefOverlay.style.top = "96px";
+        companyBriefOverlay.style.maxHeight = "calc(100vh - 160px)";
+        companyBriefOverlay.style.height = "calc(100vh - 160px)";
+      }
+
+      companyBriefOverlay.classList.add("show");
+      companyBriefOverlay.setAttribute("aria-hidden", "false");
+      resetCompanyBriefStatus();
+      populateCompanyBriefFormFromState();
+
+      if (window.electronAPI && window.electronAPI.resizeToolbarDimensions) {
+        try {
+          const barRect = barEl
+            ? barEl.getBoundingClientRect()
+            : { width: 360 };
+          const targetW = Math.max(Math.round(barRect.width + 80), 540);
+          window.electronAPI.resizeToolbarDimensions(targetW, 700);
+        } catch (resizeErr) {
+          log.warn(
+            "Failed to resize toolbar window for company brief",
+            resizeErr,
+          );
+        }
+      } else {
+        document.body.style.height = "100vh";
+        document.body.style.overflow = "auto";
+      }
+
+      // Focus the overlay and first input once painted
+      requestAnimationFrame(() => {
+        companyBriefOverlay.focus({ preventScroll: true });
+        setTimeout(() => {
+          if (companyNameInput) companyNameInput.focus();
+        }, 30);
+      });
+      log.info("Company brief opened");
+    } else {
+      companyBriefOverlay.classList.remove("show");
+      companyBriefOverlay.setAttribute("aria-hidden", "true");
+      companyBriefOverlay.style.top = "";
+      companyBriefOverlay.style.maxHeight = "";
+      companyBriefOverlay.style.height = "";
+
+      if (window.electronAPI && window.electronAPI.resizeToolbarDimensions) {
+        queueResize();
+      } else {
+        document.body.style.height = "";
+        document.body.style.overflow = "";
+      }
+
+      log.info("Company brief closed");
+    }
+  }
+
+  function resetCompanyBriefStatus(message = "", state = "muted") {
+    if (!companyBriefStatus) return;
+    companyBriefStatus.textContent = message;
+    companyBriefStatus.dataset.state = state;
+  }
+
+  if (companyBriefBtn) {
+    log.debug("Company brief button found, attaching event listeners");
+    companyBriefBtn.addEventListener("click", () => {
+      log.debug("Company brief button clicked");
+      const shouldShow =
+        !companyBriefOverlay || !companyBriefOverlay.classList.contains("show");
+      toggleCompanyBrief(shouldShow);
+    });
+    companyBriefBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        scheduleBtn.click();
+        log.debug("Company brief button activated via keyboard");
+        const shouldShow =
+          !companyBriefOverlay ||
+          !companyBriefOverlay.classList.contains("show");
+        toggleCompanyBrief(shouldShow);
+      }
+    });
+  } else {
+    log.warn("Company brief button not found in DOM");
+  }
+
+  if (companyBriefCancel) {
+    companyBriefCancel.addEventListener("click", () => {
+      toggleCompanyBrief(false);
+      if (companyBriefForm) companyBriefForm.reset();
+      populateCompanyBriefFormFromState();
+      resetCompanyBriefStatus();
+      if (companyBriefSave) companyBriefSave.disabled = false;
+    });
+  }
+
+  if (companyBriefOverlay) {
+    companyBriefOverlay.addEventListener("click", (e) => {
+      if (e.target === companyBriefOverlay) {
+        toggleCompanyBrief(false);
+        if (companyBriefForm) companyBriefForm.reset();
+        populateCompanyBriefFormFromState();
+        resetCompanyBriefStatus();
+        if (companyBriefSave) companyBriefSave.disabled = false;
+      }
+    });
+    companyBriefOverlay.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        toggleCompanyBrief(false);
+        if (companyBriefForm) companyBriefForm.reset();
+        populateCompanyBriefFormFromState();
+        resetCompanyBriefStatus();
+        if (companyBriefSave) companyBriefSave.disabled = false;
       }
     });
   }
 
+  async function submitCompanyBrief(event) {
+    event.preventDefault();
+    if (
+      !state.connected ||
+      !state.ws ||
+      state.ws.readyState !== WebSocket.OPEN
+    ) {
+      showNotification("Server not connected yet", "error");
+      resetCompanyBriefStatus("Connect to the server before saving.", "error");
+      return;
+    }
+    if (!companyNameInput || !companyOverviewInput) return;
+
+    const name = companyNameInput.value.trim();
+    const overview = companyOverviewInput.value.trim();
+    if (!name || !overview) {
+      resetCompanyBriefStatus(
+        "Company name and overview are required.",
+        "error",
+      );
+      return;
+    }
+
+    const payload = {
+      type: "context",
+      context_kind: "company",
+      name,
+      role: (companyRoleInput && companyRoleInput.value.trim()) || undefined,
+      website:
+        (companyWebsiteInput && companyWebsiteInput.value.trim()) || undefined,
+      overview,
+      notes: (companyNotesInput && companyNotesInput.value.trim()) || undefined,
+    };
+
+    try {
+      companyBriefSave && (companyBriefSave.disabled = true);
+      resetCompanyBriefStatus("Sharing context with AI...", "info");
+      state.pendingCompanyBrief = payload;
+      state.companyBriefSilentSync = false;
+      state.companyBriefConfirmationPending = true;
+      state.companyBriefConfirmedForSession = false;
+      state.ws.send(JSON.stringify(payload));
+    } catch (err) {
+      console.error("Failed to send company brief", err);
+      resetCompanyBriefStatus("Failed to share company details.", "error");
+      showNotification("Failed to share company brief", "error");
+      state.pendingCompanyBrief = null;
+      state.companyBriefSilentSync = false;
+      state.companyBriefConfirmationPending = false;
+      if (companyBriefSave) companyBriefSave.disabled = false;
+    }
+  }
+
+  if (companyBriefForm) {
+    companyBriefForm.addEventListener("submit", submitCompanyBrief);
+  }
+
   // -------- Resume Upload Feature (before interview starts) --------
   function arrayBufferToBase64(buffer) {
-    let binary = '';
+    let binary = "";
     const bytes = new Uint8Array(buffer);
     const len = bytes.byteLength;
     for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
@@ -2212,71 +3163,75 @@
   async function ingestResume(file) {
     if (!file) return;
     if (!state.ws || state.ws.readyState !== 1) {
-      showNotification('Server not connected yet', 'error');
+      showNotification("Server not connected yet", "error");
       return;
     }
     try {
-      showNotification('Uploading resume...', 'info');
+      showNotification("Uploading resume...", "info");
       const buf = await file.arrayBuffer();
       const b64 = arrayBufferToBase64(buf);
-  const msg = { type: 'resume', name: file.name, content: b64 };
-  state.ws.send(JSON.stringify(msg));
+      const msg = { type: "resume", name: file.name, content: b64 };
+      state.ws.send(JSON.stringify(msg));
     } catch (e) {
-      console.error('Resume upload failed', e);
-      showNotification('Resume upload failed', 'error');
+      console.error("Resume upload failed", e);
+      showNotification("Resume upload failed", "error");
     }
   }
 
   if (resumeUploadBtn) {
-    resumeUploadBtn.addEventListener('click', () => {
+    resumeUploadBtn.addEventListener("click", () => {
       if (resumeFileInput) resumeFileInput.click();
     });
-    resumeUploadBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); resumeUploadBtn.click(); }
+    resumeUploadBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        resumeUploadBtn.click();
+      }
     });
   }
   if (resumeFileInput) {
-    resumeFileInput.addEventListener('change', (e) => {
+    resumeFileInput.addEventListener("change", (e) => {
       const file = e.target.files && e.target.files[0];
       if (file) {
         // Validate file size
         if (!validateFileSize(file)) {
-          e.target.value = '';
+          e.target.value = "";
           return;
         }
         ingestResume(file);
       }
       // reset so same file can be re-selected
-      e.target.value = '';
+      e.target.value = "";
     });
   }
 
   // Visibility toggles the compact toolbar window visibility/background
-  if (visibilityBtn) visibilityBtn.addEventListener('click', async () => {
-    try {
-      // Toggle compact display of the answer panel only
-      if (answerEl) {
-        const isHidden = !answerEl.classList.contains('expanded');
-        if (isHidden) {
-          answerEl.classList.add('expanded');
-          if (barEl) barEl.classList.add('no-bg');
-          showNotification('Answer panel expanded', 'success');
-        } else {
-          answerEl.classList.remove('expanded');
-          if (barEl) barEl.classList.remove('no-bg');
-          showNotification('Answer panel collapsed', 'success');
+  if (visibilityBtn)
+    visibilityBtn.addEventListener("click", async () => {
+      try {
+        // Toggle compact display of the answer panel only
+        if (answerEl) {
+          const isHidden = !answerEl.classList.contains("expanded");
+          if (isHidden) {
+            answerEl.classList.add("expanded");
+            if (barEl) barEl.classList.add("no-bg");
+            showNotification("Answer panel expanded", "success");
+          } else {
+            answerEl.classList.remove("expanded");
+            if (barEl) barEl.classList.remove("no-bg");
+            showNotification("Answer panel collapsed", "success");
+          }
+          queueResize();
         }
-        queueResize();
+      } catch (e) {
+        showNotification("Failed to toggle visibility", "error");
       }
-    } catch (e) {
-      showNotification('Failed to toggle visibility', 'error');
-    }
-  });
+    });
 
   // Add keyboard accessibility to visibility button
   if (visibilityBtn) {
-    visibilityBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+    visibilityBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         visibilityBtn.click();
       }
@@ -2284,22 +3239,33 @@
   }
 
   // Listen Student toggle
-  if (toggleStudentBtn) toggleStudentBtn.addEventListener('click', () => {
-    console.log('Toggle clicked! Current state:', listenStudent, '-> toggling to:', !listenStudent);
-    listenStudent = !listenStudent;
-    updateListenStudentUI();
-    savePrefs();
-    send({ type: 'listen_student', enabled: listenStudent });
-    showNotification(listenStudent ? 'Student listening enabled' : 'Student listening disabled', 'success');
-  });
-  
+  if (toggleStudentBtn)
+    toggleStudentBtn.addEventListener("click", () => {
+      console.log(
+        "Toggle clicked! Current state:",
+        listenStudent,
+        "-> toggling to:",
+        !listenStudent,
+      );
+      listenStudent = !listenStudent;
+      updateListenStudentUI();
+      savePrefs();
+      send({ type: "listen_student", enabled: listenStudent });
+      showNotification(
+        listenStudent
+          ? "Student listening enabled"
+          : "Student listening disabled",
+        "success",
+      );
+    });
+
   // Debug: Log if button was found
-  console.log('Toggle student button found:', !!toggleStudentBtn);
+  console.log("Toggle student button found:", !!toggleStudentBtn);
 
   // Add keyboard accessibility to toggle student button
   if (toggleStudentBtn) {
-    toggleStudentBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+    toggleStudentBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         toggleStudentBtn.click();
       }
@@ -2309,22 +3275,22 @@
   if (promptInput && sendBtn) {
     // Auto-resize function for textarea
     function autoResizeTextarea() {
-      promptInput.style.height = 'auto';
-      promptInput.style.height = Math.min(promptInput.scrollHeight, 150) + 'px';
+      promptInput.style.height = "auto";
+      promptInput.style.height = Math.min(promptInput.scrollHeight, 150) + "px";
     }
-    
-    promptInput.addEventListener('input', () => {
+
+    promptInput.addEventListener("input", () => {
       sendBtn.disabled = !state.connected || !promptInput.value.trim();
       autoResizeTextarea(); // Auto-resize when content changes
     });
-    
+
     // Also resize on paste events
-    promptInput.addEventListener('paste', () => {
+    promptInput.addEventListener("paste", () => {
       setTimeout(autoResizeTextarea, 0);
     });
-    
-    promptInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey && !sendBtn.disabled) {
+
+    promptInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey && !sendBtn.disabled) {
         e.preventDefault();
         sendBtn.click();
       }
@@ -2332,14 +3298,14 @@
   }
 
   // New inline chat input feature
-  const chatPrompt = document.getElementById('chatPrompt');
-  const chatSend = document.getElementById('chatSend');
+  const chatPrompt = document.getElementById("chatPrompt");
+  const chatSend = document.getElementById("chatSend");
   let pendingFileUpload = null; // Declare here for broader scope
-  
+
   if (chatPrompt && chatSend) {
     const autoSize = () => {
-      chatPrompt.style.height = 'auto';
-      chatPrompt.style.height = Math.min(chatPrompt.scrollHeight, 140) + 'px';
+      chatPrompt.style.height = "auto";
+      chatPrompt.style.height = Math.min(chatPrompt.scrollHeight, 140) + "px";
     };
     const updateDisabled = () => {
       const empty = !chatPrompt.value.trim() && !pendingFileUpload;
@@ -2347,22 +3313,30 @@
       chatSend.disabled = empty || notConnected || chatPrompt._busy;
       if (chatSend.disabled) {
         if (notConnected) {
-          chatSend.title = 'Waiting for server connection...';
+          chatSend.title = "Waiting for server connection...";
         } else if (empty) {
-          chatSend.title = 'Type a message or attach a file';
+          chatSend.title = "Type a message or attach a file";
         } else if (chatPrompt._busy) {
-          chatSend.title = 'Sending...';
+          chatSend.title = "Sending...";
         }
       } else {
-        chatSend.title = 'Send (Enter)';
+        chatSend.title = "Send (Enter)";
       }
     };
-    chatPrompt.addEventListener('input', () => { autoSize(); updateDisabled(); });
+    chatPrompt.addEventListener("input", () => {
+      autoSize();
+      updateDisabled();
+    });
     // Enhanced paste support: accept images (from clipboard) and plain text
-    chatPrompt.addEventListener('paste', async (e) => {
+    chatPrompt.addEventListener("paste", async (e) => {
       try {
-        const items = (e.clipboardData && e.clipboardData.items) ? Array.from(e.clipboardData.items) : [];
-        const hasImage = items.find(it => it.type && it.type.startsWith('image/'));
+        const items =
+          e.clipboardData && e.clipboardData.items
+            ? Array.from(e.clipboardData.items)
+            : [];
+        const hasImage = items.find(
+          (it) => it.type && it.type.startsWith("image/"),
+        );
         if (hasImage) {
           // Prevent default text paste for image content
           e.preventDefault();
@@ -2371,281 +3345,336 @@
           if (!blob) return;
           // Validate size (<=10MB)
           if (blob.size > 10 * 1024 * 1024) {
-            try { showNotification('Pasted image is larger than 10MB', 'error'); } catch {}
+            try {
+              showNotification("Pasted image is larger than 10MB", "error");
+            } catch {}
             return;
           }
           // Read as base64
           const b64 = await new Promise((resolve, reject) => {
             const fr = new FileReader();
-            fr.onload = () => resolve((fr.result || '').toString().split(',')[1] || '');
+            fr.onload = () =>
+              resolve((fr.result || "").toString().split(",")[1] || "");
             fr.onerror = reject;
             fr.readAsDataURL(blob);
           });
           if (!b64) return;
           // Store as pending file upload, infer name/type
-          const inferredType = blob.type || 'image/png';
-          const inferredName = `pasted-${Date.now()}.${inferredType.includes('png') ? 'png' : inferredType.includes('jpeg') ? 'jpg' : 'img'}`;
-          pendingFileUpload = { data: b64, type: inferredType, name: inferredName };
+          const inferredType = blob.type || "image/png";
+          const inferredName = `pasted-${Date.now()}.${inferredType.includes("png") ? "png" : inferredType.includes("jpeg") ? "jpg" : "img"}`;
+          pendingFileUpload = {
+            data: b64,
+            type: inferredType,
+            name: inferredName,
+          };
           // Ensure chat visible
-          const container = document.getElementById('chatContainer');
-          if (container && !container.classList.contains('expanded')) { container.classList.add('expanded'); queueResize(); }
-          if (container) container.setAttribute('data-force-expanded','true');
+          const container = document.getElementById("chatContainer");
+          if (container && !container.classList.contains("expanded")) {
+            container.classList.add("expanded");
+            queueResize();
+          }
+          if (container) container.setAttribute("data-force-expanded", "true");
           // Show indicator
-          try { showFileAttachment(inferredName, inferredType); } catch {}
+          try {
+            showFileAttachment(inferredName, inferredType);
+          } catch {}
           updateDisabled();
-          try { showNotification('Image pasted – ready to send', 'success'); } catch {}
+          try {
+            showNotification("Image pasted – ready to send", "success");
+          } catch {}
         } else {
           // Let text paste happen; then auto-size/update
-          setTimeout(() => { autoSize(); updateDisabled(); }, 0);
+          setTimeout(() => {
+            autoSize();
+            updateDisabled();
+          }, 0);
         }
       } catch (err) {
-        console.warn('Paste handler error:', err);
-        setTimeout(() => { autoSize(); updateDisabled(); }, 0);
+        console.warn("Paste handler error:", err);
+        setTimeout(() => {
+          autoSize();
+          updateDisabled();
+        }, 0);
       }
     });
-    chatPrompt.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+    chatPrompt.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         if (!chatSend.disabled) chatSend.click();
       }
     });
-    chatSend.addEventListener('click', () => {
+    chatSend.addEventListener("click", () => {
       const text = chatPrompt.value.trim();
       const hasFile = pendingFileUpload !== null;
-      
+
       // Require either text or file
       if (!text && !hasFile) return;
-      
+
       // Auto-expand chat if collapsed
-      const container = document.getElementById('chatContainer');
-      if (container && !container.classList.contains('expanded')) {
-        container.classList.add('expanded');
+      const container = document.getElementById("chatContainer");
+      if (container && !container.classList.contains("expanded")) {
+        container.classList.add("expanded");
         queueResize();
       }
       if (container) {
         // Mark that user explicitly wants chat to stay open
-        container.setAttribute('data-force-expanded','true');
+        container.setAttribute("data-force-expanded", "true");
       }
       if (!state.connected) {
-        showNotification('Not connected yet – trying...', 'info');
-        ensureServerAndConnect().then(ok => { if (ok) chatSend.click(); });
+        showNotification("Not connected yet – trying...", "info");
+        ensureServerAndConnect().then((ok) => {
+          if (ok) chatSend.click();
+        });
         return;
       }
-      
+
       // Build user message for display
       let displayMessage = text;
       if (hasFile) {
-        const fileIcon = pendingFileUpload.type === 'application/pdf' ? '📄' : '🖼️';
+        const fileIcon =
+          pendingFileUpload.type === "application/pdf" ? "📄" : "🖼️";
         if (text) {
           displayMessage = `${text}\n${fileIcon} ${pendingFileUpload.name}`;
         } else {
           displayMessage = `${fileIcon} ${pendingFileUpload.name}`;
         }
       }
-      
+
       // Show user message immediately in chat
-      addChatMessage('interviewer', displayMessage);
-      
+      addChatMessage("interviewer", displayMessage);
+
       // Determine context channel - use last context for follow-up questions
       // This allows the AI to maintain conversation history across questions
-      let questionChannel = 'general';
+      let questionChannel = "general";
       if (hasFile) {
-        questionChannel = 'capture';
-      } else if (text && state.lastQuestionContext && state.lastQuestionContext !== 'general') {
+        questionChannel = "capture";
+      } else if (
+        text &&
+        state.lastQuestionContext &&
+        state.lastQuestionContext !== "general"
+      ) {
         // If this looks like a follow-up (short question, recent AI activity), keep the context
         const timeSinceLastAI = Date.now() - (window.lastUserAIRequestTs || 0);
         const isFollowUp = text.length < 200 && timeSinceLastAI < 120000; // Within 2 minutes
         if (isFollowUp) {
           questionChannel = state.lastQuestionContext;
-          log.info(`Follow-up question detected, using context: ${questionChannel}`);
+          log.info(
+            `Follow-up question detected, using context: ${questionChannel}`,
+          );
         }
       }
-      
+
       // Build message (use same path as Ask AI but with direct question)
       const message = {
-        type: 'coach',
+        type: "coach",
         question_channel: questionChannel,
-        question: text || `Analyze this ${hasFile && pendingFileUpload.type === 'application/pdf' ? 'PDF document' : 'image'}`,
+        question:
+          text ||
+          `Analyze this ${hasFile && pendingFileUpload.type === "application/pdf" ? "PDF document" : "image"}`,
         interviewer_recent: state.interviewerSegments.slice(-40),
         student_recent: state.studentSegments.slice(-15),
         analysis_recent: state.analysisSegments.slice(-5),
-        context_strategy: hasFile ? 'file_upload' : 'direct_user_question',
-        strict: !hasFile // enforce concise answer only if no file
+        context_strategy: hasFile ? "file_upload" : "direct_user_question",
+        strict: !hasFile, // enforce concise answer only if no file
       };
-      
+
       // Update last question context for next follow-up
       state.lastQuestionContext = questionChannel;
-      
+
       // Add file upload data if present
       if (hasFile) {
         message.file_upload = pendingFileUpload;
       }
-      
-      try { send(message); } catch (e) { console.warn('Failed to send coach message', e); }
+
+      try {
+        send(message);
+      } catch (e) {
+        console.warn("Failed to send coach message", e);
+      }
       window.lastUserAIRequestTs = Date.now();
-      
+
       // Clear input and file
-      chatPrompt.value = '';
+      chatPrompt.value = "";
       autoSize();
       chatSend.disabled = true;
-      
+
       // Clear file attachment
       if (hasFile) {
         pendingFileUpload = null;
-        chatFileInput.value = '';
-        const indicator = document.querySelector('.file-attachment-indicator');
+        chatFileInput.value = "";
+        const indicator = document.querySelector(".file-attachment-indicator");
         if (indicator) indicator.remove();
       }
-      
-      showNotification(hasFile ? 'Message with attachment sent' : 'Question sent', 'success');
+
+      showNotification(
+        hasFile ? "Message with attachment sent" : "Question sent",
+        "success",
+      );
       // Refocus prompt for rapid follow-up
-      setTimeout(() => { try { chatPrompt.focus(); } catch {} }, 10);
+      setTimeout(() => {
+        try {
+          chatPrompt.focus();
+        } catch {}
+      }, 10);
     });
     updateDisabled();
     // Also observe chat container collapse/expand to adjust disabled state
-    const cont = document.getElementById('chatContainer');
-    if (cont && typeof ResizeObserver !== 'undefined') {
+    const cont = document.getElementById("chatContainer");
+    if (cont && typeof ResizeObserver !== "undefined") {
       const ro = new MutationObserver(() => updateDisabled());
-      ro.observe(cont, { attributes:true, attributeFilter:['class'] });
+      ro.observe(cont, { attributes: true, attributeFilter: ["class"] });
     }
   }
 
   // File upload functionality for chat - store file until user clicks Send
-  const chatUpload = document.getElementById('chatUpload');
-  const chatFileInput = document.getElementById('chatFileInput');
+  const chatUpload = document.getElementById("chatUpload");
+  const chatFileInput = document.getElementById("chatFileInput");
   // pendingFileUpload already declared above with chatPrompt/chatSend scope
-  
+
   if (chatUpload && chatFileInput && chatPrompt) {
-    chatUpload.addEventListener('click', () => {
+    chatUpload.addEventListener("click", () => {
       if (!state.connected) {
-        showNotification('Connect to server first', 'warning');
+        showNotification("Connect to server first", "warning");
         return;
       }
       chatFileInput.click();
     });
 
-    chatFileInput.addEventListener('change', async (e) => {
+    chatFileInput.addEventListener("change", async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
       // Validate file type
-      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'application/pdf'];
+      const validTypes = [
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "image/gif",
+        "image/webp",
+        "application/pdf",
+      ];
       if (!validTypes.includes(file.type)) {
-        showNotification('Please upload an image (PNG, JPG, GIF, WEBP) or PDF file', 'error');
-        chatFileInput.value = '';
+        showNotification(
+          "Please upload an image (PNG, JPG, GIF, WEBP) or PDF file",
+          "error",
+        );
+        chatFileInput.value = "";
         return;
       }
 
       // Validate file size (max 10MB)
       if (file.size > 10 * 1024 * 1024) {
-        showNotification('File size must be less than 10MB', 'error');
-        chatFileInput.value = '';
+        showNotification("File size must be less than 10MB", "error");
+        chatFileInput.value = "";
         return;
       }
 
       try {
-        showNotification(`File attached: ${file.name}`, 'info');
-        
+        showNotification(`File attached: ${file.name}`, "info");
+
         // Read file as base64 and store it
         const reader = new FileReader();
         reader.onload = () => {
-          const base64Data = reader.result.split(',')[1];
-          
+          const base64Data = reader.result.split(",")[1];
+
           // Store the file data for sending later
           pendingFileUpload = {
             data: base64Data,
             type: file.type,
-            name: file.name
+            name: file.name,
           };
 
           // Auto-expand chat if collapsed
-          const container = document.getElementById('chatContainer');
-          if (container && !container.classList.contains('expanded')) {
-            container.classList.add('expanded');
+          const container = document.getElementById("chatContainer");
+          if (container && !container.classList.contains("expanded")) {
+            container.classList.add("expanded");
             queueResize();
           }
           if (container) {
-            container.setAttribute('data-force-expanded','true');
+            container.setAttribute("data-force-expanded", "true");
           }
 
           // Show file attachment indicator below textarea
           showFileAttachment(file.name, file.type);
-          
+
           // Enable send button if it was disabled
           updateDisabled();
         };
 
         reader.onerror = () => {
-          showNotification('Failed to read file', 'error');
-          chatFileInput.value = '';
+          showNotification("Failed to read file", "error");
+          chatFileInput.value = "";
         };
 
         reader.readAsDataURL(file);
       } catch (err) {
-        console.error('File upload error:', err);
-        showNotification('Upload failed', 'error');
-        chatFileInput.value = '';
+        console.error("File upload error:", err);
+        showNotification("Upload failed", "error");
+        chatFileInput.value = "";
       }
     });
 
     // Function to show file attachment indicator
     function showFileAttachment(fileName, fileType) {
-      const inputArea = document.getElementById('chatInputArea');
+      const inputArea = document.getElementById("chatInputArea");
       if (!inputArea) return;
-      
+
       // Remove any existing attachment indicator
-      const existing = inputArea.querySelector('.file-attachment-indicator');
+      const existing = inputArea.querySelector(".file-attachment-indicator");
       if (existing) existing.remove();
-      
+
       // Create new attachment indicator
-      const fileIcon = fileType === 'application/pdf' ? '📄' : '🖼️';
-      const indicator = document.createElement('div');
-      indicator.className = 'file-attachment-indicator';
+      const fileIcon = fileType === "application/pdf" ? "📄" : "🖼️";
+      const indicator = document.createElement("div");
+      indicator.className = "file-attachment-indicator";
       indicator.innerHTML = `
         <span class="file-icon">${fileIcon}</span>
         <span class="file-name">${fileName}</span>
         <button class="remove-file" title="Remove attachment">×</button>
       `;
-      
+
       // Insert before textarea
       inputArea.insertBefore(indicator, inputArea.firstChild);
-      
+
       // Add remove button handler
-      indicator.querySelector('.remove-file').addEventListener('click', () => {
+      indicator.querySelector(".remove-file").addEventListener("click", () => {
         pendingFileUpload = null;
-        chatFileInput.value = '';
+        chatFileInput.value = "";
         indicator.remove();
         updateDisabled();
-        showNotification('File attachment removed', 'info');
+        showNotification("File attachment removed", "info");
       });
     }
 
     // Update upload button state based on connection
     const updateUploadButton = () => {
       chatUpload.disabled = !state.connected;
-      chatUpload.title = state.connected ? 'Upload image or PDF' : 'Connect to server first';
+      chatUpload.title = state.connected
+        ? "Upload image or PDF"
+        : "Connect to server first";
     };
     updateUploadButton();
     // Listen for connection changes
     setInterval(updateUploadButton, 1000);
   }
 
-  if (sendBtn && promptInput) sendBtn.addEventListener('click', () => {
-    const text = promptInput.value.trim();
-    if (!text) return;
-    // Ask for a suggested answer directly via coach endpoint
-  send({ type: 'coach', question: text, question_channel: 'general' });
-    promptInput.value = '';
-    promptInput.style.height = 'auto'; // Reset height when cleared
-    sendBtn.disabled = true;
-    
-    showNotification('Question sent, processing answer...');
-  });
+  if (sendBtn && promptInput)
+    sendBtn.addEventListener("click", () => {
+      const text = promptInput.value.trim();
+      if (!text) return;
+      // Ask for a suggested answer directly via coach endpoint
+      send({ type: "coach", question: text, question_channel: "general" });
+      promptInput.value = "";
+      promptInput.style.height = "auto"; // Reset height when cleared
+      sendBtn.disabled = true;
+
+      showNotification("Question sent, processing answer...");
+    });
 
   // Add keyboard accessibility to send button
   if (sendBtn) {
-    sendBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+    sendBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         sendBtn.click();
       }
@@ -2653,15 +3682,15 @@
   }
 
   if (clearBtn && promptInput && sendBtn) {
-    clearBtn.addEventListener('click', () => {
-      promptInput.value = '';
-      promptInput.style.height = 'auto'; // Reset height when cleared
+    clearBtn.addEventListener("click", () => {
+      promptInput.value = "";
+      promptInput.style.height = "auto"; // Reset height when cleared
       sendBtn.disabled = !state.connected;
     });
 
     // Add keyboard accessibility to clear button
-    clearBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+    clearBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         clearBtn.click();
       }
@@ -2669,7 +3698,7 @@
   }
 
   if (hideBtn) {
-    hideBtn.addEventListener('click', () => {
+    hideBtn.addEventListener("click", () => {
       if (window.electronAPI && window.electronAPI.hideToolbar) {
         window.electronAPI.hideToolbar();
       } else {
@@ -2678,8 +3707,8 @@
     });
 
     // Add keyboard accessibility to hide button
-    hideBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+    hideBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         hideBtn.click();
       }
@@ -2688,19 +3717,19 @@
 
   // Copy answer to clipboard
   if (copyBtn) {
-    copyBtn.addEventListener('click', async () => {
-      const text = answerEl.textContent || '';
-      try { 
-        await navigator.clipboard.writeText(text); 
-        showNotification('Answer copied to clipboard!', 'success');
+    copyBtn.addEventListener("click", async () => {
+      const text = answerEl.textContent || "";
+      try {
+        await navigator.clipboard.writeText(text);
+        showNotification("Answer copied to clipboard!", "success");
       } catch {
-        showNotification('Failed to copy to clipboard', 'error');
+        showNotification("Failed to copy to clipboard", "error");
       }
     });
 
     // Add keyboard accessibility to copy button
-    copyBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+    copyBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         copyBtn.click();
       }
@@ -2710,17 +3739,17 @@
   // Compact toggle: show/hide answer panel and resize
   let compact = false;
   if (compactBtn && answerEl) {
-    compactBtn.addEventListener('click', () => {
+    compactBtn.addEventListener("click", () => {
       compact = !compact;
-      answerEl.style.display = compact ? 'none' : '';
-      compactBtn.textContent = compact ? '🔽' : '🔼'; 
-      compactBtn.title = compact ? 'Show answer' : 'Hide answer';
+      answerEl.style.display = compact ? "none" : "";
+      compactBtn.textContent = compact ? "🔽" : "🔼";
+      compactBtn.title = compact ? "Show answer" : "Hide answer";
       queueResize();
     });
 
     // Add keyboard accessibility to compact button
-    compactBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+    compactBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         compactBtn.click();
       }
@@ -2729,30 +3758,30 @@
 
   // Speaker toggle
   if (speakerUser1 && speakerUser2) {
-    speakerUser1.addEventListener('click', () => {
-      state.currentSpeaker = 'user1';
+    speakerUser1.addEventListener("click", () => {
+      state.currentSpeaker = "user1";
       updateSpeakerUI();
-      send({ type: 'set_speaker', speaker: 'user1' });
-      showNotification('Switched to User 1', 'success');
+      send({ type: "set_speaker", speaker: "user1" });
+      showNotification("Switched to User 1", "success");
     });
-    
-    speakerUser2.addEventListener('click', () => {
-      state.currentSpeaker = 'user2';
+
+    speakerUser2.addEventListener("click", () => {
+      state.currentSpeaker = "user2";
       updateSpeakerUI();
-      send({ type: 'set_speaker', speaker: 'user2' });
-      showNotification('Switched to User 2', 'success');
+      send({ type: "set_speaker", speaker: "user2" });
+      showNotification("Switched to User 2", "success");
     });
 
     // Add keyboard accessibility to speaker buttons
-    speakerUser1.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+    speakerUser1.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         speakerUser1.click();
       }
     });
 
-    speakerUser2.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+    speakerUser2.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         speakerUser2.click();
       }
@@ -2762,39 +3791,39 @@
   // Persist/restore size and preferences
   function restorePrefs() {
     try {
-      const prefs = JSON.parse(localStorage.getItem('toolbar_prefs') || '{}');
+      const prefs = JSON.parse(localStorage.getItem("toolbar_prefs") || "{}");
       if (prefs.compact) {
         compact = true;
-        if (answerEl) answerEl.style.display = 'none';
-        if (compactBtn) compactBtn.textContent = '🔽';
+        if (answerEl) answerEl.style.display = "none";
+        if (compactBtn) compactBtn.textContent = "🔽";
       }
       if (prefs.speaker) {
         state.currentSpeaker = prefs.speaker;
         updateSpeakerUI();
       }
-      if (typeof prefs.listenStudent === 'boolean') {
+      if (typeof prefs.listenStudent === "boolean") {
         listenStudent = prefs.listenStudent;
         updateListenStudentUI();
       }
     } catch {}
   }
-  
+
   function savePrefs() {
     try {
-      const prefs = { 
+      const prefs = {
         compact,
         speaker: state.currentSpeaker,
-        listenStudent
+        listenStudent,
       };
-      localStorage.setItem('toolbar_prefs', JSON.stringify(prefs));
+      localStorage.setItem("toolbar_prefs", JSON.stringify(prefs));
     } catch {}
   }
 
-  window.addEventListener('beforeunload', savePrefs);
+  window.addEventListener("beforeunload", savePrefs);
 
   // Ask AI button: uses last context (interviewer question or screen analysis)
   if (askAiBtn) {
-    askAiBtn.addEventListener('click', async () => {
+    askAiBtn.addEventListener("click", async () => {
       const abortCaptureRouting = () => {
         state.forceCaptureRequest = false;
         state.autoTriggerAI = false;
@@ -2803,19 +3832,25 @@
       if (!aiRateLimit.check()) {
         const resetTime = aiRateLimit.getResetTime();
         const remaining = aiRateLimit.getRemainingRequests();
-        showNotification(`Rate limit reached (${remaining}/${aiRateLimit.maxPerMinute}). Try again in ${resetTime}s.`, 'warn');
-        log.warn('AI request blocked by rate limiter');
+        showNotification(
+          `Rate limit reached (${remaining}/${aiRateLimit.maxPerMinute}). Try again in ${resetTime}s.`,
+          "warn",
+        );
+        log.warn("AI request blocked by rate limiter");
         abortCaptureRouting();
         return;
       }
-      
+
       if (askAiBtn._cooldownUntil && Date.now() < askAiBtn._cooldownUntil) {
-        showNotification(`Please wait ${(Math.ceil((askAiBtn._cooldownUntil - Date.now())/1000))}s (rate limited)`, 'warn');
+        showNotification(
+          `Please wait ${Math.ceil((askAiBtn._cooldownUntil - Date.now()) / 1000)}s (rate limited)`,
+          "warn",
+        );
         abortCaptureRouting();
         return;
       }
       if (askAiBtn._busy) {
-        showNotification('AI is already answering – please wait.', 'info');
+        showNotification("AI is already answering – please wait.", "info");
         abortCaptureRouting();
         return;
       }
@@ -2823,49 +3858,68 @@
         const ok = await ensureServerAndConnect();
         if (!ok) return;
       }
-      
+
       // Clear any stale capture routing if we've shifted contexts
-      if (state.forceCaptureRequest && state.lastQuestionContext !== 'capture') {
-        log.debug('[AI] Clearing stale forceCaptureRequest (context =', state.lastQuestionContext, ')');
+      if (
+        state.forceCaptureRequest &&
+        state.lastQuestionContext !== "capture"
+      ) {
+        log.debug(
+          "[AI] Clearing stale forceCaptureRequest (context =",
+          state.lastQuestionContext,
+          ")",
+        );
         state.forceCaptureRequest = false;
       }
 
       // Start performance tracking
-      const aiTimer = performanceMetrics.startTimer('aiResponse');
-      
+      const aiTimer = performanceMetrics.startTimer("aiResponse");
+
       // Track usage statistics
-      usageStats.increment('aiQueries');
+      usageStats.increment("aiQueries");
       aiRateLimit.add();
-      
+
       // Check if we're in capture mode with valid screens
-  const hasCapturedScreens = Array.isArray(state.capturedScreens) && state.capturedScreens.length > 0;
+      const hasCapturedScreens =
+        Array.isArray(state.capturedScreens) &&
+        state.capturedScreens.length > 0;
       const captureRequest = !!state.forceCaptureRequest && hasCapturedScreens;
-      
+
       // Additional validation: If forceCaptureRequest is set but no screens, clear the flag
       if (state.forceCaptureRequest && !hasCapturedScreens) {
-        console.warn('[AI] forceCaptureRequest set but no captured screens - clearing flag and using transcription');
+        console.warn(
+          "[AI] forceCaptureRequest set but no captured screens - clearing flag and using transcription",
+        );
         state.forceCaptureRequest = false;
         state.autoTriggerAI = false;
       }
-      
-      let finalContext = '';
+
+      let finalContext = "";
       let message;
 
       if (captureRequest) {
         // FOCUS ON CURRENT QUESTION ONLY - extract actual question from OCR text
-        const analysisPreview = state.analysisSegments && state.analysisSegments.length
-          ? state.analysisSegments.slice(-2).join('\n')
-          : '';
-        
+        const analysisPreview =
+          state.analysisSegments && state.analysisSegments.length
+            ? state.analysisSegments.slice(-2).join("\n")
+            : "";
+
         // Try to extract the actual question/problem from the OCR text
         // Look for question patterns or just use the OCR text directly
-        finalContext = analysisPreview || 'Please solve the problem shown in the screen capture.';
-        
-        log.info('[AI] Sending capture coach request. Screens:', state.capturedScreens.length, 'Context length:', finalContext.length);
-        log.debug('[AI] Capture context preview:', finalContext.slice(0,140));
+        finalContext =
+          analysisPreview ||
+          "Please solve the problem shown in the screen capture.";
+
+        log.info(
+          "[AI] Sending capture coach request. Screens:",
+          state.capturedScreens.length,
+          "Context length:",
+          finalContext.length,
+        );
+        log.debug("[AI] Capture context preview:", finalContext.slice(0, 140));
         message = {
-          type: 'coach',
-          question_channel: 'capture',
+          type: "coach",
+          question_channel: "capture",
           question: finalContext,
           // DO NOT include queue context - focus only on current question
           interviewer_recent: [],
@@ -2873,13 +3927,13 @@
           analysis_recent: [],
           capturedScreens: state.capturedScreens,
           captureCount: state.captureCount,
-          context_strategy: 'capture_auto'
+          context_strategy: "capture_auto",
         };
         // Track context for follow-up questions
-        state.lastQuestionContext = 'capture';
+        state.lastQuestionContext = "capture";
       } else {
         const context = buildDynamicAIContext();
-        finalContext = (context || '').trim();
+        finalContext = (context || "").trim();
         if (!finalContext) {
           // FOCUS ON CURRENT QUESTION ONLY - do not include queue context
           // Only use the most recent question if available
@@ -2887,32 +3941,37 @@
 
           // Try to get just the latest question from interviewer
           if (state.interviewerSegments && state.interviewerSegments.length) {
-            const lastSegment = state.interviewerSegments[state.interviewerSegments.length - 1];
+            const lastSegment =
+              state.interviewerSegments[state.interviewerSegments.length - 1];
             if (lastSegment) {
               contextParts.push(lastSegment);
             }
           }
 
-          finalContext = contextParts.join(' ').replace(/\s+/g,' ').trim();
+          finalContext = contextParts.join(" ").replace(/\s+/g, " ").trim();
         }
         if (!finalContext) {
           // Last resort: generic prompt
-          finalContext = 'Provide a concise helpful coaching tip for an ongoing technical interview conversation.';
+          finalContext =
+            "Provide a concise helpful coaching tip for an ongoing technical interview conversation.";
         }
-        log.info('[AI] Sending transcription coach request. Context length=', finalContext.length);
-        log.debug('[AI] Context preview:', finalContext.slice(0,140));
+        log.info(
+          "[AI] Sending transcription coach request. Context length=",
+          finalContext.length,
+        );
+        log.debug("[AI] Context preview:", finalContext.slice(0, 140));
         message = {
-          type: 'coach',
-          question_channel: 'transcription',
+          type: "coach",
+          question_channel: "transcription",
           question: finalContext,
           // DO NOT include queue context - focus only on current question
           interviewer_recent: [],
           student_recent: [],
           analysis_recent: [],
-          context_strategy: 'dynamic_transcript_builder'
+          context_strategy: "dynamic_transcript_builder",
         };
         // Track context for follow-up questions
-        state.lastQuestionContext = 'transcription';
+        state.lastQuestionContext = "transcription";
       }
 
       // Reset capture routing flag once context is prepared
@@ -2921,12 +3980,19 @@
       // Mark busy & disable button
       askAiBtn._busy = true;
       askAiBtn.disabled = true;
-      askAiBtn.classList.add('busy');
+      askAiBtn.classList.add("busy");
       const prevLabel = askAiBtn.textContent;
-      askAiBtn.textContent = captureRequest ? 'Analyzing capture…' : 'Thinking…';
+      askAiBtn.textContent = captureRequest
+        ? "Analyzing capture…"
+        : "Thinking…";
       send(message);
       expandChatContainer();
-      showNotification(captureRequest ? 'AI capture analysis request sent' : 'AI request sent with dynamic context', 'success');
+      showNotification(
+        captureRequest
+          ? "AI capture analysis request sent"
+          : "AI request sent with dynamic context",
+        "success",
+      );
       // Freeze current unified transcript box (fresh one starts after AI response)
       finalizeLiveTranscript();
       window.lastUserAIRequestTs = Date.now();
@@ -2938,7 +4004,7 @@
         if (!askAiBtn._cooldownUntil) {
           askAiBtn.disabled = false;
         }
-        askAiBtn.classList.remove('busy');
+        askAiBtn.classList.remove("busy");
         askAiBtn.textContent = prevLabel;
       };
       // We expect messages via WebSocket, not window, so instead hook WebSocket onmessage
@@ -2948,24 +4014,31 @@
         const original = state.ws.onmessage;
         state.ws.onmessage = (evt) => {
           if (original) {
-            try { original.call(state.ws, evt); } catch (e) { console.error('Original ws handler error', e); }
+            try {
+              original.call(state.ws, evt);
+            } catch (e) {
+              console.error("Original ws handler error", e);
+            }
           }
           try {
             const d = JSON.parse(evt.data);
             // Clear busy when we see completion of coach stream
-            if (d && d.type === 'coach' && d.complete) {
+            if (d && d.type === "coach" && d.complete) {
               clearBusy();
               // Remove our wrapper after completion
               state.ws.onmessage = original;
-            } else if (d && d.type === 'coach' && d.error) {
+            } else if (d && d.type === "coach" && d.error) {
               // Error surfaced within coach stream (e.g., rate_limit)
-              if (d.error === 'rate_limit') {
+              if (d.error === "rate_limit") {
                 const retry = (d.retry_after && d.retry_after * 1000) || 10000;
                 const until = Date.now() + retry;
                 askAiBtn._cooldownUntil = until;
-                askAiBtn.textContent = `Retry in ${Math.ceil(retry/1000)}s`;
+                askAiBtn.textContent = `Retry in ${Math.ceil(retry / 1000)}s`;
                 const cdTimer = setInterval(() => {
-                  if (!askAiBtn._cooldownUntil) { clearInterval(cdTimer); return; }
+                  if (!askAiBtn._cooldownUntil) {
+                    clearInterval(cdTimer);
+                    return;
+                  }
                   const left = askAiBtn._cooldownUntil - Date.now();
                   if (left <= 0) {
                     clearInterval(cdTimer);
@@ -2976,23 +4049,26 @@
                     }
                     return;
                   }
-                  askAiBtn.textContent = `Retry in ${Math.ceil(left/1000)}s`;
+                  askAiBtn.textContent = `Retry in ${Math.ceil(left / 1000)}s`;
                 }, 1000);
-                showNotification(`Rate limited. Try again after ${Math.ceil(retry/1000)}s`, 'warn');
+                showNotification(
+                  `Rate limited. Try again after ${Math.ceil(retry / 1000)}s`,
+                  "warn",
+                );
               } else {
-                showNotification(`AI error: ${d.error || 'unknown'}`, 'error');
+                showNotification(`AI error: ${d.error || "unknown"}`, "error");
               }
               clearBusy();
               state.ws.onmessage = original;
             }
-          } catch(_) {}
+          } catch (_) {}
         };
       }
     });
 
     // Add keyboard accessibility
-    askAiBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+    askAiBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         askAiBtn.click();
       }
@@ -3001,16 +4077,18 @@
 
   // New button event handlers
   if (recordInterviewerBtn) {
-    recordInterviewerBtn.addEventListener('click', () => {
+    recordInterviewerBtn.addEventListener("click", () => {
       if (!state.connected) {
-        ensureServerAndConnect().then(ok => { if (ok) startInterviewerRecording(); });
+        ensureServerAndConnect().then((ok) => {
+          if (ok) startInterviewerRecording();
+        });
         return;
       }
       startInterviewerRecording();
     });
-    
-    recordInterviewerBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+
+    recordInterviewerBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         recordInterviewerBtn.click();
       }
@@ -3020,9 +4098,11 @@
   // Listen for global shortcut from main process to toggle interviewer recording
   try {
     if (window.electron && window.electron.ipcRenderer) {
-      window.electron.ipcRenderer.on('toggle-interviewer-recording', () => {
+      window.electron.ipcRenderer.on("toggle-interviewer-recording", () => {
         if (!state.connected) {
-          ensureServerAndConnect().then(ok => { if (ok) startInterviewerRecording(); });
+          ensureServerAndConnect().then((ok) => {
+            if (ok) startInterviewerRecording();
+          });
         } else {
           startInterviewerRecording();
         }
@@ -3030,10 +4110,12 @@
     } else if (window.require) {
       // Fallback if contextIsolation disabled (unlikely here)
       try {
-        const { ipcRenderer } = window.require('electron');
-        ipcRenderer.on('toggle-interviewer-recording', () => {
+        const { ipcRenderer } = window.require("electron");
+        ipcRenderer.on("toggle-interviewer-recording", () => {
           if (!state.connected) {
-            ensureServerAndConnect().then(ok => { if (ok) startInterviewerRecording(); });
+            ensureServerAndConnect().then((ok) => {
+              if (ok) startInterviewerRecording();
+            });
           } else {
             startInterviewerRecording();
           }
@@ -3041,27 +4123,30 @@
       } catch {}
     }
   } catch (e) {
-    console.warn('Could not wire interviewer toggle shortcut listener:', e);
+    console.warn("Could not wire interviewer toggle shortcut listener:", e);
   }
 
   if (listenStudentBtn) {
-    listenStudentBtn.addEventListener('click', (e) => {
+    listenStudentBtn.addEventListener("click", (e) => {
       if (!state.connected) {
-        ensureServerAndConnect().then(ok => {
+        ensureServerAndConnect().then((ok) => {
           if (!ok) return;
           // Re-dispatch original intent after connection
           listenStudentBtn.click();
         });
         return;
       }
-      
+
       // Shift+Click still allows system audio capture for debugging
       if (e.shiftKey || e.altKey) {
-        if (state.recording && state.recordingMode === 'student') {
+        if (state.recording && state.recordingMode === "student") {
           stopRecording();
         } else {
           if (state.recording) stopRecording(); // Stop any existing recording
-          showNotification('Capturing system audio (select the call window)...', 'success');
+          showNotification(
+            "Capturing system audio (select the call window)...",
+            "success",
+          );
           startStudentSystemRecording();
         }
       } else {
@@ -3069,9 +4154,9 @@
         startStudentMic();
       }
     });
-    
-    listenStudentBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+
+    listenStudentBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         listenStudentBtn.click();
       }
@@ -3079,21 +4164,26 @@
   }
 
   if (captureAnalyzeBtn) {
-    captureAnalyzeBtn.addEventListener('click', async (ev) => {
+    captureAnalyzeBtn.addEventListener("click", async (ev) => {
       if (!state.connected) {
         const ok = await ensureServerAndConnect();
         if (!ok) return;
       }
-      
+
       // Similar to legacy capture but with automatic analysis
       try {
         captureAnalyzeBtn.disabled = true;
-        captureAnalyzeBtn.title = 'Capturing...';
+        captureAnalyzeBtn.title = "Capturing...";
         const capResult = await window.electronAPI.captureScreen();
-        const img = capResult && typeof capResult === 'object' ? capResult.image : capResult;
+        const img =
+          capResult && typeof capResult === "object"
+            ? capResult.image
+            : capResult;
         if (img) {
-          if (capResult && typeof capResult === 'object') {
-            console.log(`[CaptureAnalyze] Stored capture ${state.captureCount + 1} size=${capResult.width}x${capResult.height} requested=${capResult.requestedWidth}x${capResult.requestedHeight} scale=${capResult.scaleFactor}`);
+          if (capResult && typeof capResult === "object") {
+            console.log(
+              `[CaptureAnalyze] Stored capture ${state.captureCount + 1} size=${capResult.width}x${capResult.height} requested=${capResult.requestedWidth}x${capResult.requestedHeight} scale=${capResult.scaleFactor}`,
+            );
           }
           // Store the capture (full result for later reference)
           state.capturedScreens.push(capResult);
@@ -3102,42 +4192,48 @@
           state.forceCaptureRequest = true;
 
           // Send OCR for this capture and mark for auto-analysis
-          send({ 
-            type: 'ocr', 
-            image: img, 
+          send({
+            type: "ocr",
+            image: img,
             captureIndex: state.captureCount - 1,
             autoAnalyze: true, // Flag for automatic analysis
-            meta: capResult && typeof capResult === 'object' ? {
-              width: capResult.width,
-              height: capResult.height,
-              requestedWidth: capResult.requestedWidth,
-              requestedHeight: capResult.requestedHeight,
-              displayId: capResult.displayId,
-              scaleFactor: capResult.scaleFactor
-            } : undefined
+            meta:
+              capResult && typeof capResult === "object"
+                ? {
+                    width: capResult.width,
+                    height: capResult.height,
+                    requestedWidth: capResult.requestedWidth,
+                    requestedHeight: capResult.requestedHeight,
+                    displayId: capResult.displayId,
+                    scaleFactor: capResult.scaleFactor,
+                  }
+                : undefined,
           });
-          showNotification(`Screen captured - AI analysis starting...`, 'success');
-          
+          showNotification(
+            `Screen captured - AI analysis starting...`,
+            "success",
+          );
+
           // DISABLED: Frontend auto-trigger removed to prevent duplicate responses
           // The server already handles auto-answering after capture via AUTO_COACH_ON_CAPTURE
           // Keeping this would cause TWO AI responses (one from server, one from frontend click)
           state.autoTriggerAI = false;
-          
+
           // Frontend auto-trigger disabled - server handles auto-answer
           // If you need manual trigger, use the "Ask AI" button
         }
       } catch (e) {
-        showNotification('Failed to capture screen', 'error');
+        showNotification("Failed to capture screen", "error");
         state.forceCaptureRequest = false;
         state.autoTriggerAI = false;
       } finally {
         captureAnalyzeBtn.disabled = false;
-        captureAnalyzeBtn.title = 'Capture & Analyze';
+        captureAnalyzeBtn.title = "Capture & Analyze";
       }
     });
-    
-    captureAnalyzeBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+
+    captureAnalyzeBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         captureAnalyzeBtn.click();
       }
@@ -3145,19 +4241,24 @@
   }
 
   if (toggleChatBtn) {
-    toggleChatBtn.addEventListener('click', () => {
-      const wasExpanded = chatContainer && chatContainer.classList.contains('expanded');
+    toggleChatBtn.addEventListener("click", () => {
+      const wasExpanded =
+        chatContainer && chatContainer.classList.contains("expanded");
       toggleChat();
-      
+
       // Track when user manually collapses the chat
-      if (wasExpanded && chatContainer && !chatContainer.classList.contains('expanded')) {
-        chatContainer.setAttribute('data-user-collapsed', 'true');
-        chatContainer.setAttribute('data-collapse-time', Date.now().toString());
+      if (
+        wasExpanded &&
+        chatContainer &&
+        !chatContainer.classList.contains("expanded")
+      ) {
+        chatContainer.setAttribute("data-user-collapsed", "true");
+        chatContainer.setAttribute("data-collapse-time", Date.now().toString());
       }
     });
-    
-    toggleChatBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+
+    toggleChatBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         toggleChatBtn.click();
       }
@@ -3165,12 +4266,12 @@
   }
 
   if (clearChatBtn) {
-    clearChatBtn.addEventListener('click', () => {
+    clearChatBtn.addEventListener("click", () => {
       clearChat();
     });
-    
-    clearChatBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+
+    clearChatBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         clearChatBtn.click();
       }
@@ -3178,20 +4279,27 @@
   }
 
   // Export functions for main window communication
-  window.setSpeaker = function(speaker) {
-    if (speaker === 'user1' || speaker === 'user2') {
+  window.setSpeaker = function (speaker) {
+    if (speaker === "user1" || speaker === "user2") {
       state.currentSpeaker = speaker;
       updateSpeakerUI();
     }
   };
 
   // Simple keyboard toggle for gain normalization (Ctrl+Alt+G)
-  window.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'g') {
+  window.addEventListener("keydown", (e) => {
+    if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "g") {
       if (state.processor && state.processor.port) {
         state._gainEnabled = !state._gainEnabled;
-        state.processor.port.postMessage({ type: 'gain_control', enable: state._gainEnabled, targetRMS: 0.025 });
-        showNotification('Adaptive gain ' + (state._gainEnabled ? 'enabled' : 'disabled'), 'info');
+        state.processor.port.postMessage({
+          type: "gain_control",
+          enable: state._gainEnabled,
+          targetRMS: 0.025,
+        });
+        showNotification(
+          "Adaptive gain " + (state._gainEnabled ? "enabled" : "disabled"),
+          "info",
+        );
       }
     }
   });
@@ -3199,32 +4307,44 @@
   // FOCUS ON CURRENT QUESTION ONLY - do not combine queue contexts
   function buildDynamicAIContext() {
     // Get ONLY the most recent/current question, not historical queue data
-    let currentQuestion = '';
-    
+    let currentQuestion = "";
+
     // Try to get the most recent question from interviewer segments
     if (state.interviewerSegments && state.interviewerSegments.length > 0) {
       // Get only the last segment (current question)
-      const lastSegment = state.interviewerSegments[state.interviewerSegments.length - 1];
+      const lastSegment =
+        state.interviewerSegments[state.interviewerSegments.length - 1];
       if (lastSegment && lastSegment.trim()) {
         currentQuestion = lastSegment.trim();
       }
     }
-    
+
     // If no current question from transcript, try the most recent OCR (not multiple)
-    if (!currentQuestion && state.analysisSegments && state.analysisSegments.length > 0) {
+    if (
+      !currentQuestion &&
+      state.analysisSegments &&
+      state.analysisSegments.length > 0
+    ) {
       // Get only the LATEST analysis, not last 3
-      const latestAnalysis = state.analysisSegments[state.analysisSegments.length - 1];
+      const latestAnalysis =
+        state.analysisSegments[state.analysisSegments.length - 1];
       if (latestAnalysis && latestAnalysis.trim()) {
         currentQuestion = latestAnalysis.trim();
       }
     }
-    
+
     // If we still have no content, provide a fallback
     if (!currentQuestion) {
-      currentQuestion = 'No specific question detected. Please provide general interview coaching advice.';
+      currentQuestion =
+        "No specific question detected. Please provide general interview coaching advice.";
     }
-    
-    console.log('[AI Context] Focused on current question only. Length:', currentQuestion.length, 'Preview:', currentQuestion.slice(0, 100));
+
+    console.log(
+      "[AI Context] Focused on current question only. Length:",
+      currentQuestion.length,
+      "Preview:",
+      currentQuestion.slice(0, 100),
+    );
     return currentQuestion;
   }
 
@@ -3232,21 +4352,27 @@
   restorePrefs();
   // Allow F12 inside toolbar to toggle its DevTools (via main IPC)
   try {
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'F12') {
-        if (window.electron && window.electron.ipcRenderer) {
-          window.electron.ipcRenderer.invoke('toolbar-open-devtools').catch(()=>{});
-          e.preventDefault();
-          e.stopPropagation();
+    window.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.key === "F12") {
+          if (window.electron && window.electron.ipcRenderer) {
+            window.electron.ipcRenderer
+              .invoke("toolbar-open-devtools")
+              .catch(() => {});
+            e.preventDefault();
+            e.stopPropagation();
+          }
         }
-      }
-    }, true);
+      },
+      true,
+    );
   } catch (e) {
-    console.warn('F12 devtools binding failed', e);
+    console.warn("F12 devtools binding failed", e);
   }
   // Add small delay to ensure DOM is fully ready and server has time to start
   setTimeout(() => {
-    console.log('Starting toolbar initialization...');
+    console.log("Starting toolbar initialization...");
     setConnected(false); // Ensure we start in disconnected state
     connect();
     updateSpeakerUI();
@@ -3254,109 +4380,149 @@
     updateCaptureUI(); // Initialize capture UI
     // Initial size adjustment
     queueResize();
-    
+
     // Periodic connection health check
     setInterval(() => {
-      if (state.ws && state.ws.readyState === WebSocket.OPEN && !state.connected) {
-        console.log('WebSocket is open but state.connected is false - fixing');
+      if (
+        state.ws &&
+        state.ws.readyState === WebSocket.OPEN &&
+        !state.connected
+      ) {
+        console.log("WebSocket is open but state.connected is false - fixing");
         setConnected(true);
-      } else if ((!state.ws || state.ws.readyState !== WebSocket.OPEN) && state.connected) {
-        console.log('WebSocket is closed but state.connected is true - fixing');
+      } else if (
+        (!state.ws || state.ws.readyState !== WebSocket.OPEN) &&
+        state.connected
+      ) {
+        console.log("WebSocket is closed but state.connected is true - fixing");
         setConnected(false);
       }
     }, 2000);
-    
+
     // Initialize auto-collapse feature
     setupAutoCollapse();
-    
+
     // Initialize chat expansion if there are existing messages
     if (chatContainer && state.chatHistory && state.chatHistory.length > 0) {
-      log.info('Initializing chat with existing messages');
+      log.info("Initializing chat with existing messages");
       smartExpandChat();
     }
     // If chat container exists but no explicit toggleChatBtn (alternate layout), ensure it's expanded
     try {
       if (chatContainer && !toggleChatBtn) {
-        chatContainer.classList.add('expanded');
-        const cp = document.getElementById('chatPrompt'); if (cp) cp.focus();
+        chatContainer.classList.add("expanded");
+        const cp = document.getElementById("chatPrompt");
+        if (cp) cp.focus();
       }
     } catch {}
-    
+
     // ==========================================
     // KEYBOARD SHORTCUTS
     // ==========================================
-    document.addEventListener('keydown', (e) => {
+    document.addEventListener("keydown", (e) => {
       // Ignore if user is typing in input fields
-      const isInputFocused = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
-      
+      const isInputFocused = ["INPUT", "TEXTAREA"].includes(
+        document.activeElement?.tagName,
+      );
+
       // Ctrl+K: Toggle chat
-      if (e.ctrlKey && e.key === 'k') {
+      if (e.ctrlKey && e.key === "k") {
         e.preventDefault();
         if (toggleChatBtn) {
           toggleChatBtn.click();
-          log.info('Keyboard shortcut: Toggle chat (Ctrl+K)');
+          log.info("Keyboard shortcut: Toggle chat (Ctrl+K)");
         }
       }
-      
+
       // Ctrl+Shift+C: Capture screen
-      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+      if (e.ctrlKey && e.shiftKey && e.key === "C") {
         e.preventDefault();
         if (captureAnalyzeBtn && !captureAnalyzeBtn.disabled) {
           captureAnalyzeBtn.click();
-          log.info('Keyboard shortcut: Capture screen (Ctrl+Shift+C)');
+          log.info("Keyboard shortcut: Capture screen (Ctrl+Shift+C)");
         }
       }
-      
+
       // Ctrl+Enter: Send message (if chat input focused)
-      if (e.ctrlKey && e.key === 'Enter' && isInputFocused) {
+      if (e.ctrlKey && e.key === "Enter" && isInputFocused) {
         e.preventDefault();
         if (sendBtn && !sendBtn.disabled) {
           sendBtn.click();
-          log.info('Keyboard shortcut: Send message (Ctrl+Enter)');
+          log.info("Keyboard shortcut: Send message (Ctrl+Enter)");
         }
       }
-      
+
       // Ctrl+L: Clear chat (if not typing)
-      if (e.ctrlKey && e.key === 'l' && !isInputFocused) {
+      if (e.ctrlKey && e.key === "l" && !isInputFocused) {
         e.preventDefault();
         if (clearChatBtn) {
           clearChatBtn.click();
-          log.info('Keyboard shortcut: Clear chat (Ctrl+L)');
+          log.info("Keyboard shortcut: Clear chat (Ctrl+L)");
         }
       }
-      
+
       // Ctrl+R: Toggle recording (if not typing)
-      if (e.ctrlKey && e.key === 'r' && !isInputFocused) {
+      if (e.ctrlKey && e.key === "r" && !isInputFocused) {
         e.preventDefault();
         if (recordInterviewerBtn && !recordInterviewerBtn.disabled) {
           recordInterviewerBtn.click();
-          log.info('Keyboard shortcut: Toggle recording (Ctrl+R)');
+          log.info("Keyboard shortcut: Toggle recording (Ctrl+R)");
         }
       }
-      
-      // Ctrl+A: Ask AI (if not typing in input)
-      if (e.ctrlKey && e.key === 'a' && !isInputFocused) {
+
+      // Ctrl+A: Toggle toolbar visibility (hide/unhide)
+      if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        if (
+          window.electronAPI &&
+          typeof window.electronAPI.toggleToolbar === "function"
+        ) {
+          window.electronAPI.toggleToolbar();
+          log.info("Keyboard shortcut: Toggle toolbar visibility (Ctrl+A)");
+        } else if (
+          window.electronAPI &&
+          typeof window.electronAPI.hideToolbar === "function"
+        ) {
+          window.electronAPI.hideToolbar();
+          log.info("Keyboard shortcut: Hide toolbar (Ctrl+A fallback)");
+        } else {
+          try {
+            window.close();
+          } catch (_) {}
+        }
+      }
+
+      // Ctrl+Shift+A: Ask AI (if not typing in input)
+      if (
+        e.ctrlKey &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "a" &&
+        !isInputFocused
+      ) {
         e.preventDefault();
         if (askAiBtn && !askAiBtn.disabled && !askAiBtn._busy) {
           askAiBtn.click();
-          log.info('Keyboard shortcut: Ask AI (Ctrl+A)');
+          log.info("Keyboard shortcut: Ask AI (Ctrl+Shift+A)");
         }
       }
     });
-    
-    log.info('✅ Keyboard shortcuts enabled:', [
-      'Ctrl+K (toggle chat)',
-      'Ctrl+Shift+C (capture)',
-      'Ctrl+Enter (send)',
-      'Ctrl+L (clear)',
-      'Ctrl+R (record)',
-      'Ctrl+A (ask AI)'
-    ].join(', '));
-    
+
+    log.info(
+      "✅ Keyboard shortcuts enabled:",
+      [
+        "Ctrl+K (toggle chat)",
+        "Ctrl+Shift+C (capture)",
+        "Ctrl+Enter (send)",
+        "Ctrl+L (clear)",
+        "Ctrl+R (record)",
+        "Ctrl+A (toggle toolbar)",
+        "Ctrl+Shift+A (ask AI)",
+      ].join(", "),
+    );
+
     // Start connection health monitoring
     connectionHealth.start();
-    
-    log.info('🚀 Toolbar fully initialized with all enhancements');
-    
+
+    log.info("🚀 Toolbar fully initialized with all enhancements");
   }, 500); // Increased delay to give server more time
 })();
