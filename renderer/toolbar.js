@@ -353,8 +353,25 @@
     return !!state.companyBriefConfirmedForSession;
   }
 
-  function ensureCompanyBriefReady(onReady, reason = "starting the interview") {
+  // If `blocking` is true (default) the function will open the company
+  // brief overlay and prevent the caller from proceeding until the brief
+  // is provided/confirmed. If `blocking` is false the function will only
+  // show a small non-blocking notification and allow the caller to proceed.
+  function ensureCompanyBriefReady(onReady, reason = "starting the interview", blocking = true) {
     if (companyBriefIsReady()) return true;
+
+    // Non-blocking mode: inform the user but allow the action to continue
+    if (!blocking) {
+      try {
+        showNotification(
+          "No company brief configured — proceeding without company context.",
+          "info",
+        );
+      } catch (notifyErr) {
+        log.warn("Failed to show company brief non-blocking notification", notifyErr);
+      }
+      return true;
+    }
 
     if (typeof onReady === "function") {
       state.companyBriefPendingAction = onReady;
@@ -2405,6 +2422,7 @@
       !ensureCompanyBriefReady(
         () => startInterviewerRecording(),
         "starting the interviewer recording",
+        false,
       )
     ) {
       return;
@@ -2473,6 +2491,7 @@
       !ensureCompanyBriefReady(
         () => startStudentMic(),
         "enabling the student microphone",
+        false,
       )
     ) {
       return;
@@ -2538,6 +2557,7 @@
       !ensureCompanyBriefReady(
         () => startStudentSystemRecording(),
         "capturing student audio",
+        false,
       )
     ) {
       return;
