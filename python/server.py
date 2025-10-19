@@ -1,4 +1,5 @@
 import asyncio
+
 import base64
 import io
 import json
@@ -19,6 +20,29 @@ import websockets
 from websockets.server import serve
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 from dotenv import load_dotenv
+
+# If running from a PyInstaller onefile bundle, imports for local modules
+# (for example: ai_providers.py, ocr_utils.py, windows_capture.py) may be
+# packaged under a 'python' data folder. When PyInstaller extracts the bundle
+# at runtime it places files under sys._MEIPASS; add that folder to sys.path
+# so regular imports continue to work.
+try:
+    import sys
+    if getattr(sys, 'frozen', False):
+        _meipass = getattr(sys, '_MEIPASS', None)
+        if _meipass:
+            # If the build script added the whole `python/` dir as data with
+            # --add-data python;python then the bundled modules will be under
+            # os.path.join(_meipass, 'python'). Add both locations defensively.
+            bundled_python = os.path.join(_meipass, 'python')
+            if os.path.isdir(bundled_python):
+                sys.path.insert(0, bundled_python)
+            # also allow imports directly from the extracted root
+            if _meipass not in sys.path:
+                sys.path.insert(0, _meipass)
+except Exception:
+    # Best-effort only; if this fails we'll rely on normal import paths
+    pass
 
 # Ensure logger available before conditional imports that may log
 logging.basicConfig(level=logging.INFO)
@@ -1863,10 +1887,75 @@ def smart_truncate_content(content: str, question: str, max_total_tokens: int = 
     return truncated + "\n\n... [Content truncated to fit model context limits]"
 
 
+def _extract_company_names(text: str) -> List[str]:
+    names: List[str] = []
+    if not text:
+        return names
+    try:
+        # Look for lines like "Company: NAME"
+        for line in text.splitlines():
+            m = re.match(r"\s*Company\s*:\s*(.+)$", line.strip(), flags=re.IGNORECASE)
+            if m:
+                name = m.group(1).strip()
+                if name:
+                    names.append(name)
+        # Fallback: take first non-empty line as a potential name if nothing found
+        if not names:
+            for line in text.splitlines():
+                s = line.strip()
+                if s:
+                    # Avoid generic section headers
+                    if not re.match(r"^(overview|role|website|notes)\s*:", s, flags=re.IGNORECASE):
+                        names.append(s)
+                        break
+    except Exception:
+        pass
+    # Normalize and dedupe (case-insensitive)
+    seen = set()
+    uniq: List[str] = []
+    for n in names:
+        k = n.lower()
+        if k not in seen:
+            seen.add(k)
+            uniq.append(n)
+    return uniq
+
+
+def _is_company_related(question_or_text: str, company_text: str) -> bool:
+    try:
+        if not question_or_text or not company_text:
+            return False
+        # Prefer explicit last question if present
+        q = extract_last_question(question_or_text) or question_or_text
+        ql = q.lower()
+        # If the question mentions the company name, it's relevant
+        names = _extract_company_names(company_text)
+        for name in names:
+            if name and name.strip() and name.lower() in ql:
+                return True
+        # Heuristic phrases indicating company-related questions
+        patterns = [
+            r"\bwhy\s+(do\s+you\s+want\s+to\s+)?work\s+(here|at\s+.+?)\b",
+            r"\bwhat\s+do\s+you\s+know\s+about\s+(us|our\s+company|.+?)\b",
+            r"\bour\s+(mission|values|culture|product|products|stack|technology|tech\s*stack|customers|market|competitors)\b",
+            r"\babout\s+(the\s+)?company\b",
+            r"\bhow\s+(would|do)\s+you\s+improve\s+(our|the)\s+(product|website|app)\b",
+            r"\bcompany\s+(mission|vision|values|culture|product|products)\b",
+        ]
+        for pat in patterns:
+            if re.search(pat, ql):
+                return True
+        return False
+    except Exception:
+        return False
+
+
 def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, context_type: str = "general"):
     base_ctx = chr(10).join(ctx)
     company_context = get_company_brief_text()
-    if company_context:
+    # ENV toggle to forcibly include company brief for all prompts
+    include_company_always = os.getenv("INCLUDE_COMPANY_ALWAYS", "0").lower() in ("1", "true", "yes", "on")
+    if company_context and (include_company_always or _is_company_related(facts or "", company_context)):
         company_block = f"Company Brief:\n{company_context}"
         base_ctx = f"{base_ctx}\n\n{company_block}" if base_ctx else company_block
     
@@ -1875,14 +1964,13 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
     if context_type == "transcription":
         core_guidelines = (
             "\n\nRESPONSE GUIDELINES FOR INTERVIEW TRANSCRIPTION:\n"
-            "Provide CONCISE, TO-THE-POINT answers for interview questions.\n"
+            "Answer EXACTLY the current interviewer question.\n"
             "Keep answers brief and focused (2-4 sentences or 3-5 bullet points maximum).\n"
             "Do not provide lengthy explanations unless explicitly asked.\n"
-            "Get straight to the point - no fluff, no filler, no generic advice.\n"
-            "Prioritize clarity and brevity over completeness.\n"
-            "For technical questions: Give the core concept + 1 example.\n"
-            "For behavioral questions: Give 1 specific example with outcome.\n"
-            "Never output instructions. Only give the direct answer."
+            "No generic advice, no filler.\n"
+            "For technical questions: Give the core concept + 1 concrete example.\n"
+            "For behavioral questions: 1 specific situation + outcome.\n"
+            "Never output instructions or meta text—only the direct answer."
         )
     else:
         core_guidelines = (
@@ -1904,8 +1992,9 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
     additional_context = ""
     if context_type == "transcription":
         # For transcription-related questions, only include speech/audio context
+        # For live interviewer Q&A we avoid injecting long transcript history by default
         if partial_text:
-            additional_context = f"Transcription/conversation context: {partial_text[:1000]}\n\n"
+            additional_context = f""
     elif context_type == "capture":
         # For capture-related questions, only include OCR/screen context
         ocr_text = get_combined_ocr_text()
@@ -1932,9 +2021,9 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
         if context_type == "transcription":
             system = (
                 "You are an expert interview coach helping a candidate answer live interview questions. "
-                "Provide ULTRA-CONCISE, ACTIONABLE talking points. "
+                "Provide ULTRA-CONCISE, ACTIONABLE talking points that directly answer the interviewer. "
                 "MAXIMUM LENGTH: 2-3 sentences OR 3-4 bullet points. NO EXCEPTIONS. "
-                "Focus ONLY on what to say, not explanations or background. "
+                "Focus ONLY on what to say, not explanations or background. Do not restate the question. "
                 "Get straight to the answer - no introductions, no generic advice, no filler. "
                 "For technical questions: State key concept + 1 example in 2 sentences max. "
                 "For behavioral questions: 1 specific situation + outcome in 3 sentences max. "
@@ -2109,8 +2198,8 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
                 # For transcription, keep technical answers brief
                 if context_type == "transcription":
                     user = (
-                        f"The interviewer asked a technical question: \"{question}\"\n\n"
-                        f"Candidate background: {base_ctx}\n\n"
+                        f"Interviewer question: \"{question}\"\n\n"
+                        # Avoid adding resume/background to reduce drift during live Q&A
                         f"{additional_context}"
                         "Provide a BRIEF answer:\n"
                         "- Core concept in 1-2 sentences\n"
@@ -2147,8 +2236,7 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
                 # For transcription context, add brevity instructions
                 if context_type == "transcription":
                     user = (
-                        f"The interviewer just asked: \"{question}\"\n\n"
-                        f"Based on this candidate's resume/background: {base_ctx}\n\n"
+                        f"Interviewer question: \"{question}\"\n\n"
                         f"{additional_context}"
                         f"Provide a BRIEF, CONCISE answer to this question: \"{question}\"\n\n"
                         "Requirements:\n"
@@ -2197,8 +2285,8 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
     # Relevance enforcement (applies to all modes when enabled)
     if os.getenv("ANSWER_RELEVANCE_ENFORCEMENT", "1").lower() in ("1", "true", "yes", "on"):
         system += (
-            "\n\nSTRICT ANSWER ALIGNMENT: You must answer ONLY the user's actual question. "
-            "Silently verify each sentence is directly responsive before output; remove or refine anything that is filler. "
+            "\n\nSTRICT ANSWER ALIGNMENT: Answer ONLY the current interviewer question. "
+            "Before emitting each sentence, verify it directly answers the question; if not, omit it. "
             "Do NOT output internal reasoning or mention these rules."
         )
         user += "\n\n(Answer must be directly responsive. No generic filler.)"
@@ -2314,8 +2402,9 @@ async def stream_llm(
     if history_key not in conversation_history:
         conversation_history[history_key] = []
     
-    isolate = os.getenv("ISOLATE_CURRENT_QUESTION", "0").lower() in ("1", "true", "yes", "on")
-    disable_history = (mode == "coach" and os.getenv("DISABLE_HISTORY_FOR_COACH", "0").lower() in ("1", "true", "yes", "on")) or isolate
+    isolate = os.getenv("ISOLATE_CURRENT_QUESTION", "1").lower() in ("1", "true", "yes", "on")
+    # Default to disabling history for coach mode to avoid drift; can be enabled via env
+    disable_history = (mode == "coach" and os.getenv("DISABLE_HISTORY_FOR_COACH", "1").lower() in ("1", "true", "yes", "on")) or isolate
     if conversation_history[history_key] and not disable_history:
         raw_recent = [m for m in conversation_history[history_key][-MAX_HISTORY_TURNS*2:] if m["role"] != "system"]
 

@@ -35,46 +35,61 @@ class MessageFormatter:
     def format_user_message(content: str, context: str = "") -> List[Dict[str, str]]:
         """Format user input into proper message format with clear system instructions"""
         messages = []
-        
         # Add enhanced system context with clear instructions
-        system_instruction = """You are a helpful AI assistant for technical interview preparation. 
+        system_instruction = """You are a helpful AI assistant for technical interview preparation.
 
-CRITICAL INSTRUCTIONS:
-1. Provide COMPLETE and ACCURATE answers to technical questions
-2. When asked for code, provide CLEAN, RUNNABLE code
-3. ONLY add code comments if explicitly requested by the user
-4. Follow the user's exact requirements - if they say "no comments", provide code WITHOUT comments
-5. If providing explanations, keep them separate from the code
-6. For algorithm problems, structure your response as:
-   - Brief problem understanding (if needed)
-   - Clean working code (without comments unless requested)
-   - Explanation of approach (after the code)
-   - Time and space complexity analysis
-7. Ensure code is syntactically correct and follows best practices
-8. Use proper formatting (code blocks with language tags, headings, bullet points)
-9. Be precise and thorough - don't cut corners or provide incomplete solutions"""
-        
-        if context.strip():
+CRITICAL INTERVIEW BEHAVIOR:
+1. Always answer the interviewer's question directly in the first sentence or two. Give a concise direct answer first, then (if useful) add a short elaboration in 2-4 sentences.
+2. Stay strictly on-topic: do not invent context or introduce unrelated examples unless the question asks for them.
+3. If asked a multi-part question, label answers clearly: "Answer 1:", "Answer 2:", etc., and address each part explicitly.
+4. When giving examples, ensure they directly illustrate the point asked for and are brief.
+5. If the question asks for personal experience, answer with a single specific example and focus on facts (what you did, result, and learning).
+
+CRITICAL TECHNICAL INSTRUCTIONS:
+6. When asked for code, provide CLEAN, RUNNABLE code only. Do not include extra commentary inside the code block unless explicitly requested.
+7. If providing explanations, keep them separate from the code and mark sections clearly.
+8. For algorithm problems, structure responses as: brief understanding, code, then explanation and complexity.
+9. Be precise and thorough — do not provide partial answers. If you cannot answer, state what information is missing.
+
+FORMAT RULE (strict):
+- Start with a one-line direct answer.
+- If more detail is needed, provide a short elaboration paragraph (2-4 sentences).
+- For multi-part questions, explicitly label each part.
+- End with a single-sentence summary.
+
+Use this policy for every response in this interview context. If unsure, ask a brief clarifying question before answering."""
+
+        if context and context.strip():
             system_instruction += f"\n\nAdditional Context: {context.strip()}"
-        
-        messages.append({
-            "role": "system", 
-            "content": system_instruction
-        })
-        
+        messages.append({"role": "system", "content": system_instruction})
         # Add user message
-        messages.append({
-            "role": "user",
-            "content": content.strip()
-        })
-        
+        messages.append({"role": "user", "content": content.strip()})
         return messages
     
     @staticmethod
     def clean_response(text: str) -> str:
         """Clean and format AI response - preserve natural AI output"""
-        # Always preserve AI's natural formatting to avoid corruption
-        # Only strip trailing whitespace to prevent display issues
+        # Preserve AI's natural formatting, but fix common cases where newlines
+        # or tabs are returned as the literal sequences "\\n", "\\t" or
+        # duplicated like "\\\\n". Also convert simple HTML breaks.
+        if not isinstance(text, str):
+            return text
+
+        # Normalize simple HTML line breaks
+        text = text.replace('<br/>', '\n').replace('<br>', '\n')
+
+        # Convert literal escaped sequences (handles "\\n", "\\\\n", etc.)
+        # into actual newlines/tabs so code blocks and indentation render correctly.
+        try:
+            # Replace one-or-more backslashes followed by n/t/r with the actual char
+            text = re.sub(r'\\+n', '\n', text)
+            text = re.sub(r'\\+r', '\r', text)
+            text = re.sub(r'\\+t', '\t', text)
+        except Exception:
+            # If regex fails for any reason, fall back to original text
+            pass
+
+        # Only strip trailing whitespace/newlines — preserve internal formatting
         return text.rstrip()
     
     @staticmethod
@@ -564,7 +579,8 @@ class AIManager:
         config = AIConfig(
             model=os.getenv("DEFAULT_LLM", "openai/gpt-4o-mini"),
             base_url="https://openrouter.ai/api/v1",
-            temperature=float(os.getenv("AI_TEMPERATURE", "0.7")),  # Increased for better responses
+            # Default to a low temperature for precise, on-question answers; can be overridden via env
+            temperature=float(os.getenv("AI_TEMPERATURE", "0.2")),
             max_new_tokens=max_tokens_val,
             allow_auto_continue=os.getenv("AI_AUTO_CONTINUE", "1").lower() not in ("0", "false", "no", "off")
         )

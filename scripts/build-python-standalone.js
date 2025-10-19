@@ -73,8 +73,7 @@ async function buildExecutable() {
     '--specpath', rootDir,
     '--clean',
     '--noconfirm',
-    // Add data files if needed
-    '--add-data', `${pythonDir};python`,
+    '--paths', pythonDir,
     serverPath
   ];
   
