@@ -43,7 +43,11 @@ async function checkVenv() {
     
   if (!fs.existsSync(venvPython)) {
     log('Virtual environment not found. Creating...');
-    await runCommand('py', ['-3', '-m', 'venv', '.venv']);
+    const sysPy = await resolveSystemPython();
+    if (!sysPy) {
+      throw new Error('No system Python found. Please install Python 3.x.');
+    }
+    await runCommand(sysPy.cmd, [...sysPy.args, '-m', 'venv', '.venv']);
     log('Virtual environment created.');
   } else {
     log('Virtual environment found.');
@@ -77,13 +81,45 @@ async function verifyBuild() {
     throw new Error('No extraResources configuration found');
   }
   
-  const venvSitePackages = path.join(venvDir, 'Lib', 'site-packages');
+  const venvSitePackages = process.platform === 'win32'
+    ? path.join(venvDir, 'Lib', 'site-packages')
+    : path.join(venvDir, 'lib', 'python3.11', 'site-packages'); // Adjust version if needed
   if (!fs.existsSync(venvSitePackages)) {
     throw new Error(`Site-packages not found at: ${venvSitePackages}`);
   }
   
   log('Build configuration verified.');
   log(`Site-packages location: ${venvSitePackages}`);
+}
+
+function findSystemPythonCandidate() {
+  // Prefer Windows launcher 'py -3' if available; else 'python', else 'python3'
+  const candidates = process.platform === 'win32' ? ['py', 'python'] : ['python3', 'python'];
+  return candidates;
+}
+
+function trySpawnCheck(cmd, args) {
+  return new Promise((resolve) => {
+    try {
+      const p = spawn(cmd, args, { stdio: 'ignore', shell: false });
+      p.on('error', () => resolve(false));
+      p.on('exit', (code) => resolve(code === 0));
+    } catch { resolve(false); }
+  });
+}
+
+async function resolveSystemPython() {
+  const candidates = findSystemPythonCandidate();
+  for (const c of candidates) {
+    if (c === 'py') {
+      const ok = await trySpawnCheck('py', ['-3', '-V']);
+      if (ok) return { cmd: 'py', args: ['-3'] };
+    } else {
+      const ok = await trySpawnCheck(c, ['-V']);
+      if (ok) return { cmd: c, args: [] };
+    }
+  }
+  return null;
 }
 
 async function main() {
