@@ -81,11 +81,32 @@ async function verifyBuild() {
     throw new Error('No extraResources configuration found');
   }
   
-  const venvSitePackages = process.platform === 'win32'
-    ? path.join(venvDir, 'Lib', 'site-packages')
-    : path.join(venvDir, 'lib', 'python3.11', 'site-packages'); // Adjust version if needed
-  if (!fs.existsSync(venvSitePackages)) {
-    throw new Error(`Site-packages not found at: ${venvSitePackages}`);
+  // Dynamically find site-packages path
+  const libDir = path.join(venvDir, process.platform === 'win32' ? 'Lib' : 'lib');
+  let venvSitePackages = null;
+  if (fs.existsSync(libDir)) {
+    if (process.platform === 'win32') {
+      // On Windows, site-packages is directly under Lib
+      const candidate = path.join(libDir, 'site-packages');
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+        venvSitePackages = candidate;
+      }
+    } else {
+      // On Linux/Mac, site-packages is under lib/python*/site-packages
+      const entries = fs.readdirSync(libDir);
+      for (const entry of entries) {
+        if (entry.startsWith('python')) {
+          const candidate = path.join(libDir, entry, 'site-packages');
+          if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+            venvSitePackages = candidate;
+            break;
+          }
+        }
+      }
+    }
+  }
+  if (!venvSitePackages) {
+    throw new Error(`Site-packages not found in ${libDir}`);
   }
   
   log('Build configuration verified.');
