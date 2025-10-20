@@ -109,8 +109,16 @@ async function verifyBuild() {
     throw new Error(`Site-packages not found in ${libDir}`);
   }
   
-  log('Build configuration verified.');
-  log(`Site-packages location: ${venvSitePackages}`);
+  // Update package.json extraResources with correct site-packages path
+  if (packageJson.build && packageJson.build.extraResources) {
+    // Update the site-packages path
+    const sitePackagesResource = packageJson.build.extraResources.find(res => res.to === 'python/site-packages');
+    if (sitePackagesResource) {
+      sitePackagesResource.from = venvSitePackages + '/';
+    }
+    fs.writeFileSync(path.join(rootDir, 'package.json'), JSON.stringify(packageJson, null, 2));
+    log('Updated package.json extraResources with correct site-packages path.');
+  }
 }
 
 function findSystemPythonCandidate() {
