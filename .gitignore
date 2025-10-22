@@ -52,3 +52,9 @@ release/
 /__pycache__/
 python/__pycache__/
 **/*.pyc
+
+# Build artifacts
+public/downloads/*.exe
+public/downloads/*.dmg
+public/downloads/*.pkg
+public/downloads/*.zip
