@@ -58,3 +58,4 @@ public/downloads/*.exe
 public/downloads/*.dmg
 public/downloads/*.pkg
 public/downloads/*.zip
+.vercel

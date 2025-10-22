@@ -111,17 +111,9 @@ async function verifyBuild() {
   
   // Update package.json extraResources with correct site-packages path
   if (packageJson.build && packageJson.build.extraResources) {
-    // Update the site-packages path or add if not present
-    let sitePackagesResource = packageJson.build.extraResources.find(res => res.to === 'python/site-packages');
-    if (!sitePackagesResource) {
-      sitePackagesResource = {
-        "from": venvSitePackages + '/',
-        "to": "python/site-packages",
-        "filter": ["**/*"]
-      };
-      packageJson.build.extraResources.push(sitePackagesResource);
-      log('Added site-packages entry to extraResources.');
-    } else {
+    // Update the site-packages path
+    const sitePackagesResource = packageJson.build.extraResources.find(res => res.to === 'python/site-packages');
+    if (sitePackagesResource) {
       sitePackagesResource.from = venvSitePackages + '/';
     }
     fs.writeFileSync(path.join(rootDir, 'package.json'), JSON.stringify(packageJson, null, 2));
