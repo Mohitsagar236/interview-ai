@@ -1,0 +1,25 @@
+/* Screenshots */
+.screenshot-img {
+    width: 100%;
+    height: auto;
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+/* Documentation styles */
+.screenshot {
+    max-width: 100%;
+    margin: 2rem 0;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.screenshot img {
+    width: 100%;
+    height: auto;
+    display: block;
+}

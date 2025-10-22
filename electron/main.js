@@ -848,11 +848,9 @@ function createMainWindow() {
   // Load the new Profile UI as the main frontend
   mainWindow.loadFile(path.join(__dirname, '../renderer/profile.html'));
 
-  // Show window when ready to prevent flash
+  // Don't automatically show window
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    
-    // Optional: Open DevTools in development
+    // Window will be shown only when explicitly requested
     if (process.env.NODE_ENV === 'development') {
       mainWindow.webContents.openDevTools();
     }

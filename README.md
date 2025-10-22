@@ -1,6 +1,6 @@
 # Interview AI Assistant
 
-Privacy-first interview coach with real-time local Whisper (<500ms target), multi-LLM streaming (OpenAI, Anthropic, Groq), resume embeddings, OCR for coding problems, and stealth overlay.
+Privacy-first interview coach with real-time streaming transcription via Deepgram, multi-LLM streaming (OpenAI, Anthropic, Groq), resume embeddings, OCR for coding problems, and stealth overlay.
 
 ## 🚀 Quick Start for Desktop App
 
@@ -53,7 +53,9 @@ Disable quickly by setting `ENABLE_IMAGE_GEN=0` or removing `OPENAI_API_KEY`.
 - Node.js 18+
 - Python 3.10+
 - VC++ Build Tools (for some deps) and FFmpeg if needed by your audio stack
-- Optional GPU: install appropriate onnxruntime-gpu and set WHISPER_COMPUTE=float16
+- Optional GPU: install appropriate onnxruntime-gpu if you run local models.
+  
+Note: real-time streaming transcription is configured to use Deepgram by default. Set `DEEPGRAM_API_KEY` in your environment or `.env` to enable Deepgram streaming.
 
 ## Setup
 ```
@@ -117,13 +119,13 @@ If the server is not yet connected when you click the button, you'll get a warni
 Privacy: The resume stays local—it's embedded in-memory only and cleared when the application is closed.
 
 ## Notes
-- Audio pipeline sends 16kHz PCM16 chunks for lowest latency. Whisper transcribes the last ~1.5s with VAD.
+- Audio pipeline sends 16kHz PCM16 chunks for lowest latency. Real-time streaming transcription is handled via Deepgram (requires `DEEPGRAM_API_KEY`) or other configured provider.
 - All data is in-memory and cleared on quit. Add persistence if desired.
 - For production packaging use: `npm run build`.
 
 ## Troubleshooting
 - If Tesseract is missing on Windows, install it and ensure it's in PATH or set `pytesseract.pytesseract.tesseract_cmd`.
-- If Whisper is slow, try `WHISPER_MODEL=base.en` or use GPU (`WHISPER_COMPUTE=float16`).
+- If streaming transcription is unreliable, check that `DEEPGRAM_API_KEY` is set, verify network access, and confirm your Deepgram account/plan supports real-time streaming.
 - For Groq models, install `groq` SDK and set `GROQ_API_KEY`.
 
 ### Windows: Tesseract OCR

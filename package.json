@@ -37,7 +37,7 @@
     ],
     "extraResources": [
       {
-        "from": ".venv/Lib/site-packages/",
+        "from": "C:\\Users\\cp813\\Desktop\\interview-ai\\.venv\\Lib\\site-packages/",
         "to": "python/site-packages",
         "filter": [
           "**/*"
@@ -61,6 +61,13 @@
       ],
       "publisherName": "Your Company",
       "requestedExecutionLevel": "asInvoker"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity"
     }
   },
   "dependencies": {

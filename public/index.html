@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interview AI - Premium Interview Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="animations.css">
+    <link rel="stylesheet" href="modern-styles.css">
+    <link rel="stylesheet" href="professional.css">
+    <link rel="stylesheet" href="pricing.css">
+    <!-- Google font included once and Font Awesome via CDN -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <meta name="theme-color" content="#4f46e5">
+</head>
+<body>
+    <div class="scroll-progress"></div>
+    
+    <header>
+        <nav>
+            <div class="logo">
+                <img src="images/logo.svg" alt="Interview AI" class="logo-img">
+                <span class="logo-text">Interview AI</span>
+            </div>
+            <div class="nav-links">
+                <a href="#features" class="nav-link">Premium Features</a>
+                <a href="#pricing" class="nav-link">Pricing</a>
+                <a href="#download" class="nav-link">Download</a>
+                <a href="#guide" class="nav-link">User Guide</a>
+                <button class="theme-toggle" aria-label="Toggle theme">
+                    <i class="fas fa-moon"></i>
+                    <i class="fas fa-sun"></i>
+                </button>
+            </div>
+            <button class="mobile-menu-button" aria-label="Toggle menu">
+                <span class="hamburger-line"></span>
+                <span class="hamburger-line"></span>
+                <span class="hamburger-line"></span>
+            </button>
+        </nav>
+        
+        <!-- Mobile Menu Overlay -->
+        <div class="mobile-menu-overlay">
+            <div class="mobile-menu-content">
+                <div class="mobile-menu-header">
+                    <div class="logo">
+                        <img src="images/logo.svg" alt="Interview AI" class="logo-img">
+                        <span class="logo-text">Interview AI</span>
+                    </div>
+                    <button class="mobile-menu-close" aria-label="Close menu">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <nav class="mobile-nav">
+                    <a href="#features" class="mobile-nav-link">Premium Features</a>
+                    <a href="#pricing" class="mobile-nav-link">Pricing</a>
+                    <a href="#download" class="mobile-nav-link">Download</a>
+                    <a href="#guide" class="mobile-nav-link">User Guide</a>
+                    <div class="mobile-nav-divider"></div>
+                    <div class="mobile-theme-toggle">
+                        <span>Theme</span>
+                        <button class="theme-toggle-mobile" aria-label="Toggle theme">
+                            <i class="fas fa-moon"></i>
+                            <i class="fas fa-sun"></i>
+                        </button>
+                    </div>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="download-content">
+            <h1 class="hero-title">Turn interviews into confident hiring decisions</h1>
+            <p class="hero-sub">Automated transcripts, bias-reducing AI scoring, and actionable insights — hire faster and fairer at scale.</p>
+            <div class="hero-cta">
+                <a href="#pricing" class="cta btn btn-primary">Start Free Trial</a>
+                <a href="#demo" class="cta btn btn-secondary ml-sm">See Demo</a>
+            </div>
+            <div class="hero-badges">
+                <span class="badge"><i class="fas fa-shield-alt"></i> Enterprise-grade security</span>
+                <span class="badge"><i class="fas fa-check-circle"></i> ISO 27001</span>
+                <span class="badge"><i class="fas fa-users"></i> Trusted by 500+ teams</span>
+            </div>
+            </div>
+        </section>
+        <!-- Hero tweaks moved to modern-styles.css -->
+
+        <section id="features" class="features">
+            <div class="download-content">
+            <div class="section-title">
+                <h2>Premium Features</h2>
+                <p>Unlock the full potential of your interview process with our advanced AI technology</p>
+            </div>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-microphone-alt"></i>
+                    </div>
+                    <h3>Advanced Speech Recognition</h3>
+                    <p>Industry-leading transcription with 99.9% accuracy in 30+ languages</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-brain"></i>
+                    </div>
+                    <h3>AI-Powered Analysis</h3>
+                    <p>Real-time sentiment analysis, personality insights, and response evaluation</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h3>Advanced Analytics</h3>
+                    <p>Comprehensive reports, benchmarking, and predictive hiring insights</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <h3>Enterprise Security</h3>
+                    <p>End-to-end encryption, SOC 2 compliance, and custom data retention</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-plug"></i>
+                    </div>
+                    <h3>API Integration</h3>
+                    <p>Seamless integration with your existing HR and ATS systems</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-users-cog"></i>
+                    </div>
+                    <h3>Team Collaboration</h3>
+                    <p>Multi-user support, role-based access, and shared insights</p>
+                </div>
+            </div>
+            </div>
+        </section>
+
+        <section id="pricing" class="pricing">
+            <div class="download-content">
+            <div class="section-title">
+                <h2>Choose Your Plan</h2>
+                <p>Flexible pricing options designed to meet your needs</p>
+                <div class="pricing-toggle">
+                    <span class="active" data-period="monthly">Monthly</span>
+                    <div class="switch"></div>
+                    <span data-period="yearly">Yearly (Save 20%)</span>
+                </div>
+            </div>
+            <div class="pricing-grid">
+                <div class="pricing-card">
+                    <div class="save-badge">Save $118/year</div>
+                    <div class="card-header">
+                        <h3>Starter</h3>
+                        <div class="price" data-monthly="49" data-yearly="39">
+                            <span class="currency">$</span>
+                            <span class="amount">49</span>
+                            <span class="period">/month</span>
+                        </div>
+                        <p>Perfect for small teams and individual recruiters getting started with AI interviews</p>
+                    </div>
+                    <ul class="features-list">
+                        <li>20 interviews/month</li>
+                        <li>Basic AI analysis</li>
+                        <li>5 languages</li>
+                        <li>Email support</li>
+                        <li>Basic reports</li>
+                        <li>CSV exports</li>
+                        <li>5 templates</li>
+                        <li>1 user</li>
+                    </ul>
+                    <div class="card-footer">
+                        <a href="#download" class="cta btn btn-primary">Start Free Trial</a>
+                        <span class="guarantee">No credit card needed</span>
+                    </div>
+                </div>
+                <div class="pricing-card popular">
+                    <div class="save-badge">Save $358/year</div>
+                    <div class="card-header">
+                        <h3>Professional</h3>
+                        <div class="price" data-monthly="149" data-yearly="119">
+                            <span class="currency">$</span>
+                            <span class="amount">149</span>
+                            <span class="period">/month</span>
+                        </div>
+                        <p>For growing teams needing advanced features</p>
+                    </div>
+                    <ul class="features-list">
+                        <li>Unlimited interviews</li>
+                        <li>Advanced AI insights</li>
+                        <li>Custom evaluations</li>
+                        <li>Priority support</li>
+                        <li>Full analytics</li>
+                        <li>Team of 10</li>
+                        <li>White labeling</li>
+                        <li>250k API calls</li>
+                        <li>ATS integration</li>
+                    </ul>
+                    <div class="card-footer">
+                        <a href="#download" class="cta btn btn-primary">Start Free Trial</a>
+                        <span class="guarantee">30-day guarantee</span>
+                    </div>
+                </div>
+                <div class="pricing-card">
+                    <div class="card-header">
+                        <h3>Enterprise</h3>
+                        <div class="price">
+                            <span class="amount">Custom</span>
+                            <span class="period">pricing</span>
+                        </div>
+                        <p>Custom solution for large organizations</p>
+                    </div>
+                    <ul class="features-list">
+                        <li>Custom deployment</li>
+                        <li>Dedicated support</li>
+                        <li>99.99% SLA</li>
+                        <li>Unlimited API</li>
+                        <li>Custom AI training</li>
+                        <li>Advanced security</li>
+                        <li>SSO & SAML</li>
+                        <li>24/7 support</li>
+                        <li>Unlimited users</li>
+                    </ul>
+                    <div class="card-footer">
+                        <a href="#enterprise" class="cta btn btn-primary">Contact Sales</a>
+                        <span class="guarantee">Custom SLA available</span>
+                    </div>
+                </div>
+            </div>
+            </div>
+        </section>
+
+        <section id="download" class="download">
+            <div class="download-content">
+                <div class="section-title">
+                    <h2>Get Started Today</h2>
+                    <p>Start your free trial and transform your interview process</p>
+                </div>
+                <div class="download-grid">
+                    <div class="download-card">
+                        <div class="download-icon">
+                            <i class="fab fa-windows"></i>
+                        </div>
+                        <h3>Windows Edition</h3>
+                        <p>Enhanced interview experience for Windows users</p>
+                        <ul class="download-features">
+                            <li>Windows 10/11 Compatible</li>
+                            <li>Native Performance</li>
+                            <li>Automatic Updates</li>
+                            <li>Windows Hello Support</li>
+                        </ul>
+                        <a href="downloads/Interview AI Assistant Setup 0.1.0.exe" class="cta btn btn-primary" download>Download for Windows</a>
+                    </div>
+                    <div class="download-card">
+                        <div class="download-icon">
+                            <i class="fab fa-apple"></i>
+                        </div>
+                        <h3>macOS Edition</h3>
+                        <p>Optimized for Apple Silicon and Intel Macs</p>
+                        <ul class="download-features">
+                            <li>Universal Binary</li>
+                            <li>Native M1/M2 Support</li>
+                            <li>Touch Bar Support</li>
+                            <li>iCloud Integration</li>
+                        </ul>
+                        <a href="downloads/Interview AI Assistant-0.1.0.dmg" class="cta btn btn-primary" download>Download for Mac</a>
+                    </div>
+                    <div class="download-card">
+                        <div class="download-icon">
+                            <i class="fas fa-globe"></i>
+                        </div>
+                        <h3>Web Version</h3>
+                        <p>Use directly in your browser, no installation needed</p>
+                        <ul class="download-features">
+                            <li>Cross-Platform</li>
+                            <li>No Installation</li>
+                            <li>Always Updated</li>
+                            <li>Cloud Storage</li>
+                        </ul>
+                        <a href="#" class="cta btn btn-primary">Launch Web App</a>
+                    </div>
+                </div>
+            </div>
+                        
+                    </div>
+                    
+                </div>
+            </div>
+        </section>
+
+        <section id="guide" class="guide">
+            <div class="download-content">
+            <div class="section-title">
+                <h2>Quick Start Guide</h2>
+                <p>Follow these four simple steps to get Interview AI up and running. For full details, see the <a href="documentation.html">Documentation</a>.</p>
+            </div>
+
+            <div class="guide-cards">
+                <article class="guide-card">
+                    <div class="card-number">1</div>
+                    <div class="card-icon"><i class="fas fa-download"></i></div>
+                    <h3>Download & Install</h3>
+                    <p>Grab the installer from the <a href="#download">Download</a> section or use the web app. Run the installer and follow the prompts (Windows 10/11 supported).</p>
+                </article>
+
+                <article class="guide-card">
+                    <div class="card-number">2</div>
+                    <div class="card-icon"><i class="fas fa-headphones-alt"></i></div>
+                    <h3>First Run & Audio Setup</h3>
+                    <p>Open Interview AI and run audio setup: pick your microphone, run a recording test, and allow permissions when prompted.</p>
+                </article>
+
+                <article class="guide-card">
+                    <div class="card-number">3</div>
+                    <div class="card-icon"><i class="fas fa-list-check"></i></div>
+                    <h3>Configure Interview</h3>
+                    <p>Create a new interview, choose a template, select language & analysis level, and connect integrations (ATS, calendar, or SSO).</p>
+                </article>
+
+                <article class="guide-card">
+                    <div class="card-number">4</div>
+                    <div class="card-icon"><i class="fas fa-play-circle"></i></div>
+                    <h3>Run & Review</h3>
+                    <p>Start the session — transcripts and AI insights appear in real time. Export or share reports after the interview.</p>
+                </article>
+            </div>
+
+            <div class="guide-cta">
+                <a href="documentation.html#getting-started" class="cta btn btn-primary">Open Full User Guide</a>
+                <a href="documentation.html#troubleshooting" class="cta btn btn-secondary">Troubleshooting</a>
+            </div>
+            </div>
+
+            <!-- Guide scoped styles moved to modern-styles.css -->
+        </section>
+    </main>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-section">
+                <div class="footer-logo">
+                    <img src="images/logo.svg" alt="Interview AI" class="logo-img">
+                    Interview AI
+                </div>
+                <p>Transforming interviews with AI-powered insights and automated transcription for smarter hiring decisions.</p>
+                <div class="social-links">
+                    <a href="#" aria-label="LinkedIn"><i class="fab fa-linkedin"></i></a>
+                    <a href="#" aria-label="Twitter"><i class="fab fa-twitter"></i></a>
+                    <a href="#" aria-label="GitHub"><i class="fab fa-github"></i></a>
+                </div>
+            </div>
+            <div class="footer-section">
+                <h4>Product</h4>
+                <ul>
+                    <li><a href="#features">Features</a></li>
+                    <li><a href="#pricing">Pricing</a></li>
+                    <li><a href="#download">Download</a></li>
+                    <li><a href="documentation.html">Documentation</a></li>
+                </ul>
+            </div>
+            <div class="footer-section">
+                <h4>Company</h4>
+                <ul>
+                    <li><a href="#">About</a></li>
+                    <li><a href="#">Blog</a></li>
+                    <li><a href="#">Careers</a></li>
+                    <li><a href="#">Contact</a></li>
+                </ul>
+            </div>
+            <div class="footer-section">
+                <h4>Support</h4>
+                <ul>
+                    <li><a href="documentation.html">Help Center</a></li>
+                    <li><a href="#">Privacy Policy</a></li>
+                    <li><a href="#">Terms of Service</a></li>
+                    <li><a href="#">Status</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2025 Interview AI. All rights reserved.</p>
+            <div class="footer-badges">
+                <span class="badge"><i class="fas fa-shield-alt"></i> SOC 2 Compliant</span>
+                <span class="badge"><i class="fas fa-lock"></i> GDPR Ready</span>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
