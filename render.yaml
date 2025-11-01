@@ -7,10 +7,10 @@ services:
     name: interview-ai-backend
     env: python
     region: oregon # Choose: oregon, frankfurt, singapore, ohio
-    plan: starter # free, starter ($7/mo), standard ($25/mo)
+    plan: free # 🆓 FREE TIER - 750 hours/month
     
     # Build configuration
-    buildCommand: pip install -r python/requirements.txt
+    buildCommand: pip install -r python/requirements-cloud.txt
     startCommand: python python/server.py
     
     # Health check endpoint (optional - add to server.py)
