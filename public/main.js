@@ -1,36 +1,36 @@
-// Header scroll effect
-const header = document.querySelector('header');
-let lastScroll = 0;
-
-window.addEventListener('scroll', () => {
-    const currentScroll = window.pageYOffset;
-    
-    if (currentScroll > 50) {
-        header.classList.add('scrolled');
-    } else {
-        header.classList.remove('scrolled');
-    }
-    
-    lastScroll = currentScroll;
-});
-
-// Intersection Observer for scroll animations
-const observerOptions = {
-    threshold: 0.1,
-    rootMargin: '0px'
-};
-
-const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-        if (entry.isIntersecting) {
-            entry.target.classList.add('animate-fade-up');
-            observer.unobserve(entry.target);
-        }
-    });
-}, observerOptions);
-
-// Animate elements on scroll
+// Wait for DOM to be ready before initializing
 document.addEventListener('DOMContentLoaded', () => {
+    // Header scroll effect
+    const header = document.querySelector('header');
+    let lastScroll = 0;
+
+    window.addEventListener('scroll', () => {
+        const currentScroll = window.pageYOffset;
+        
+        if (currentScroll > 50) {
+            header.classList.add('scrolled');
+        } else {
+            header.classList.remove('scrolled');
+        }
+        
+        lastScroll = currentScroll;
+    });
+
+    // Intersection Observer for scroll animations
+    const observerOptions = {
+        threshold: 0.1,
+        rootMargin: '0px'
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('animate-fade-up');
+                observer.unobserve(entry.target);
+            }
+        });
+    }, observerOptions);
+
     // Animate feature cards
     document.querySelectorAll('.feature-card').forEach(card => {
         observer.observe(card);
@@ -45,10 +45,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('section').forEach(section => {
         observer.observe(section);
     });
-});
 
-// Mobile Menu Toggle
-document.addEventListener('DOMContentLoaded', () => {
+    // Mobile Menu Toggle
     const mobileMenuButton = document.querySelector('.mobile-menu-button');
     const mobileMenuClose = document.querySelector('.mobile-menu-close');
     const mobileMenuOverlay = document.querySelector('.mobile-menu-overlay');
@@ -128,16 +126,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
-});
 
-// Scroll Progress Bar
-window.addEventListener('scroll', () => {
-    const docHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-    const scrollProgress = document.querySelector('.scroll-progress');
-    if (scrollProgress) {
-        const progress = (window.scrollY / docHeight) * 100;
-        scrollProgress.style.width = progress + '%';
-    }
+    // Scroll Progress Bar
+    window.addEventListener('scroll', () => {
+        const docHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+        const scrollProgress = document.querySelector('.scroll-progress');
+        if (scrollProgress) {
+            const progress = (window.scrollY / docHeight) * 100;
+            scrollProgress.style.width = progress + '%';
+        }
+    });
 });
 
 // Toast notifications
