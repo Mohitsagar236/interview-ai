@@ -27,7 +27,12 @@
     "vercel:deploy": "vercel --prod"
   },
   "vercel": {
-    "builds": [{ "src": "api/*.py", "use": "@vercel/python" }]
+    "builds": [
+      {
+        "src": "api/*.py",
+        "use": "@vercel/python"
+      }
+    ]
   },
   "build": {
     "appId": "com.example.interviewaiassistant",
@@ -74,6 +79,7 @@
     "dotenv": "^16.4.5",
     "eventsource-parser": "^1.1.2",
     "node-fetch": "^3.3.2",
+    "stripe": "^19.2.0",
     "tesseract.js": "^5.1.0",
     "ws": "^8.18.0"
   },

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment - Interview AI</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="payment.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://js.stripe.com/v3/"></script>
+</head>
+<body>
+    <div class="payment-container">
+        <div class="payment-header">
+            <div class="logo">
+                <img src="images/logo.svg" alt="Interview AI" class="logo-img">
+                <span class="logo-text">Interview AI</span>
+            </div>
+        </div>
+
+        <div class="payment-content">
+            <div class="payment-left">
+                <h1>Complete Your Purchase</h1>
+                <p class="payment-subtitle">You're one step away from transforming your interview process</p>
+
+                <div class="order-summary">
+                    <h2>Order Summary</h2>
+                    <div class="order-item">
+                        <div class="order-item-info">
+                            <i class="fab fa-windows order-icon"></i>
+                            <div>
+                                <h3 id="product-name">Interview AI Assistant - Windows</h3>
+                                <p id="product-description">Desktop application with premium features</p>
+                            </div>
+                        </div>
+                        <div class="order-item-price" id="product-price">$49.99</div>
+                    </div>
+
+                    <div class="order-features">
+                        <h3>What's Included:</h3>
+                        <ul>
+                            <li><i class="fas fa-check"></i> Real-time AI transcription</li>
+                            <li><i class="fas fa-check"></i> Smart answer suggestions</li>
+                            <li><i class="fas fa-check"></i> Screen capture OCR</li>
+                            <li><i class="fas fa-check"></i> Unlimited interviews</li>
+                            <li><i class="fas fa-check"></i> Free updates for 1 year</li>
+                            <li><i class="fas fa-check"></i> Priority support</li>
+                        </ul>
+                    </div>
+
+                    <div class="order-total">
+                        <div class="subtotal">
+                            <span>Subtotal</span>
+                            <span id="subtotal">$49.99</span>
+                        </div>
+                        <div class="tax">
+                            <span>Tax</span>
+                            <span id="tax">$0.00</span>
+                        </div>
+                        <div class="total">
+                            <span>Total</span>
+                            <span id="total">$49.99</span>
+                        </div>
+                    </div>
+
+                    <div class="payment-security">
+                        <i class="fas fa-lock"></i>
+                        <span>Secure payment powered by Stripe</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="payment-right">
+                <div class="payment-form-container">
+                    <h2>Payment Details</h2>
+                    
+                    <form id="payment-form">
+                        <div class="form-group">
+                            <label for="email">Email Address</label>
+                            <input type="email" id="email" name="email" required placeholder="your@email.com">
+                            <small>We'll send your download link here</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="name">Full Name</label>
+                            <input type="text" id="name" name="name" required placeholder="John Doe">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="card-element">Card Details</label>
+                            <div id="card-element" class="stripe-element">
+                                <!-- Stripe Card Element will be inserted here -->
+                            </div>
+                            <div id="card-errors" role="alert"></div>
+                        </div>
+
+                        <div class="form-group checkbox-group">
+                            <label>
+                                <input type="checkbox" id="terms" required>
+                                <span>I agree to the <a href="#terms">Terms of Service</a> and <a href="#privacy">Privacy Policy</a></span>
+                            </label>
+                        </div>
+
+                        <button type="submit" id="submit-button" class="btn btn-primary btn-full">
+                            <span id="button-text">Pay $49.99</span>
+                            <div class="spinner hidden" id="spinner"></div>
+                        </button>
+
+                        <div class="payment-methods">
+                            <i class="fab fa-cc-visa"></i>
+                            <i class="fab fa-cc-mastercard"></i>
+                            <i class="fab fa-cc-amex"></i>
+                            <i class="fab fa-cc-discover"></i>
+                            <i class="fab fa-apple-pay"></i>
+                            <i class="fab fa-google-pay"></i>
+                        </div>
+
+                        <div class="payment-guarantee">
+                            <i class="fas fa-shield-alt"></i>
+                            <div>
+                                <strong>30-Day Money-Back Guarantee</strong>
+                                <p>Not satisfied? Get a full refund within 30 days, no questions asked.</p>
+                            </div>
+                        </div>
+                    </form>
+
+                    <div id="payment-message" class="hidden"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Success Modal -->
+        <div id="success-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="success-icon">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <h2>Payment Successful!</h2>
+                <p>Thank you for your purchase. Your download will start automatically.</p>
+                <p class="download-info">We've also sent the download link to <strong id="user-email"></strong></p>
+                <div class="modal-actions">
+                    <button id="download-now" class="btn btn-primary">Download Now</button>
+                    <button id="close-modal" class="btn btn-secondary">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="payment.js"></script>
+</body>
+</html>
