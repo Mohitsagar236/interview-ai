@@ -3,13 +3,13 @@
 
 // Configuration - UPDATE THESE WITH YOUR DETAILS
 const PAYMENT_CONFIG = {
-    upiId: 'yourname@paytm',  // 🔴 UPDATE: Your UPI ID
-    upiName: 'Your Name',      // 🔴 UPDATE: Your name for UPI
+    upiId: 'cp8137108@oksbi',  // 🔴 UPDATE: Your UPI ID
+    upiName: 'mohitsagar',      // 🔴 UPDATE: Your name for UPI
     
     // Bank Details
-    bankName: 'Interview AI Solutions',
-    accountNumber: '1234567890',  // 🔴 UPDATE: Your account number
-    ifscCode: 'SBIN0001234',      // 🔴 UPDATE: Your IFSC code
+    bankName: 'mohitsagar',
+    accountNumber: '39716154031',  // 🔴 UPDATE: Your account number
+    ifscCode: 'SBIN00018563',      // 🔴 UPDATE: Your IFSC code
     bankBranch: 'State Bank of India',  // 🔴 UPDATE: Your bank name
     
     // Pricing (in INR)
