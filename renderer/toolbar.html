@@ -257,19 +257,50 @@
     .chat-content.ai table th { background:#1a2230; font-weight:600; }
     .chat-content.ai blockquote { border-left:3px solid #2b3445; margin:8px 0 10px; padding:4px 10px; color:#c3cbd3; background:#1a2230; border-radius:4px; }
     
-    /* KaTeX math equation styling */
+    /* KaTeX math equation styling - Enhanced */
     .chat-content.ai .katex { 
-      font-size: 1.15em; 
-      color: #e6edf3;
+      font-size: 1.2em; 
+      color: #ffffff;
+      line-height: 1.4;
     }
     .chat-content.ai .katex-display { 
-      margin: 16px 0; 
-      padding: 12px; 
-      background: rgba(255,255,255,0.02);
-      border-radius: 6px;
+      margin: 20px 0; 
+      padding: 16px; 
+      background: rgba(37, 99, 235, 0.08);
+      border: 1px solid rgba(37, 99, 235, 0.2);
+      border-radius: 8px;
       overflow-x: auto;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
-    .chat-content.ai .katex-display::-webkit-scrollbar { height: 4px; }
+    .chat-content.ai .katex-inline {
+      background: rgba(37, 99, 235, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin: 0 2px;
+    }
+    .chat-content.ai .katex-display::-webkit-scrollbar { 
+      height: 6px; 
+    }
+    .chat-content.ai .katex-display::-webkit-scrollbar-track {
+      background: rgba(255,255,255,0.1);
+      border-radius: 3px;
+    }
+    .chat-content.ai .katex-display::-webkit-scrollbar-thumb {
+      background: rgba(37, 99, 235, 0.5);
+      border-radius: 3px;
+    }
+    
+    /* Math fallback styling for when KaTeX fails to load */
+    .math-fallback {
+      font-family: 'Times New Roman', serif;
+      font-style: italic;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .math-error {
+      border: 1px solid rgba(255,0,0,0.3) !important;
+      background: rgba(255,0,0,0.1) !important;
+    }
     
     /* Enhanced code block with language label */
     .chat-content.ai pre.ai-code { 

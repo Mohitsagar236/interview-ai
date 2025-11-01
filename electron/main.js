@@ -533,7 +533,20 @@ function buildActivitySummary(type, d){
 
 console.log(`🔧 Stealth overlay mode: ${forcedStealth ? 'ENABLED' : 'DISABLED'} (DISABLE_STEALTH_OVERLAY=${process.env.DISABLE_STEALTH_OVERLAY})`);
 
+// Load configuration
+const config = require('./config');
+console.log(`[CONFIG] Environment: ${process.env.NODE_ENV || 'development'}`);
+console.log(`[CONFIG] Cloud Mode: ${config.cloudMode}`);
+console.log(`[CONFIG] Server URL: ${config.serverUrl}`);
+
 function startPythonServer() {
+  // Skip local server if cloud mode is enabled
+  if (config.cloudMode) {
+    console.log('[Server] Cloud mode enabled - skipping local Python server');
+    console.log(`[Server] Will connect to: ${config.serverUrl}`);
+    return;
+  }
+  
   if (process.env.NO_AUTO_SERVER) {
     console.log('[Server] Auto-start disabled via NO_AUTO_SERVER');
     return;
@@ -1259,6 +1272,17 @@ async function captureScreen() {
 // IPC handlers
 ipcMain.handle('get-server-port', () => {
   return serverPort;
+});
+
+// NEW: Expose config to renderer process
+ipcMain.handle('get-config', () => {
+  console.log('[IPC] get-config request');
+  return {
+    cloudMode: config.cloudMode,
+    serverUrl: config.serverUrl,
+    useLocalServer: config.useLocalServer,
+    environment: process.env.NODE_ENV || 'development'
+  };
 });
 
 // List desktop capture sources (screens/windows) for system audio capture selection
@@ -2132,7 +2156,33 @@ app.whenReady().then(() => {
       try {
         const image = await captureScreen();
         if (image && mainWindow) {
+          // Send capture result to renderer for UI updates
           mainWindow.webContents.send('quick-capture-result', image);
+          
+          // Also send directly to Python server for immediate AI analysis
+          try {
+            const ws = await ensureCoachWS();
+            if (ws && ws.readyState === 1) {
+              const imageData = typeof image === 'object' ? image.image : image;
+              ws.send(JSON.stringify({
+                type: "ocr",
+                image: imageData,
+                captureIndex: Date.now(), // Use timestamp as index
+                autoAnalyze: true, // Flag for automatic analysis
+                meta: typeof image === 'object' ? {
+                  width: image.width,
+                  height: image.height,
+                  requestedWidth: image.requestedWidth,
+                  requestedHeight: image.requestedHeight,
+                  displayId: image.displayId,
+                  scaleFactor: image.scaleFactor,
+                } : undefined,
+              }));
+              console.log('🔥 Quick capture sent to server for auto-analysis');
+            }
+          } catch (wsError) {
+            console.error('Failed to send quick capture to server:', wsError);
+          }
         }
       } catch (error) {
         console.error('Quick capture failed:', error);

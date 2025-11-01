@@ -50,6 +50,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getServerPort: () => {
     return ipcRenderer.invoke('get-server-port');
   },
+  // NEW: Get application configuration (cloud mode, server URL, etc.)
+  getConfig: () => {
+    return ipcRenderer.invoke('get-config');
+  },
   // Explicitly start backend server if needed
   serverStart: () => {
     return ipcRenderer.invoke('server-start');

@@ -1,0 +1,80 @@
+# Render.com Deployment Configuration
+# This file tells Render how to deploy your Python backend
+
+services:
+  # Main WebSocket backend service
+  - type: web
+    name: interview-ai-backend
+    env: python
+    region: oregon # Choose: oregon, frankfurt, singapore, ohio
+    plan: starter # free, starter ($7/mo), standard ($25/mo)
+    
+    # Build configuration
+    buildCommand: pip install -r python/requirements.txt
+    startCommand: python python/server.py
+    
+    # Health check endpoint (optional - add to server.py)
+    healthCheckPath: /health
+    
+    # Auto-deploy on git push
+    autoDeploy: true
+    
+    # Environment variables
+    envVars:
+      - key: CLOUD_MODE
+        value: "true"
+      
+      - key: PORT
+        value: 8765
+      
+      - key: HOST
+        value: "0.0.0.0"
+      
+      - key: NODE_ENV
+        value: production
+      
+      # IMPORTANT: Set these in Render Dashboard (don't commit API keys!)
+      - key: OPENAI_API_KEY
+        sync: false
+      
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      
+      - key: GROQ_API_KEY
+        sync: false
+      
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      
+      - key: OPENROUTER_API_KEY
+        sync: false
+      
+      - key: DEFAULT_LLM
+        value: "gpt-4o-mini"
+      
+      - key: STREAMING_PROVIDER
+        value: "deepgram"
+      
+      - key: USE_STREAMING_TRANSCRIPTION
+        value: "true"
+      
+      # CORS configuration
+      - key: ALLOWED_ORIGINS
+        value: "*" # Update to your website domain in production
+      
+      # Optional: Secret for API authentication
+      - key: API_SECRET
+        generateValue: true # Render auto-generates a secure secret
+    
+    # Disk storage for uploaded files (optional)
+    disk:
+      name: interview-data
+      mountPath: /data
+      sizeGB: 1
+
+# After deployment:
+# 1. Go to Render Dashboard
+# 2. Navigate to your service
+# 3. Copy the service URL (e.g., https://interview-ai-backend.onrender.com)
+# 4. Update electron/config.js production.serverUrl with this URL (use wss:// not https://)
+# 5. Set your API keys in the Environment tab

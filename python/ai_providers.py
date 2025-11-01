@@ -35,35 +35,98 @@ class MessageFormatter:
     def format_user_message(content: str, context: str = "") -> List[Dict[str, str]]:
         """Format user input into proper message format with clear system instructions"""
         messages = []
-        # Add enhanced system context with clear instructions
-        system_instruction = """You are a helpful AI assistant for technical interview preparation.
+        
+        # Add enhanced system context with clear instructions - ChatGPT-level quality
+        system_instruction = """You are an expert AI assistant providing ChatGPT-quality responses for technical interview preparation, coding questions, and professional development.
 
-CRITICAL INTERVIEW BEHAVIOR:
-1. Always answer the interviewer's question directly in the first sentence or two. Give a concise direct answer first, then (if useful) add a short elaboration in 2-4 sentences.
-2. Stay strictly on-topic: do not invent context or introduce unrelated examples unless the question asks for them.
-3. If asked a multi-part question, label answers clearly: "Answer 1:", "Answer 2:", etc., and address each part explicitly.
-4. When giving examples, ensure they directly illustrate the point asked for and are brief.
-5. If the question asks for personal experience, answer with a single specific example and focus on facts (what you did, result, and learning).
+🎯 CORE MISSION:
+Deliver COMPLETE, ACCURATE, COMPREHENSIVE answers that match or exceed ChatGPT's quality standards. Every response should be:
+• Thorough and detailed - explain concepts fully
+• Immediately actionable and practical
+• Professionally structured and well-formatted
+• Technically precise with proper terminology
+• Clear enough for any experience level
 
-CRITICAL TECHNICAL INSTRUCTIONS:
-6. When asked for code, provide CLEAN, RUNNABLE code only. Do not include extra commentary inside the code block unless explicitly requested.
-7. If providing explanations, keep them separate from the code and mark sections clearly.
-8. For algorithm problems, structure responses as: brief understanding, code, then explanation and complexity.
-9. Be precise and thorough — do not provide partial answers. If you cannot answer, state what information is missing.
+📝 RESPONSE EXCELLENCE STANDARDS:
 
-FORMAT RULE (strict):
-- Start with a one-line direct answer.
-- If more detail is needed, provide a short elaboration paragraph (2-4 sentences).
-- For multi-part questions, explicitly label each part.
-- End with a single-sentence summary.
+**For Coding/Algorithm Questions:**
+• Provide COMPLETE working code solutions with detailed explanations
+• Include multiple approaches when relevant (brute force → optimal)
+• Always specify time complexity: $O(n)$, space complexity analysis
+• Explain the intuition and approach BEFORE showing code
+• Use proper syntax highlighting: ```python, ```javascript, etc.
+• Add inline comments to clarify complex logic
+• Include example test cases with expected outputs
+• Mention edge cases and how the solution handles them
 
-Use this policy for every response in this interview context. If unsure, ask a brief clarifying question before answering."""
+**For Mathematical/Technical Questions:**
+• Use proper LaTeX notation: $O(n \\log n)$, $$f(x) = \\frac{a^2 + b^2}{c}$$
+• Break down complex formulas step-by-step
+• Provide visual/conceptual explanations where helpful
+• Show worked examples with actual numbers
+• Use LaTeX environments for multi-line equations:
+  - \\begin{align}...\\end{align} for aligned equations
+  - \\begin{cases}...\\end{cases} for piecewise functions
+  - Display math: $$...$$, inline math: $...$
 
-        if context and context.strip():
-            system_instruction += f"\n\nAdditional Context: {context.strip()}"
-        messages.append({"role": "system", "content": system_instruction})
+**For System Design/Architecture:**
+• Start with high-level overview
+• Break down into components with clear responsibilities
+• Discuss tradeoffs (scalability, consistency, latency)
+• Include diagram descriptions or ASCII art if helpful
+• Address common failure modes and mitigation
+• Suggest technologies/tools where appropriate
+
+**For Behavioral/Career Questions:**
+• Use the STAR framework (Situation, Task, Action, Result)
+• Provide 2-3 specific example scenarios
+• Include concrete talking points and key phrases
+• Keep responses interview-length (1-2 minutes when spoken)
+• Focus on demonstrable impact and metrics
+• Tailor to common industry expectations
+
+**Formatting Excellence:**
+• Use headers (##, ###) to organize long responses
+• Bullet points for lists and key takeaways
+• Code blocks with language specification
+• Bold **important concepts** for emphasis
+• Numbered lists for step-by-step processes
+• Tables for comparisons when applicable
+
+🚫 AVOID:
+• Generic filler ("that's a great question!", "I hope this helps!")
+• Apologetic language ("I'm not sure but...", "I think...")
+• Meta-commentary about your limitations
+• Asking clarifying questions unless absolutely critical
+• Incomplete or partial answers that require follow-up
+• Overly verbose explanations - be comprehensive but concise
+
+� ANSWER QUALITY CHECKLIST:
+Before sending each response, ensure it:
+✓ Directly answers the specific question asked
+✓ Provides complete information (no "partial answers")
+✓ Includes concrete examples or code when relevant
+✓ Uses proper formatting (LaTeX, code blocks, structure)
+✓ Is immediately useful without requiring follow-up
+✓ Matches the depth and quality of ChatGPT responses
+
+Remember: You're competing with ChatGPT. Every answer should be comprehensive, well-structured, technically accurate, and immediately actionable. Quality matters more than speed.
+"""
+        
+        if context.strip():
+            system_instruction += f"\n\n📌 **Additional Context:** {context.strip()}"
+        
+        messages.append({
+            "role": "system", 
+            "content": system_instruction
+        })
+        
         # Add user message
-        messages.append({"role": "user", "content": content.strip()})
+        messages.append({
+            "role": "user",
+            "content": content.strip()
+        })
+        
         return messages
     
     @staticmethod
@@ -291,18 +354,21 @@ class OpenAIProvider:
                     "X-Title": os.getenv("OPENROUTER_SITE_NAME", "Interview AI Assistant")
                 })
             
-            # Build payload - omit max_tokens for unlimited, or set very high limit
+            # Build payload - set generous max_tokens for complete ChatGPT-quality responses
             payload = {
                 "model": self.config.model,
                 "messages": messages,
                 "temperature": self.config.temperature,
                 "stream": False  # Non-streaming for complete response
             }
-            # Allow model to generate complete responses - only limit if explicitly set and reasonable
+            # Allow model to generate complete responses - use generous defaults
             if self.config.max_new_tokens and self.config.max_new_tokens > 0:
-                # Cap at reasonable maximum to allow complete responses (128k for models that support it)
+                # Use the configured value, capped at 128k
                 payload["max_tokens"] = min(self.config.max_new_tokens, 128000)
-            # If max_new_tokens is 0 or not set, omit max_tokens - let model complete naturally
+            else:
+                # Default to 4096 tokens for complete responses (ChatGPT standard)
+                # This allows for comprehensive answers without truncation
+                payload["max_tokens"] = 4096
             
             response = requests.post(
                 f"{self.config.base_url}/chat/completions",
@@ -349,6 +415,58 @@ class OpenAIProvider:
             return f"[ERROR: {str(e)}]"
 
     
+    def _detect_repetition(self, text: str, threshold: float = 0.7) -> bool:
+        """Detect if text contains excessive repetition"""
+        if len(text) < 100:  # Too short to detect repetition
+            return False
+        
+        words = text.lower().split()
+        if len(words) < 20:
+            return False
+        
+        # Check for repeated phrases
+        word_count = {}
+        for word in words:
+            word_count[word] = word_count.get(word, 0) + 1
+        
+        # Calculate repetition ratio
+        total_words = len(words)
+        unique_words = len(word_count)
+        repetition_ratio = 1 - (unique_words / total_words)
+        
+        return repetition_ratio > threshold
+
+    def _validate_response_quality(self, text: str) -> Dict[str, Any]:
+        """Validate response quality and return quality metrics"""
+        metrics = {
+            "is_valid": True,
+            "issues": [],
+            "word_count": len(text.split()),
+            "char_count": len(text),
+            "has_code": "```" in text,
+            "has_math": "$" in text or "\\(" in text,
+        }
+        
+        # Check for common issues
+        if len(text.strip()) < 10:
+            metrics["issues"].append("Response too short")
+            metrics["is_valid"] = False
+        
+        if self._detect_repetition(text):
+            metrics["issues"].append("Excessive repetition detected")
+            metrics["is_valid"] = False
+        
+        # Check for incomplete responses
+        if text.endswith("...") or text.endswith("…"):
+            metrics["issues"].append("Response appears incomplete")
+        
+        # Check for error indicators
+        error_indicators = ["I apologize", "I cannot", "I'm unable", "Error:", "ERROR:"]
+        if any(indicator in text for indicator in error_indicators):
+            metrics["issues"].append("Response contains error indicators")
+        
+        return metrics
+
     async def generate_stream(self, messages: List[Dict[str, str]], retry_count: int = 0) -> AsyncGenerator[str, None]:
         """Generate streaming response from OpenAI with retry logic"""
         if not self.initialized:
@@ -382,11 +500,13 @@ class OpenAIProvider:
                 "presence_penalty": 0.0,
                 "frequency_penalty": 0.0
             }
+            # Set generous token limits for complete ChatGPT-quality responses
             if self.config.max_new_tokens and self.config.max_new_tokens > 0:
-                # Allow very high token limits for complete responses (up to 100k)
                 payload["max_tokens"] = min(self.config.max_new_tokens, 100000)
-            # If max_new_tokens is 0, omit max_tokens entirely - let model decide completion length
-            logger.info(f"Streaming from model: {self.config.model} (mode={self.stream_mode}, max_tokens={payload.get('max_tokens', 'unlimited')})")
+            else:
+                # Default to 4096 for streaming to ensure complete answers
+                payload["max_tokens"] = 4096
+            logger.info(f"Streaming from model: {self.config.model} (mode={self.stream_mode}, max_tokens={payload.get('max_tokens', 'default:4096')})")
             
             token_count = 0
             last_log_time = time.time()
@@ -579,9 +699,9 @@ class AIManager:
         config = AIConfig(
             model=os.getenv("DEFAULT_LLM", "openai/gpt-4o-mini"),
             base_url="https://openrouter.ai/api/v1",
-            # Default to a low temperature for precise, on-question answers; can be overridden via env
-            temperature=float(os.getenv("AI_TEMPERATURE", "0.2")),
-            max_new_tokens=max_tokens_val,
+            # Default to low temperature for precise answers; can be overridden via env
+            temperature=float(os.getenv("AI_TEMPERATURE", "0.3")),  # Increased from 0.2 for more natural responses
+            max_new_tokens=max_tokens_val if max_tokens_val > 0 else 4096,  # Default 4096 for complete responses
             allow_auto_continue=os.getenv("AI_AUTO_CONTINUE", "1").lower() not in ("0", "false", "no", "off")
         )
         

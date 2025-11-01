@@ -216,9 +216,20 @@ def needs_image(text: str) -> bool:
     return False
 
 # Server/network defaults
-HOST = "0.0.0.0"
-PORT = 8765
+# Support cloud deployment via environment variables
+CLOUD_MODE = os.getenv('CLOUD_MODE', 'false').lower() in ('true', '1', 'yes', 'on')
+HOST = os.getenv('HOST', '0.0.0.0' if CLOUD_MODE else 'localhost')
+PORT = int(os.getenv('PORT', '8765'))
 DEFAULT_LLM = os.getenv("DEFAULT_LLM", "openai/gpt-4o-mini")
+
+# CORS configuration for cloud deployment
+ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', '*').split(',') if CLOUD_MODE else None
+
+# Log deployment mode
+if CLOUD_MODE:
+    logger.info("🌐 Running in CLOUD MODE - accepting connections from %s", ALLOWED_ORIGINS or 'all origins')
+else:
+    logger.info("🏠 Running in LOCAL MODE - accepting connections from localhost only")
 
 # Thread pool retained for blocking operations (non-transcription)
 executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="bg_")
@@ -749,7 +760,11 @@ async def handle_auto_answer_after_capture(text: str, source: str):
         _last_auto_answer_time = current_time
         
         # Check if text is garbled/meaningless
-        if is_garbled_text(text):
+        # For capture mode, be more lenient since users explicitly requested analysis
+        is_capture_mode = source in ("ocr", "windows")
+        text_appears_garbled = is_garbled_text(text)
+        
+        if text_appears_garbled and not is_capture_mode:
             logger.info(f"OCR text from {source} appears garbled - skipping auto-answer")
             # Optionally notify user
             await broadcast({
@@ -757,6 +772,13 @@ async def handle_auto_answer_after_capture(text: str, source: str):
                 "message": "⚠️ Captured text appears unclear. Please try capturing again."
             })
             return
+        elif text_appears_garbled and is_capture_mode:
+            # For capture mode, still proceed but with a warning
+            logger.info(f"OCR text from {source} appears garbled but proceeding due to capture mode")
+            await broadcast({
+                "type": "status", 
+                "message": "⚠️ Text quality may be low, but analyzing anyway..."
+            })
         
         # Extract question if present
         q = extract_last_question(text)
@@ -772,8 +794,14 @@ async def handle_auto_answer_after_capture(text: str, source: str):
             broadcast_sync({"type": "coach", "text": "", "reset": True})
             # Pass the content directly
             await stream_llm(DEFAULT_LLM, text[:2000], out_type="coach", mode="coach", strict=False, context_type="capture")
+        elif is_capture_mode and len(text.strip()) > 10:
+            # For capture mode, provide analysis even for shorter text
+            logger.info(f"Auto-triggering AI for short capture content from {source} (capture mode)...")
+            broadcast_sync({"type": "coach", "text": "", "reset": True})
+            prompt = f"Please analyze this captured text and provide helpful insights or answer any questions you can identify:\n\n{text[:1000]}"
+            await stream_llm(DEFAULT_LLM, prompt, out_type="coach", mode="coach", strict=False, context_type="capture")
         else:
-            logger.info(f"Captured text from {source} too short (<50 chars) - skipping auto-answer")
+            logger.info(f"Captured text from {source} too short (<{10 if is_capture_mode else 50} chars) - skipping auto-answer")
     
     except Exception as e:
         logger.warning(f"Auto-coach trigger from {source} failed: {e}")
@@ -1820,6 +1848,63 @@ async def ingest_company_brief(text: str):
         emb_texts.extend([clean])
 
 
+def enhance_response_formatting(text: str) -> str:
+    """
+    Enhance response formatting for better readability and interview context
+    """
+    if not text:
+        return text
+    
+    enhanced = text
+    
+    # 1. Improve paragraph structure - add line breaks for better readability
+    # Convert long sentences separated by periods into separate lines
+    enhanced = re.sub(r'(\w\.)\s+(\d+\.\s*[A-Z])', r'\1\n\n\2', enhanced)  # Numbered lists
+    enhanced = re.sub(r'([:.])\s*(###\s*[A-Z])', r'\1\n\n\2', enhanced)  # Headers with ###
+    
+    # 2. Format coordinates and mathematical expressions properly with LaTeX
+    # Convert coordinate notation to LaTeX
+    enhanced = re.sub(r'\(([i-z]),?\s*([i-z])\)', r'\\((\1, \2)\\)', enhanced)  # (i, j) -> \((i, j)\)
+    enhanced = re.sub(r'\b(\d+)\s*x\s*(\d+)\s*matrix\b', r'\\(\1 \\times \2\\) matrix', enhanced)
+    enhanced = re.sub(r'\b(\d+)\s*or\s*(\d+)\s*steps?\b', r'\\(\1\\) or \\(\2\\) steps', enhanced)
+    
+    # 3. Improve bullet point and list formatting
+    enhanced = re.sub(r'^[\s]*[-•*]\s*', '• ', enhanced, flags=re.MULTILINE)
+    enhanced = re.sub(r'\b(\d+)\.\s*([A-Z][^.]*:)', r'\n\n**\1. \2**\n', enhanced)  # Numbered sections
+    enhanced = re.sub(r'###\s*([^\n]+)', r'\n\n### \1\n', enhanced)  # Headers
+    
+    # 4. Structure interview answers better
+    # Look for common interview answer patterns and format them
+    patterns = [
+        (r'Answer Structure\s*1\.', r'\n\n**Answer Structure:**\n\n**1.**'),
+        (r'Current Position:', r'\n\n**Current Position:**'),
+        (r'Contextual Explanation:', r'\n\n**Contextual Explanation:**'),
+        (r'Next Steps:', r'\n\n**Next Steps:**'),
+        (r'Suggested Key Phrases\s*-', r'\n\n**Suggested Key Phrases:**\n\n'),
+    ]
+    
+    for pattern, replacement in patterns:
+        enhanced = re.sub(pattern, replacement, enhanced)
+    
+    # 5. Format key phrases as proper bullet points
+    enhanced = re.sub(r'"([^"]+)"\s*•', r'\n• "\1"', enhanced)
+    enhanced = re.sub(r'"\s*•\s*"', r'"\n• "', enhanced)
+    
+    # 6. Improve spacing and clean up
+    enhanced = re.sub(r'\n{3,}', '\n\n', enhanced)  # Max 2 newlines
+    enhanced = re.sub(r'^\s+', '', enhanced, flags=re.MULTILINE)  # Remove leading spaces
+    enhanced = re.sub(r'\s+([.!?:;,])', r'\1', enhanced)  # Fix punctuation spacing
+    
+    # 7. Ensure proper LaTeX math formatting
+    enhanced = re.sub(r'(?<!\$)\$([^$\n]+)\$(?!\$)', r' $\1$ ', enhanced)  # Inline math
+    enhanced = re.sub(r'\\\[\s*([^\\]*?)\s*\\\]', r'\n$$\1$$\n', enhanced)  # Display math
+    
+    # 8. Clean up final formatting
+    enhanced = enhanced.strip()
+    
+    return enhanced
+
+
 def smart_truncate_content(content: str, question: str, max_total_tokens: int = 6000) -> str:
     """
     Intelligently truncate content based on question length and model capacity.
@@ -1964,26 +2049,31 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
     if context_type == "transcription":
         core_guidelines = (
             "\n\nRESPONSE GUIDELINES FOR INTERVIEW TRANSCRIPTION:\n"
-            "Answer EXACTLY the current interviewer question.\n"
-            "Keep answers brief and focused (2-4 sentences or 3-5 bullet points maximum).\n"
-            "Do not provide lengthy explanations unless explicitly asked.\n"
-            "No generic advice, no filler.\n"
-            "For technical questions: Give the core concept + 1 concrete example.\n"
-            "For behavioral questions: 1 specific situation + outcome.\n"
-            "Never output instructions or meta text—only the direct answer."
+            "🎯 DIRECT ANSWERS ONLY: Answer EXACTLY the current interviewer question.\n"
+            "📏 BREVITY: Keep answers brief and focused (2-4 sentences or 3-5 bullet points maximum).\n"
+            "🚫 NO FILLER: Do not provide lengthy explanations unless explicitly asked.\n"
+            "💡 FOCUS: No generic advice, no meta-commentary, no filler.\n"
+            "🔧 TECHNICAL: For technical questions: Give the core concept + 1 concrete example.\n"
+            "📖 BEHAVIORAL: For behavioral questions: 1 specific situation + outcome.\n"
+            "⚡ IMMEDIACY: Never output instructions or meta text—only the direct answer.\n"
+            "🎓 COMPLETENESS: Ensure your answer fully addresses the question asked.\n"
+            "📐 MATH: Use proper LaTeX formatting for any mathematical expressions."
         )
     else:
         core_guidelines = (
-            "\n\nRESPONSE GUIDELINES:\n"
-            "Always respond directly to the user's question with a clear, polished, and complete answer.\n"
-            "Do not repeat or explain how you are structuring the answer.\n"
-            "Adapt your response style to the type of question:\n"
-            "- Definition/explanation → give a concise definition, then examples.\n"
-            "- Math/logic → step-by-step reasoning, then final answer.\n"
-            "- Coding → show code first, then explain.\n"
-            "- Resume/interview → turn notes into a fluent, professional response.\n"
-            "- Open-ended/essay → structured paragraphs with headings/bullets.\n"
-            "Formatting: use headings or bullets if helpful.\n"
+            "\n\nENHANCED RESPONSE GUIDELINES:\n"
+            "🎯 DIRECT RESPONSE: Always respond directly to the user's question with a clear, polished, and complete answer.\n"
+            "🚫 NO META: Do not repeat or explain how you are structuring the answer.\n"
+            "🔄 ADAPTIVE STYLE: Adapt your response style to the type of question:\n"
+            "   • Definition/explanation → concise definition, then practical examples\n"
+            "   • Math/logic → step-by-step reasoning with LaTeX formatting, then final answer\n"
+            "   • Coding → clean working code first, then brief explanation if needed\n"
+            "   • Resume/interview → turn notes into a fluent, professional response\n"
+            "   • Open-ended/essay → structured content with clear headings/bullets\n"
+            "📝 FORMATTING: Use headings, bullets, or LaTeX math notation when helpful for clarity.\n"
+            "🔍 ACCURACY: Ensure technical accuracy and provide working, tested solutions.\n"
+            "⚡ EFFICIENCY: Be concise but comprehensive - no unnecessary verbosity.\n"
+            "🎨 POLISH: Provide production-ready answers that demonstrate expertise.\n"
             "Never output instructions (like 'start with…'). Only give the final answer."
         )
     
@@ -2021,45 +2111,44 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
         if context_type == "transcription":
             system = (
                 "You are an expert interview coach helping a candidate answer live interview questions. "
-                "Provide ULTRA-CONCISE, ACTIONABLE talking points that directly answer the interviewer. "
-                "MAXIMUM LENGTH: 2-3 sentences OR 3-4 bullet points. NO EXCEPTIONS. "
-                "Focus ONLY on what to say, not explanations or background. Do not restate the question. "
-                "Get straight to the answer - no introductions, no generic advice, no filler. "
-                "For technical questions: State key concept + 1 example in 2 sentences max. "
-                "For behavioral questions: 1 specific situation + outcome in 3 sentences max. "
-                "🔥 CRITICAL: If answer exceeds 4-5 lines, it's TOO LONG. Cut it shorter. "
-                "Interview answers should be brief and punchy - candidates need quick talking points, not essays."
+                "Your job is to provide DIRECT, HELPFUL answers to the interviewer's exact question. "
+                "\n🎯 PRIMARY GOAL: Answer the specific question being asked clearly and completely. "
+                "\n📏 FORMAT: Keep answers concise but complete (2-4 sentences OR 3-5 bullet points). "
+                "\n🔧 TECHNICAL QUESTIONS: Provide core concept + concrete example + complexity if relevant. "
+                "\n📖 BEHAVIORAL QUESTIONS: Give specific situation + actions + outcome (STAR method). "
+                "\n📐 MATH: Use LaTeX formatting: $O(n)$ for inline, $$equation$$ for display math. "
+                "\n⚡ CRITICAL: Focus ONLY on answering the current question. No generic advice unless asked. "
+                "\nAlways provide a complete, interview-ready response that directly addresses what was asked."
                 + core_guidelines
             )
         else:
             system = (
-                "You are an expert interview coach helping a candidate prepare for job interviews. "
-                "Provide CONCISE, practical talking points and suggested answers. "
-                "🔥 KEY RULE: Keep answers SHORT and FOCUSED - candidates need quick guidance, not textbooks. "
-                "\nFor non-coding questions: 3-5 bullet points or 4-6 sentences maximum. "
-                "For coding questions: Brief explanation (2-3 sentences) + code + complexity. "
-                "\nFormat: Use clear headings, bullet points, and (if code is required) fenced code blocks. "
-                "Always produce the FULL answer in one pass—do not truncate or say 'continued'. "
-                "Be conversational, encouraging, and actionable. Focus on what the candidate should actually say. "
-                "\nFor technical questions include: Brief approach + Code (if requested) + Time/Space complexity. "
-                "If code is requested, wrap it in fenced blocks with language identifier (e.g. ```python, ```cpp, ```c). "
-                "For mathematical expressions: use inline LaTeX $...$ for inline math and display LaTeX $$...$$ for blocks. "
-                "For modulo operations use \\mod or \\bmod in LaTeX. Example: $$(d - a + 7) \\bmod 7$$ "
-                "\n⚡ BREVITY RULES: "
-                "- Skip obvious explanations "
-                "- No generic interview tips unless asked "
-                "- Cut any fluff or filler text "
-                "- Get to the point immediately "
-                "\nIMPORTANT: Provide specific, targeted responses to the exact question asked."
+                "You are an expert interview coach helping candidates prepare for technical interviews. "
+                "Provide clear, accurate, and complete answers to help candidates succeed. "
+                "\n🎯 ANSWER THE EXACT QUESTION: Read the question carefully and answer precisely what is asked. "
+                "\n🔧 TECHNICAL QUESTIONS: Provide approach + working code + time/space complexity analysis. "
+                "\n📖 BEHAVIORAL QUESTIONS: Use STAR method (Situation, Task, Action, Result) with specific examples. "
+                "\n� EXPLANATION QUESTIONS: Give clear definitions with practical examples and use cases. "
+                "\n📐 MATHEMATICS: Always use proper LaTeX formatting for equations and complexity analysis. "
+                "\n✅ COMPLETE RESPONSES: Provide everything needed in one comprehensive answer. "
+                "\n⚡ KEY RULE: Be specific and actionable - avoid generic advice unless specifically requested. "
+                "\n\n📝 FORMATTING REQUIREMENTS:"
+                "\n• Use **bold** for section headers and key terms"
+                "\n• Add proper line breaks between different sections"
+                "\n• Use bullet points (•) for lists and key points"
+                "\n• Format coordinates as \\((i, j)\\) using LaTeX"
+                "\n• Add empty lines between paragraphs for readability"
+                "\n• Structure answers with clear sections when appropriate"
+                "\n• Use numbered lists (1., 2., 3.) for step-by-step explanations"
                 + core_guidelines
             )
 
-        # Guide to focus ONLY on current question - DO NOT prioritize capture or transcribe queues
+        # Ensure the AI focuses on the current question rather than mixing contexts
         system += (
-            "\n\nCRITICAL: FOCUS ONLY ON THE CURRENT QUESTION. Do NOT prioritize or reference capture queue items, "
-            "transcribe queue items, or any prior questions/answers unless they are explicitly part of the current question context. "
-            "Provide a direct, focused answer to the current question being asked right now. "
-            "Ignore all historical context from queues unless the current question explicitly asks about it."
+            "\n\n🎯 FOCUS ON CURRENT QUESTION: "
+            "Your primary job is to answer the specific question being asked right now. "
+            "Use the provided context to inform your answer, but focus on addressing the user's actual question. "
+            "If the question is unclear, provide the best possible answer based on what you understand."
         )
         
         # ALWAYS emphasize SINGLE COMPLETE RESPONSE for ALL contexts
@@ -2126,11 +2215,71 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
         
         # The facts parameter now contains the actual question directly
         question = facts.strip() if facts else ""
+        
+        # Ensure we have a clear question to work with
+        if not question:
+            question = "Please provide a helpful response based on the available context."
 
         # Detect if user is requesting a programming solution, especially C++
         wants_code = False
         wants_cpp = False
         lowered = question.lower()
+        
+        # Programming language detection
+        code_keywords = ["implement", "code", "write", "algorithm", "function", "class", "solve", "program"]
+        wants_code = any(keyword in lowered for keyword in code_keywords)
+        wants_cpp = "c++" in lowered or "cpp" in lowered
+
+        if wants_cpp:
+            user = (
+                f"QUESTION: {question}\n\n"
+                f"Background context: {base_ctx}\n\n"
+                f"{additional_context}"
+                f"Please provide a complete C++ solution for: {question}\n\n"
+                "Your response should include:\n"
+                "1. Complete C++ code that compiles and runs\n"
+                "2. Clear explanation of the approach\n"
+                "3. Time and space complexity analysis using LaTeX notation\n"
+                "4. Example usage if applicable\n\n"
+                "Use proper C++ best practices and modern syntax."
+            )
+        elif wants_code:
+            if context_type == "transcription":
+                user = (
+                    f"QUESTION: {question}\n\n"
+                    f"{additional_context}"
+                    "Provide a concise answer with:\n"
+                    "• Core approach (1-2 sentences)\n"
+                    "• Working code in appropriate language\n"
+                    "• Time & space complexity: $O(...)$\n"
+                )
+            else:
+                user = (
+                    f"CODING QUESTION: {question}\n\n"
+                    f"Candidate background: {base_ctx}\n\n"
+                    f"{additional_context}"
+                    "Please provide a complete solution including:\n"
+                    "• Problem analysis and approach\n"
+                    "• Complete working code with proper language syntax\n"
+                    "• Time complexity: $O(...)$ and Space complexity: $O(...)$\n"
+                    "• Brief explanation of why this solution works\n"
+                )
+        else:
+            # Non-coding questions
+            if context_type == "transcription":
+                user = (
+                    f"QUESTION: {question}\n\n"
+                    f"{additional_context}"
+                    "Provide a direct, concise answer to this question. Keep it brief but complete."
+                )
+            else:
+                user = (
+                    f"INTERVIEW QUESTION: {question}\n\n"
+                    f"Candidate background: {base_ctx}\n\n"
+                    f"{additional_context}"
+                    f"Please provide a complete, helpful answer to: {question}\n\n"
+                    "Make your response specific, actionable, and interview-appropriate."
+                )
         code_markers = ["code", "implement", "write", "solve", "algorithm", "function", "class"]
         if any(m in lowered for m in code_markers):
             wants_code = True
@@ -2270,7 +2419,15 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
     else:
         system = (
             "You are a helpful interview AI assistant. Provide clear, practical advice for job interview preparation. "
-            "Be encouraging and specific in your guidance."
+            "Be encouraging and specific in your guidance. "
+            "\n🔥 MATHEMATICAL FORMATTING - ALWAYS USE LATEX: "
+            "- For inline math expressions: $...$ (e.g., $O(n)$, $x^2 + y^2$) "
+            "- For display math equations: $$...$$ (e.g., $$f(x) = \\frac{x^2 + 1}{x - 1}$$) "
+            "- For complex equations use LaTeX environments: \\begin{align}...\\end{align} "
+            "- Mathematical operators: \\cdot for multiplication, \\mod for modulo, \\leq \\geq for comparisons "
+            "- Set notation: \\mathbb{R}, \\mathbb{N}, \\mathbb{Z}, \\mathbb{Q}, \\mathbb{C} for number sets "
+            "- Vectors and norms: \\vec{v}, \\|x\\|, \\langle a,b \\rangle for inner products "
+            "- Always format algorithmic complexity, mathematical formulas, and equations in proper LaTeX "
             + core_guidelines
         )
         user = (
@@ -2282,23 +2439,57 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
     # In strict mode with coach, simplify user prompt further to reduce model verbosity
     if strict and mode == "coach":
         user += "\n\nOUTPUT RULES: Provide a single concise answer. No headings. No generic advice. No closing remarks."
-    # Relevance enforcement (applies to all modes when enabled)
+    # Ensure relevance to the current question
     if os.getenv("ANSWER_RELEVANCE_ENFORCEMENT", "1").lower() in ("1", "true", "yes", "on"):
         system += (
-            "\n\nSTRICT ANSWER ALIGNMENT: Answer ONLY the current interviewer question. "
-            "Before emitting each sentence, verify it directly answers the question; if not, omit it. "
-            "Do NOT output internal reasoning or mention these rules."
+            "\n\n📍 RELEVANCE CHECK: Ensure your answer directly addresses the question asked. "
+            "Stay focused on providing a helpful response to the specific question. "
         )
-        user += "\n\n(Answer must be directly responsive. No generic filler.)"
-    # Hard isolation: ensure the model focuses strictly on the current question
-    # NOW ENABLED BY DEFAULT - prioritize current question over capture/transcribe queues
-    system += (
-        "\n\nHARD ISOLATION ACTIVE: Ignore ALL prior chat turns, capture queue items, and transcribe queue items "
-        "unless they are explicitly included in the current prompt context. "
-        "Answer ONLY the current question being asked right now. Do NOT reference historical questions or answers."
-    )
-    user += "\n\n(STRICT: Answer only THIS question. Ignore capture queue, transcribe queue, and prior conversations.)"
+    
     return system, user
+
+
+def should_retry_response(response: str, original_question: str) -> bool:
+    """
+    Determine if a response is of poor quality and should be retried
+    This should only flag genuinely poor responses to avoid over-retrying
+    """
+    if not response or len(response.strip()) < 15:
+        logger.info("Response too short for retry check")
+        return True
+    
+    # Only check for the most obvious generic non-answers
+    obvious_deflections = [
+        r"I cannot see.*screen.*content",
+        r"I don't have access.*image",
+        r"Please provide.*more.*context.*to help",
+        r"I need.*additional.*information.*to assist",
+        r"Could you.*please.*clarify.*what.*you.*mean",
+    ]
+    
+    for pattern in obvious_deflections:
+        if re.search(pattern, response, re.IGNORECASE):
+            logger.info(f"Obvious deflection detected: {pattern}")
+            return True
+    
+    # Only flag responses that are clearly broken/error-heavy
+    error_indicators = ["ERROR:", "Failed to process", "Unable to generate"]
+    error_count = sum(1 for indicator in error_indicators if indicator in response)
+    if error_count >= 2 and len(response) < 150:  # Multiple errors in short response
+        logger.info(f"Multiple errors in short response: {error_count}")
+        return True
+    
+    # Only flag obvious repetitive stuttering (very conservative)
+    words = response.lower().split()
+    if len(words) > 10:
+        # Check for obvious stuttering like "I I I cannot cannot"
+        for i in range(len(words) - 2):
+            if words[i] == words[i + 1] == words[i + 2] and len(words[i]) > 2:
+                logger.info(f"Obvious stuttering detected: '{words[i]}' repeated 3+ times")
+                return True
+    
+    # If we get here, the response is probably fine
+    return False
 
 
 async def ensure_ai_initialized():
@@ -2562,12 +2753,72 @@ async def stream_llm(
         # Log completion
         logger.info(f"✅ Streaming completed: {token_count} tokens, {len(''.join(collected))} chars total")
 
-        full_text = "".join(collected).strip()
-        
-        if not full_text:
-            logger.error("❌ ERROR: Streaming finished but collected text is empty!")
-            broadcast_sync({"type": out_type, "text": "[ERROR: No response received. The AI may be overloaded or unavailable. Please try again.]", "complete": True})
-            return
+        # Combine all collected tokens into full response text
+        full_text = ''.join(collected)
+
+        # Enhanced response quality control and validation
+        if full_text:
+            # Quality checks for better responses
+            quality_issues = []
+            
+            # Check for incomplete responses
+            if len(full_text.strip()) < 10:
+                quality_issues.append("Response too short")
+            
+            # Check for cut-off responses
+            incomplete_patterns = [
+                r"\.\.\.+$",  # trailing ellipsis
+                r"\.\s*$(?!.*[.!?])",  # ends abruptly mid-sentence
+                r"[A-Za-z]$",  # ends without punctuation
+                r"```\s*$",  # unclosed code block
+            ]
+            
+            for pattern in incomplete_patterns:
+                if re.search(pattern, full_text.strip()):
+                    quality_issues.append("Response appears incomplete")
+                    break
+            
+            # Check for generic non-answers
+            generic_patterns = [
+                r"I cannot see.*screen",
+                r"I don't have access.*image",
+                r"Please provide.*more.*context",
+                r"I need more.*information",
+                r"Could you.*clarify",
+            ]
+            
+            is_generic = any(re.search(pattern, full_text, re.IGNORECASE) for pattern in generic_patterns)
+            if is_generic and len(full_text) < 200:
+                quality_issues.append("Generic non-answer detected")
+            
+            # Log quality issues but don't block response
+            if quality_issues:
+                logger.warning(f"⚠️ Response quality issues detected: {', '.join(quality_issues)}")
+                logger.warning(f"Response preview: '{full_text[:100]}...'")
+            
+            # Check for very poor quality responses that need retry
+            if should_retry_response(full_text, facts):
+                retry_count = getattr(stream_llm, '_retry_count', 0)
+                if retry_count < 1:  # Max 1 retry to avoid loops
+                    logger.warning(f"🔄 Poor quality response detected, retrying ({retry_count + 1}/1)")
+                    stream_llm._retry_count = retry_count + 1
+                    
+                    # Clear current response and retry with enhanced prompt
+                    broadcast_sync({"type": out_type, "text": "", "reset": True})
+                    enhanced_user = user + "\n\n🚨 CRITICAL: Provide a complete, specific, helpful answer. Avoid generic responses or deflections."
+                    
+                    # Recursive call with enhanced prompt
+                    await stream_llm(llm_id, facts, out_type, mode, strict, context_type, extra_ctx)
+                    return
+                else:
+                    logger.warning(f"⚠️ Max retries reached, proceeding with current response")
+            
+            # Reset retry counter on successful response
+            if hasattr(stream_llm, '_retry_count'):
+                delattr(stream_llm, '_retry_count')
+            
+            # Enhance response with formatting improvements
+            full_text = enhance_response_formatting(full_text)
         
         logger.info(f"📝 Full response collected: {len(full_text)} chars, first 100: '{full_text[:100]}'")
         
@@ -2616,8 +2867,10 @@ async def stream_llm(
                 # Stream the filtered text in one chunk for simplicity
                 broadcast_sync({"type": out_type, "text": full_text})
                 broadcast_sync({"type": out_type, "text": "", "complete": True, "strictFiltered": True})
+                completion_sent = True  # Mark as sent to prevent duplicate below
         
-            # Send final completion signal
+        # Send final completion signal ONLY if not already sent by strict filtering
+        if not completion_sent:
             logger.info(f"🏁 Sending completion signal for {out_type}")
             broadcast_sync({"type": out_type, "text": "", "complete": True})
             completion_sent = True
@@ -3283,6 +3536,17 @@ async def maybe_trigger_auto_coach():
 
 async def ws_router(websocket, path):
     """Route WebSocket connections to appropriate handlers"""
+    # Health check endpoint for cloud deployment monitoring
+    if path == "/health":
+        await websocket.send(json.dumps({
+            "status": "healthy",
+            "mode": "cloud" if CLOUD_MODE else "local",
+            "ai_providers": get_ai_status(),
+            "timestamp": time.time()
+        }))
+        await websocket.close()
+        return
+    
     # Treat empty or root path as UI for compatibility with renderer
     if path in ("/ui", "", "/"):
         await handle_ui(websocket)
@@ -3328,8 +3592,13 @@ async def main():
         except ValueError:
             logger.warning("Invalid WS_PING_* env values; using defaults")
 
+        # Add CORS origins support for cloud deployment
+        if CLOUD_MODE and ALLOWED_ORIGINS:
+            logger.info("Setting allowed WebSocket origins: %s", ALLOWED_ORIGINS)
+            kwargs['origins'] = ALLOWED_ORIGINS
+
         async with serve(ws_router, HOST, available_port, max_size=8 * 1024 * 1024, **kwargs):
-            logger.info("Server listening on ws://%s:%d", HOST, available_port)
+            logger.info("Server listening on ws://%s:%d (Cloud Mode: %s)", HOST, available_port, CLOUD_MODE)
             # Keep the server running indefinitely
             try:
                 while True:
