@@ -279,12 +279,50 @@ footer {
 
 @media (max-width: 768px) {
     .hero h1 {
-        font-size: 2.5rem;
+        font-size: 2rem;
+    }
+    
+    .hero-title {
+        font-size: 2rem;
+        line-height: 1.2;
+    }
+    
+    .hero-sub {
+        font-size: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .hero-cta {
+        flex-direction: column;
+        gap: 0.75rem;
+        width: 100%;
+        margin-top: 1.5rem;
+    }
+    
+    .hero-cta .btn,
+    .hero-cta .cta-button {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .hero-badges {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: center;
+        margin-top: 1.5rem;
+    }
+    
+    .badge {
+        font-size: 0.75rem;
+        padding: 0.4rem 0.8rem;
     }
     
     .features-grid,
-    .pricing-cards {
+    .pricing-cards,
+    .feature-grid,
+    .download-grid {
         grid-template-columns: 1fr;
+        gap: 1.5rem;
     }
     
     .nav-links {
@@ -298,12 +336,41 @@ footer {
     .footer-content {
         grid-template-columns: 1fr;
         gap: var(--spacing-xl);
+        text-align: center;
     }
     
     .footer-bottom {
         flex-direction: column;
         gap: var(--spacing-md);
         text-align: center;
+    }
+    
+    /* Section titles */
+    .section-title h2,
+    .guide .section-title h2 {
+        font-size: 1.75rem;
+    }
+    
+    .section-title p {
+        font-size: 0.95rem;
+    }
+    
+    /* Cards */
+    .feature-card,
+    .download-card {
+        padding: 1.5rem;
+    }
+    
+    .feature-icon,
+    .download-icon {
+        width: 50px;
+        height: 50px;
+        font-size: 1.5rem;
+    }
+    
+    /* Download content */
+    .download-content {
+        padding: 0 1rem;
     }
 }
 

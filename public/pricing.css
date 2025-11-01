@@ -327,20 +327,79 @@
 
 /* Responsive Design */
 @media (max-width: 768px) {
+    .pricing {
+        padding: 3rem 1rem;
+    }
+    
+    .pricing-header h2 {
+        font-size: 2rem;
+    }
+    
+    .pricing-header p {
+        font-size: 1rem;
+    }
+    
     .pricing-grid {
         grid-template-columns: 1fr;
-        padding: 0 1rem;
+        padding: 0;
+        gap: 1.5rem;
     }
 
+    .pricing-card {
+        padding: 2rem;
+        transform: none !important;
+    }
+    
     .pricing-card.popular {
-        transform: scale(1);
+        transform: none !important;
+        order: -1;
     }
 
     .pricing-card:hover {
-        transform: translateY(-5px);
+        transform: translateY(-4px) !important;
     }
 
     .price {
-        font-size: 3rem;
+        font-size: 2.5rem;
+    }
+    
+    .pricing-features {
+        font-size: 0.9rem;
+    }
+    
+    .pricing-button {
+        padding: 0.75rem 1rem;
+        font-size: 0.95rem;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .pricing-grid {
+        grid-template-columns: repeat(2, 1fr);
+        max-width: 800px;
+    }
+    
+    .pricing-card.popular {
+        grid-column: 1 / -1;
+        max-width: 400px;
+        margin: 0 auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .pricing {
+        padding: 2rem 1rem;
+    }
+    
+    .pricing-header h2 {
+        font-size: 1.75rem;
+    }
+    
+    .pricing-card {
+        padding: 1.5rem;
+    }
+    
+    .price {
+        font-size: 2rem;
     }
 }
