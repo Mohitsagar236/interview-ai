@@ -13,6 +13,12 @@ build-temp/
 python-dist/
 *.spec
 
+# Downloaded installers (too large for git)
+public/downloads/*.exe
+public/downloads/*.dmg
+public/downloads/*.AppImage
+public/downloads/*.deb
+
 # Logs
 logs/
 *.log
