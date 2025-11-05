@@ -1,4 +1,43 @@
 /* Payment Page Styles */
+
+/* Dark Mode Toggle Button */
+.theme-toggle-payment {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 48px;
+    height: 48px;
+    border: none;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    z-index: 1000;
+}
+
+.theme-toggle-payment:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+}
+
+.theme-toggle-payment .fa-sun {
+    display: none;
+}
+
+html.dark .theme-toggle-payment .fa-moon {
+    display: none;
+}
+
+html.dark .theme-toggle-payment .fa-sun {
+    display: block;
+}
+
 body {
     background: #ffffff !important;
     background-color: #ffffff !important;
@@ -196,6 +235,10 @@ html.dark .order-item p {
     color: #2d3748;
 }
 
+html.dark .order-item-price {
+    color: #f1f5f9;
+}
+
 .order-features {
     margin: 1.5rem 0;
     padding: 1.5rem;
@@ -203,10 +246,18 @@ html.dark .order-item p {
     border-radius: 8px;
 }
 
+html.dark .order-features {
+    background: #0f172a;
+}
+
 .order-features h3 {
     font-size: 1rem;
     margin-bottom: 1rem;
     color: #2d3748;
+}
+
+html.dark .order-features h3 {
+    color: #f1f5f9;
 }
 
 .order-features ul {
@@ -220,6 +271,10 @@ html.dark .order-item p {
     gap: 0.75rem;
     padding: 0.5rem 0;
     color: #4a5568;
+}
+
+html.dark .order-features li {
+    color: #cbd5e1;
 }
 
 .order-features li i {
@@ -240,6 +295,11 @@ html.dark .order-item p {
     justify-content: space-between;
     padding: 0.5rem 0;
     color: #4a5568;
+}
+
+html.dark .subtotal,
+html.dark .tax {
+    color: #cbd5e1;
 }
 
 .total {
@@ -283,6 +343,10 @@ html.dark .payment-security {
     color: #2d3748;
 }
 
+html.dark .payment-form-container h2 {
+    color: #f1f5f9;
+}
+
 .form-group {
     margin-bottom: 1.5rem;
 }
@@ -292,6 +356,10 @@ html.dark .payment-security {
     margin-bottom: 0.5rem;
     font-weight: 600;
     color: #2d3748;
+}
+
+html.dark .form-group label {
+    color: #f1f5f9;
 }
 
 .form-group input[type="email"],
@@ -306,8 +374,20 @@ html.dark .payment-security {
     color: #0f172a;
 }
 
+.form-group input[type="tel"] {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 1rem;
+    transition: border-color 0.2s;
+    background: white;
+    color: #0f172a;
+}
+
 html.dark .form-group input[type="email"],
-html.dark .form-group input[type="text"] {
+html.dark .form-group input[type="text"],
+html.dark .form-group input[type="tel"] {
     background: #0f172a;
     border-color: #334155;
     color: #f1f5f9;
@@ -353,6 +433,11 @@ html.dark .stripe-element {
     align-items: start;
     gap: 0.5rem;
     font-weight: 400;
+    color: #2d3748;
+}
+
+html.dark .checkbox-group label {
+    color: #f1f5f9;
 }
 
 .checkbox-group input[type="checkbox"] {
@@ -457,6 +542,10 @@ html.dark .payment-guarantee p {
     color: #2d3748;
 }
 
+html.dark .payment-method-selector label {
+    color: #f1f5f9;
+}
+
 .payment-options {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -474,6 +563,11 @@ html.dark .payment-guarantee p {
     background: white;
     cursor: pointer;
     transition: all 0.2s;
+}
+
+html.dark .payment-option {
+    background: #0f172a;
+    border-color: #334155;
 }
 
 .payment-option:hover {
@@ -524,10 +618,18 @@ html.dark .payment-option span {
     color: #2d3748;
 }
 
+html.dark .payment-section h3 {
+    color: #f1f5f9;
+}
+
 .payment-instruction {
     color: #718096;
     margin-bottom: 1.5rem;
     text-align: center;
+}
+
+html.dark .payment-instruction {
+    color: #94a3b8;
 }
 
 /* UPI Apps */
@@ -717,12 +819,20 @@ html.dark .upi-id-box input {
     margin-bottom: 2rem;
 }
 
+html.dark .bank-details {
+    background: #1e293b;
+}
+
 .bank-detail-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 1rem 0;
     border-bottom: 1px solid #e2e8f0;
+}
+
+html.dark .bank-detail-item {
+    border-bottom-color: #334155;
 }
 
 .bank-detail-item:last-child {
@@ -843,6 +953,11 @@ html.dark .payment-note {
     text-align: center;
 }
 
+html.dark .modal-content {
+    background: #1e293b;
+    color: #f1f5f9;
+}
+
 .success-icon {
     font-size: 4rem;
     color: #10b981;
@@ -855,9 +970,17 @@ html.dark .payment-note {
     color: #2d3748;
 }
 
+html.dark .modal-content h2 {
+    color: #f1f5f9;
+}
+
 .modal-content p {
     color: #718096;
     margin-bottom: 1rem;
+}
+
+html.dark .modal-content p {
+    color: #94a3b8;
 }
 
 .download-info {
@@ -993,5 +1116,133 @@ html.dark .payment-note {
         flex-direction: column;
         text-align: center;
         gap: 0.5rem;
+    }
+    
+    .theme-toggle-payment {
+        top: 10px;
+        right: 10px;
+        width: 42px;
+        height: 42px;
+    }
+}
+
+/* Payment Methods Info */
+.payment-methods-info {
+    margin: 1.5rem 0;
+    padding: 1.5rem;
+    background: #f7fafc;
+    border-radius: 8px;
+}
+
+html.dark .payment-methods-info {
+    background: #1e293b;
+}
+
+.payment-methods-info h3 {
+    font-size: 1rem;
+    margin-bottom: 1rem;
+    color: #2d3748;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+html.dark .payment-methods-info h3 {
+    color: #f1f5f9;
+}
+
+.payment-method-icons {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.method-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+html.dark .method-item {
+    background: #0f172a;
+    border-color: #334155;
+}
+
+.method-item:hover {
+    border-color: #10b981;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+.method-item i {
+    font-size: 1.5rem;
+    color: #10b981;
+}
+
+.method-item span {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #4a5568;
+}
+
+html.dark .method-item span {
+    color: #cbd5e1;
+}
+
+.payment-apps-text {
+    text-align: center;
+}
+
+.payment-apps-text small {
+    color: #718096;
+}
+
+html.dark .payment-apps-text small {
+    color: #94a3b8;
+}
+
+/* Razorpay Badge */
+.razorpay-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background: #f7fafc;
+    border-radius: 6px;
+}
+
+html.dark .razorpay-badge {
+    background: #1e293b;
+}
+
+.razorpay-badge small {
+    font-size: 0.75rem;
+    color: #718096;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+html.dark .razorpay-badge small {
+    color: #94a3b8;
+}
+
+.razorpay-badge strong {
+    font-size: 1rem;
+    color: #10b981;
+    font-weight: 700;
+}
+
+@media (max-width: 640px) {
+    .payment-method-icons {
+        grid-template-columns: repeat(2, 1fr);
     }
 }
