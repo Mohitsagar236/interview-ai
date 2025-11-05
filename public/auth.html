@@ -13,6 +13,15 @@
     
     <!-- Supabase Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Dark Mode Init Script - Must run before body renders -->
+    <script>
+        // Apply saved theme immediately to prevent flash
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        if (savedTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
 </head>
 <body>
     <!-- Dark Mode Toggle -->

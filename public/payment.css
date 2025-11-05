@@ -38,25 +38,26 @@ html.dark .theme-toggle-payment .fa-sun {
     display: block;
 }
 
-body {
-    background: #ffffff !important;
-    background-color: #ffffff !important;
-    background-image: none !important;
-    background-attachment: initial !important;
+/* Override any competing styles */
+body,
+html {
+    background: #ffffff;
+    background-color: #ffffff;
+    background-image: none;
 }
 
+html.dark,
 html.dark body {
-    background: #0f172a !important;
-    background-color: #0f172a !important;
-    background-image: none !important;
-    background-attachment: initial !important;
+    background: #0f172a;
+    background-color: #0f172a;
+    background-image: none;
 }
 
 .payment-container {
     min-height: 100vh;
-    background: #ffffff !important;
-    background-color: #ffffff !important;
-    background-image: none !important;
+    background: #ffffff;
+    background-color: #ffffff;
+    background-image: none;
     padding: 2rem 1rem;
 }
 

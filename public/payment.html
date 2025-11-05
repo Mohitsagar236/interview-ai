@@ -19,18 +19,14 @@
     <!-- Razorpay Checkout -->
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     
-    <style>
-        body {
-            background: #ffffff !important;
-            background-color: #ffffff !important;
-            background-image: none !important;
-            background-attachment: initial !important;
+    <!-- Dark Mode Init Script - Must run before body renders -->
+    <script>
+        // Apply saved theme immediately to prevent flash
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        if (savedTheme === 'dark') {
+            document.documentElement.classList.add('dark');
         }
-        html.dark body {
-            background: #0f172a !important;
-            background-color: #0f172a !important;
-        }
-    </style>
+    </script>
 </head>
 <body>
     <!-- Dark Mode Toggle -->
