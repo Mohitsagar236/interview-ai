@@ -1,0 +1,216 @@
+{
+  "version": "1.0.0",
+  "description": "Canonical question-answer pairs for prompt regression testing",
+  "updated": "2025-11-03",
+  "test_cases": [
+    {
+      "id": "coding_001",
+      "type": "coding",
+      "question": "Implement a function to reverse a linked list",
+      "expected_tokens": [
+        "```python",
+        "```javascript",
+        "```cpp",
+        "O(n)",
+        "O(1)",
+        "complexity",
+        "class",
+        "def",
+        "while",
+        "next"
+      ],
+      "expected_patterns": [
+        "\\btime complexity\\b",
+        "\\bspace complexity\\b",
+        "```\\w+"
+      ],
+      "quality_thresholds": {
+        "min_length": 200,
+        "max_length": 2000,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "id": "coding_002",
+      "type": "coding",
+      "question": "Write a function to find the longest palindromic substring",
+      "expected_tokens": [
+        "```",
+        "O(n^2)",
+        "O(n)",
+        "dynamic programming",
+        "expand",
+        "center"
+      ],
+      "expected_patterns": [
+        "\\bapproach\\b",
+        "\\bcomplexity\\b"
+      ],
+      "quality_thresholds": {
+        "min_length": 250,
+        "max_length": 2500,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "id": "system_design_001",
+      "type": "system_design",
+      "question": "Design a URL shortening service like bit.ly",
+      "expected_tokens": [
+        "database",
+        "api",
+        "hash",
+        "scalability",
+        "cache",
+        "component",
+        "tradeoff"
+      ],
+      "expected_patterns": [
+        "\\b(component|service|layer)\\b",
+        "\\b(scale|scalability|throughput)\\b",
+        "\\b(tradeoff|trade-off|advantage|disadvantage)\\b"
+      ],
+      "quality_thresholds": {
+        "min_length": 400,
+        "max_length": 3000,
+        "min_confidence": 0.6
+      }
+    },
+    {
+      "id": "behavioral_001",
+      "type": "behavioral",
+      "question": "Tell me about a time you had a conflict with a team member",
+      "expected_tokens": [
+        "situation",
+        "action",
+        "result",
+        "outcome",
+        "learned"
+      ],
+      "expected_patterns": [
+        "\\b(situation|context|scenario)\\b",
+        "\\b(action|did|took|implemented)\\b",
+        "\\b(result|outcome|impact|achieved)\\b"
+      ],
+      "quality_thresholds": {
+        "min_length": 150,
+        "max_length": 1500,
+        "min_confidence": 0.6
+      },
+      "star_required": true
+    },
+    {
+      "id": "behavioral_002",
+      "type": "behavioral",
+      "question": "Describe a time when you showed leadership",
+      "expected_tokens": [
+        "team",
+        "led",
+        "initiative",
+        "result"
+      ],
+      "expected_patterns": [
+        "\\b(led|lead|leadership|managed)\\b",
+        "\\b(team|people|group)\\b"
+      ],
+      "quality_thresholds": {
+        "min_length": 150,
+        "max_length": 1500,
+        "min_confidence": 0.6
+      },
+      "star_required": true
+    },
+    {
+      "id": "theory_001",
+      "type": "theory",
+      "question": "What is the difference between TCP and UDP?",
+      "expected_tokens": [
+        "TCP",
+        "UDP",
+        "reliable",
+        "connection",
+        "packet"
+      ],
+      "expected_patterns": [
+        "\\b(reliable|unreliable)\\b",
+        "\\b(connection|connectionless)\\b"
+      ],
+      "quality_thresholds": {
+        "min_length": 100,
+        "max_length": 1000,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "id": "ml_001",
+      "type": "ml_data_science",
+      "question": "Explain gradient descent and how it works in neural networks",
+      "expected_tokens": [
+        "gradient",
+        "loss",
+        "optimization",
+        "learning rate",
+        "weights"
+      ],
+      "expected_patterns": [
+        "\\$.*\\$",
+        "\\b(minimize|optimization|optimize)\\b",
+        "\\b(gradient|derivative|slope)\\b"
+      ],
+      "quality_thresholds": {
+        "min_length": 200,
+        "max_length": 1500,
+        "min_confidence": 0.7
+      }
+    },
+    {
+      "id": "sql_001",
+      "type": "sql_database",
+      "question": "Write SQL to find the second highest salary",
+      "expected_tokens": [
+        "SELECT",
+        "FROM",
+        "ORDER BY",
+        "LIMIT",
+        "OFFSET",
+        "DESC"
+      ],
+      "expected_patterns": [
+        "```sql",
+        "\\bSELECT\\b",
+        "\\bORDER BY\\b"
+      ],
+      "quality_thresholds": {
+        "min_length": 80,
+        "max_length": 800,
+        "min_confidence": 0.8
+      }
+    }
+  ],
+  "negative_test_cases": [
+    {
+      "id": "deflection_001",
+      "type": "coding",
+      "question": "Implement binary search",
+      "bad_answer": "I cannot see the screen content to help with this question.",
+      "should_flag": true,
+      "expected_recommendation": "retry"
+    },
+    {
+      "id": "incomplete_001",
+      "type": "coding",
+      "question": "Implement quicksort",
+      "bad_answer": "Here's the code:\n\ndef quicksort(arr):\n    # TODO: implement this\n    pass",
+      "should_flag": true,
+      "expected_recommendation": "retry"
+    },
+    {
+      "id": "off_topic_001",
+      "type": "coding",
+      "question": "Write a function to merge two sorted arrays",
+      "bad_answer": "That's a great question! Before we dive in, let me tell you about data structures in general...",
+      "should_flag": true,
+      "expected_recommendation": "manual_review"
+    }
+  ]
+}

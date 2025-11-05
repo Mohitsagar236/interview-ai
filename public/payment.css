@@ -1,8 +1,28 @@
 /* Payment Page Styles */
+body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
+    background-attachment: initial !important;
+}
+
+html.dark body {
+    background: #0f172a !important;
+    background-color: #0f172a !important;
+    background-image: none !important;
+    background-attachment: initial !important;
+}
+
 .payment-container {
     min-height: 100vh;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
     padding: 2rem 1rem;
+}
+
+html.dark .payment-container {
+    background: #0f172a;
 }
 
 .payment-header {
@@ -14,12 +34,17 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    color: white;
+    color: #0f172a;
+}
+
+html.dark .payment-header .logo {
+    color: #ffffff;
 }
 
 .payment-header .logo-img {
     width: 40px;
     height: 40px;
+    border-radius: 50%;
 }
 
 .payment-header .logo-text {
@@ -44,15 +69,29 @@
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
 }
 
+html.dark .payment-left,
+html.dark .payment-right {
+    background: #1e293b;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
 .payment-left h1 {
     font-size: 2rem;
     margin-bottom: 0.5rem;
     color: #1a202c;
 }
 
+html.dark .payment-left h1 {
+    color: #f1f5f9;
+}
+
 .payment-subtitle {
     color: #718096;
     margin-bottom: 2rem;
+}
+
+html.dark .payment-subtitle {
+    color: #94a3b8;
 }
 
 .order-summary {
@@ -65,6 +104,10 @@
     color: #2d3748;
 }
 
+html.dark .order-summary h2 {
+    color: #f1f5f9;
+}
+
 .order-item {
     display: flex;
     justify-content: space-between;
@@ -75,6 +118,10 @@
     margin-bottom: 1.5rem;
 }
 
+html.dark .order-item {
+    background: #0f172a;
+}
+
 .order-item-info {
     display: flex;
     gap: 1rem;
@@ -83,7 +130,7 @@
 
 .order-icon {
     font-size: 2rem;
-    color: #667eea;
+    color: #10b981;
 }
 
 .order-item h3 {
@@ -92,9 +139,17 @@
     color: #2d3748;
 }
 
+html.dark .order-item h3 {
+    color: #f1f5f9;
+}
+
 .order-item p {
     font-size: 0.875rem;
     color: #718096;
+}
+
+html.dark .order-item p {
+    color: #94a3b8;
 }
 
 .order-item-price {
@@ -130,7 +185,7 @@
 }
 
 .order-features li i {
-    color: #48bb78;
+    color: #10b981;
     font-size: 1rem;
 }
 
@@ -158,6 +213,11 @@
     padding-top: 1rem;
 }
 
+html.dark .total {
+    color: #f1f5f9;
+    border-top-color: #334155;
+}
+
 .payment-security {
     display: flex;
     align-items: center;
@@ -170,8 +230,13 @@
     font-size: 0.875rem;
 }
 
+html.dark .payment-security {
+    background: #1e293b;
+    color: #94a3b8;
+}
+
 .payment-security i {
-    color: #48bb78;
+    color: #10b981;
 }
 
 .payment-form-container h2 {
@@ -199,12 +264,21 @@
     border-radius: 6px;
     font-size: 1rem;
     transition: border-color 0.2s;
+    background: white;
+    color: #0f172a;
+}
+
+html.dark .form-group input[type="email"],
+html.dark .form-group input[type="text"] {
+    background: #0f172a;
+    border-color: #334155;
+    color: #f1f5f9;
 }
 
 .form-group input:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
 }
 
 .form-group small {
@@ -214,11 +288,20 @@
     color: #718096;
 }
 
+html.dark .form-group small {
+    color: #94a3b8;
+}
+
 .stripe-element {
     padding: 0.75rem;
     border: 1px solid #e2e8f0;
     border-radius: 6px;
     background: white;
+}
+
+html.dark .stripe-element {
+    background: #0f172a;
+    border-color: #334155;
 }
 
 #card-errors {
@@ -239,7 +322,7 @@
 }
 
 .checkbox-group a {
-    color: #667eea;
+    color: #10b981;
     text-decoration: none;
 }
 
@@ -295,9 +378,13 @@
     border-radius: 8px;
 }
 
+html.dark .payment-guarantee {
+    background: #1e293b;
+}
+
 .payment-guarantee i {
     font-size: 2rem;
-    color: #48bb78;
+    color: #10b981;
 }
 
 .payment-guarantee strong {
@@ -306,10 +393,18 @@
     color: #2d3748;
 }
 
+html.dark .payment-guarantee strong {
+    color: #f1f5f9;
+}
+
 .payment-guarantee p {
     font-size: 0.875rem;
     color: #718096;
     margin: 0;
+}
+
+html.dark .payment-guarantee p {
+    color: #94a3b8;
 }
 
 /* Payment Method Selector */
@@ -344,23 +439,35 @@
 }
 
 .payment-option:hover {
-    border-color: #667eea;
+    border-color: #10b981;
     background: #f7fafc;
 }
 
+html.dark .payment-option:hover {
+    background: #1e293b;
+}
+
 .payment-option.active {
-    border-color: #667eea;
-    background: #eef2ff;
+    border-color: #10b981;
+    background: #ecfdf5;
+}
+
+html.dark .payment-option.active {
+    background: #064e3b;
 }
 
 .payment-option i {
     font-size: 2rem;
-    color: #667eea;
+    color: #10b981;
 }
 
 .payment-option span {
     font-weight: 600;
     color: #2d3748;
+}
+
+html.dark .payment-option span {
+    color: #f1f5f9;
 }
 
 /* Payment Sections */
@@ -393,12 +500,20 @@
     margin-bottom: 2rem;
 }
 
+html.dark .upi-apps {
+    background: #1e293b;
+}
+
 .upi-apps h4 {
     font-size: 0.875rem;
     color: #4a5568;
     margin-bottom: 1rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+}
+
+html.dark .upi-apps h4 {
+    color: #94a3b8;
 }
 
 .upi-app-icons {
@@ -415,15 +530,26 @@
 }
 
 .upi-app img {
-    width: 50px;
-    height: 50px;
+    width: 56px;
+    height: 56px;
     object-fit: contain;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease;
+}
+
+.upi-app img:hover {
+    transform: scale(1.05);
 }
 
 .upi-app span {
     font-size: 0.75rem;
     color: #4a5568;
     font-weight: 500;
+}
+
+html.dark .upi-app span {
+    color: #e2e8f0;
 }
 
 /* QR Code */
@@ -436,6 +562,11 @@
     border: 2px dashed #cbd5e0;
     border-radius: 12px;
     margin-bottom: 2rem;
+}
+
+html.dark .qr-code-container {
+    background: #1e293b;
+    border-color: #334155;
 }
 
 #qr-code {
@@ -458,6 +589,10 @@
     font-size: 0.875rem;
 }
 
+html.dark .qr-instruction {
+    color: #94a3b8;
+}
+
 /* UPI ID */
 .upi-id-container {
     margin-bottom: 2rem;
@@ -469,6 +604,10 @@
     font-weight: 600;
     color: #2d3748;
     font-size: 0.875rem;
+}
+
+html.dark .upi-id-container label {
+    color: #f1f5f9;
 }
 
 .upi-id-box {
@@ -483,13 +622,18 @@
     border-radius: 6px;
     font-size: 1rem;
     background: #f7fafc;
-    color: #2d3748;
-    font-family: monospace;
+    color: #0f172a;
+}
+
+html.dark .upi-id-box input {
+    background: #0f172a;
+    border-color: #334155;
+    color: #f1f5f9;
 }
 
 .btn-copy {
     padding: 0.75rem 1.5rem;
-    background: #667eea;
+    background: #10b981;
     color: white;
     border: none;
     border-radius: 6px;
@@ -499,7 +643,7 @@
 }
 
 .btn-copy:hover {
-    background: #5568d3;
+    background: #059669;
 }
 
 .btn-copy i {
@@ -512,7 +656,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 1.5rem;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     color: white;
     border-radius: 8px;
     margin-bottom: 2rem;
@@ -553,6 +697,10 @@
     margin: 0;
 }
 
+html.dark .bank-detail-item label {
+    color: #94a3b8;
+}
+
 .detail-value {
     display: flex;
     align-items: center;
@@ -565,33 +713,41 @@
     font-size: 1rem;
 }
 
+html.dark .detail-value span {
+    color: #e2e8f0;
+}
+
 .btn-copy-inline {
     padding: 0.25rem 0.5rem;
     background: transparent;
     border: 1px solid #cbd5e0;
     border-radius: 4px;
     cursor: pointer;
-    color: #667eea;
+    color: #10b981;
     transition: all 0.2s;
 }
 
-.btn-copy-inline:hover {
-    background: #667eea;
-    color: white;
-    border-color: #667eea;
+html.dark .btn-copy-inline {
+    border-color: #334155;
 }
 
+.btn-copy-inline:hover {
+    background: #10b981;
 .bank-detail-item.highlight {
-    background: #eef2ff;
+    background: #ecfdf5;
     margin: 1rem -1.5rem 0;
     padding: 1rem 1.5rem;
     border-radius: 6px;
 }
 
+html.dark .bank-detail-item.highlight {
+    background: #064e3b;
+}
+
 .bank-detail-item.highlight .detail-value span {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #667eea;
+    color: #10b981;
 }
 
 /* Payment Note */
@@ -604,6 +760,12 @@
     border: 1px solid #ffc107;
     border-radius: 8px;
     color: #856404;
+}
+
+html.dark .payment-note {
+    background: #422006;
+    border-color: #ca8a04;
+    color: #fef3c7;
 }
 
 .payment-note i {
@@ -645,7 +807,7 @@
 
 .success-icon {
     font-size: 4rem;
-    color: #48bb78;
+    color: #10b981;
     margin-bottom: 1.5rem;
 }
 
@@ -682,9 +844,9 @@
 }
 
 #payment-message.success {
-    background: #c6f6d5;
-    color: #22543d;
-    border: 1px solid #48bb78;
+    background: #d1fae5;
+    color: #064e3b;
+    border: 1px solid #10b981;
 }
 
 #payment-message.error {

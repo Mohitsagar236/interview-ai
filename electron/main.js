@@ -858,8 +858,8 @@ function createMainWindow() {
     show: false // Don't show until ready
   });
 
-  // Load the new Profile UI as the main frontend
-  mainWindow.loadFile(path.join(__dirname, '../renderer/profile.html'));
+  // Load the main UI
+  mainWindow.loadFile(path.join(__dirname, '../public/index.html'));
 
   // Don't automatically show window
   mainWindow.once('ready-to-show', () => {

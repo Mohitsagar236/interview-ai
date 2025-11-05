@@ -245,26 +245,13 @@
     }
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-    :root {
-        --text-color: #f3f4f6;
-        --light-bg: #1f2937;
-        --white: #111827;
-    }
+/* Dark mode support - controlled by .dark class */
+.dark .feature-card,
+.dark .pricing-card {
+    background: #1f2937;
+    border-color: #374151;
+}
 
-    body {
-        background-color: #111827;
-        color: #f3f4f6;
-    }
-
-    .feature-card,
-    .pricing-card {
-        background: #1f2937;
-        border-color: #374151;
-    }
-
-    .form-group label {
-        background: #111827;
-    }
+.dark .form-group label {
+    background: #111827;
 }

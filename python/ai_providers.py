@@ -22,10 +22,11 @@ logger = logging.getLogger(__name__)
 class AIConfig:
     model: str = "gpt-4o-mini"
     base_url: str = "https://api.openai.com/v1"
-    # Set to 0 to allow unlimited tokens (model decides completion length)
-    max_new_tokens: int = 0
-    temperature: float = 0.2
-    allow_auto_continue: bool = True  # whether server may trigger continuation passes
+    # LATENCY OPTIMIZATION: 1500 tokens = faster responses (30-45s)
+    max_new_tokens: int = 1500
+    # Lower temperature = faster, more deterministic responses
+    temperature: float = 0.1
+    allow_auto_continue: bool = False  # disabled for speed - single-pass only
 
 
 class MessageFormatter:
@@ -36,68 +37,41 @@ class MessageFormatter:
         """Format user input into proper message format with clear system instructions"""
         messages = []
         
-        # Add enhanced system context with clear instructions - ChatGPT-level quality
-        system_instruction = """You are an expert AI assistant providing ChatGPT-quality responses for technical interview preparation, coding questions, and professional development.
+        # OPTIMIZED SYSTEM PROMPT - Concise for lower latency while maintaining quality
+        system_instruction = """You are an expert AI interview assistant. Provide clear, accurate, complete answers.
 
-🎯 CORE MISSION:
-Deliver COMPLETE, ACCURATE, COMPREHENSIVE answers that match or exceed ChatGPT's quality standards. Every response should be:
-• Thorough and detailed - explain concepts fully
-• Immediately actionable and practical
-• Professionally structured and well-formatted
-• Technically precise with proper terminology
-• Clear enough for any experience level
+🎯 RESPONSE STANDARDS:
+• Be thorough but concise - explain clearly without filler
+• Provide working code with complexity analysis
+• Use proper formatting: **bold**, `code`, LaTeX math
+• Structure with headers and bullets for readability
 
-📝 RESPONSE EXCELLENCE STANDARDS:
+📝 FOR CODE QUESTIONS:
+• Give complete working solution with explanation
+• Time/space complexity: $O(n)$, $O(1)$
+• Multiple approaches if relevant
+• Use proper syntax: ```python, ```javascript
+• Include edge cases
 
-**For Coding/Algorithm Questions:**
-• Provide COMPLETE working code solutions with detailed explanations
-• Include multiple approaches when relevant (brute force → optimal)
-• Always specify time complexity: $O(n)$, space complexity analysis
-• Explain the intuition and approach BEFORE showing code
-• Use proper syntax highlighting: ```python, ```javascript, etc.
-• Add inline comments to clarify complex logic
-• Include example test cases with expected outputs
-• Mention edge cases and how the solution handles them
+📐 FOR MATH/TECHNICAL:
+• LaTeX notation: $O(n \\log n)$, $$\\frac{a}{b}$$
+• Step-by-step breakdown
+• Worked examples
 
-**For Mathematical/Technical Questions:**
-• Use proper LaTeX notation: $O(n \\log n)$, $$f(x) = \\frac{a^2 + b^2}{c}$$
-• Break down complex formulas step-by-step
-• Provide visual/conceptual explanations where helpful
-• Show worked examples with actual numbers
-• Use LaTeX environments for multi-line equations:
-  - \\begin{align}...\\end{align} for aligned equations
-  - \\begin{cases}...\\end{cases} for piecewise functions
-  - Display math: $$...$$, inline math: $...$
+🏗️ FOR SYSTEM DESIGN:
+• High-level overview → components → tradeoffs
+• Scalability, consistency, latency considerations
+• Specific technologies/tools
 
-**For System Design/Architecture:**
-• Start with high-level overview
-• Break down into components with clear responsibilities
-• Discuss tradeoffs (scalability, consistency, latency)
-• Include diagram descriptions or ASCII art if helpful
-• Address common failure modes and mitigation
-• Suggest technologies/tools where appropriate
-
-**For Behavioral/Career Questions:**
-• Use the STAR framework (Situation, Task, Action, Result)
-• Provide 2-3 specific example scenarios
-• Include concrete talking points and key phrases
-• Keep responses interview-length (1-2 minutes when spoken)
-• Focus on demonstrable impact and metrics
-• Tailor to common industry expectations
-
-**Formatting Excellence:**
-• Use headers (##, ###) to organize long responses
-• Bullet points for lists and key takeaways
-• Code blocks with language specification
-• Bold **important concepts** for emphasis
-• Numbered lists for step-by-step processes
-• Tables for comparisons when applicable
+💼 FOR BEHAVIORAL:
+• STAR framework (Situation, Task, Action, Result)
+• Concrete examples with metrics
+• Interview-length responses (1-2 min spoken)
 
 🚫 AVOID:
-• Generic filler ("that's a great question!", "I hope this helps!")
-• Apologetic language ("I'm not sure but...", "I think...")
-• Meta-commentary about your limitations
-• Asking clarifying questions unless absolutely critical
+• Generic filler phrases
+• Meta-commentary about limitations
+• Asking clarifying questions unless critical
 • Incomplete or partial answers that require follow-up
 • Overly verbose explanations - be comprehensive but concise
 
@@ -222,9 +196,9 @@ class OpenAIProvider:
             logger.info(f"Normalizing model slug '{self.config.model}' -> '{normalized}'")
             self.config.model = normalized
         if not self._async_client:
-            # Reuse a single async client with connection pooling (better connection reuse / latency)
-            # Increased timeouts for better reliability with OpenRouter
-            timeout = httpx.Timeout(120.0, connect=15.0, read=120.0, write=30.0)
+            # LATENCY OPTIMIZATION: Aggressive connection pooling + HTTP/2
+            # Reduced timeouts for faster failure/retry
+            timeout = httpx.Timeout(60.0, connect=5.0, read=60.0, write=15.0)
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "User-Agent": "InterviewAI/1.0"
@@ -235,8 +209,8 @@ class OpenAIProvider:
                     "HTTP-Referer": os.getenv("OPENROUTER_SITE_URL", "http://localhost"),
                     "X-Title": os.getenv("OPENROUTER_SITE_NAME", "Interview AI Assistant")
                 })
-            # Enable connection pooling for better performance
-            limits = httpx.Limits(max_keepalive_connections=10, max_connections=20, keepalive_expiry=30.0)
+            # LATENCY OPTIMIZATION: More connections, longer keepalive
+            limits = httpx.Limits(max_keepalive_connections=20, max_connections=50, keepalive_expiry=60.0)
             # Try to enable HTTP/2 if h2 package is available
             try:
                 self._async_client = httpx.AsyncClient(

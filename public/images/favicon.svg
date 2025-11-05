@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+    <defs>
+        <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#10b981;stop-opacity:1"/>
+            <stop offset="100%" style="stop-color:#059669;stop-opacity:1"/>
+        </linearGradient>
+    </defs>
+    
+    <!-- Background circle -->
+    <circle cx="50" cy="50" r="48" fill="url(#greenGrad)"/>
+    
+    <!-- Microphone body -->
+    <path d="M35 42 Q35 30 45 30 L55 30 Q65 30 65 42 L65 58 Q65 70 55 70 L45 70 Q35 70 35 58 Z" fill="white"/>
+    
+    <!-- Microphone bottom circle -->
+    <circle cx="50" cy="76" r="7" fill="white"/>
+    
+    <!-- Microphone stand -->
+    <rect x="47" y="73" width="6" height="12" fill="white" rx="3"/>
+    
+    <!-- AI wave lines (left) -->
+    <path d="M28 40 L23 35" stroke="white" stroke-width="3" stroke-linecap="round"/>
+    <path d="M28 50 L23 50" stroke="white" stroke-width="3" stroke-linecap="round"/>
+    <path d="M28 60 L23 65" stroke="white" stroke-width="3" stroke-linecap="round"/>
+    
+    <!-- AI wave lines (right) -->
+    <path d="M72 40 L77 35" stroke="white" stroke-width="3" stroke-linecap="round"/>
+    <path d="M72 50 L77 50" stroke="white" stroke-width="3" stroke-linecap="round"/>
+    <path d="M72 60 L77 65" stroke="white" stroke-width="3" stroke-linecap="round"/>
+    
+    <!-- Microphone grid lines -->
+    <line x1="40" y1="45" x2="60" y2="45" stroke="#10b981" stroke-width="1.5" opacity="0.3"/>
+    <line x1="40" y1="52" x2="60" y2="52" stroke="#10b981" stroke-width="1.5" opacity="0.3"/>
+    <line x1="40" y1="59" x2="60" y2="59" stroke="#10b981" stroke-width="1.5" opacity="0.3"/>
+</svg>

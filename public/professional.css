@@ -35,14 +35,15 @@
 }
 
 .download-card {
-    background: rgba(15, 23, 42, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
     border-radius: 1.5rem;
     padding: 2.5rem;
     transition: all 0.3s ease;
-    backdrop-filter: blur(10px);
+    backdrop-filter: none;
     position: relative;
     overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .download-card::before {
@@ -59,7 +60,7 @@
 
 .download-card:hover {
     transform: translateY(-5px);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
 }
 
 .download-card:hover::before {
@@ -115,11 +116,11 @@
 
 /* Enhanced Modern Footer */
 .footer {
-    background: linear-gradient(to bottom, var(--background) 0%, var(--background-dark) 100%);
+    background: linear-gradient(to bottom, #f8fafc 0%, #e2e8f0 100%);
     padding: 6rem 0 2rem;
     position: relative;
     overflow: hidden;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .footer::after {
@@ -504,9 +505,10 @@
 /* Hero Section */
 .hero {
     position: relative;
-    padding: 8rem 0 6rem;
+    padding: 8rem 2rem 4rem;
     overflow: hidden;
-    background: radial-gradient(circle at 50% 50%, var(--background-light) 0%, var(--background) 100%);
+    background: #ffffff;
+    min-height: auto;
 }
 
 .hero::before {
@@ -514,13 +516,41 @@
     position: absolute;
     top: 0;
     left: 0;
-    right: 0;
+    width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, 
-        var(--primary-color) 0%, 
-        var(--secondary-color) 100%);
-    opacity: 0.1;
-    mask-image: radial-gradient(circle at 50% 50%, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 70%);
+    background: linear-gradient(to bottom, #fafafa 0%, #ffffff 100%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.hero-container {
+    position: relative;
+    z-index: 1;
+    max-width: 1400px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4rem;
+    align-items: center;
+}
+
+.hero-left {
+    max-width: 600px;
+}
+
+.hero-right {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.hero::after {
+    display: none;
+}
+
+@keyframes float {
+    0%, 100% { transform: translate(0, 0); }
+    50% { transform: translate(30px, -30px); }
 }
 
 .hero-content {
@@ -531,40 +561,105 @@
     text-align: center;
 }
 
+.hero-title,
 .hero h1 {
-    font-size: 4rem;
-    font-weight: 800;
-    line-height: 1.1;
+    font-size: 3.5rem;
+    font-weight: 700;
+    line-height: 1.15;
     margin-bottom: 1.5rem;
-    background: var(--gradient-1);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: #0f172a;
     letter-spacing: -0.02em;
+    text-align: left;
 }
 
+.hero-title span,
+.hero h1 span {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.hero-sub,
 .hero p {
-    font-size: 1.25rem;
-    color: var(--text-secondary);
-    margin-bottom: 2.5rem;
+    font-size: 1.15rem;
+    color: #64748b;
+    margin-bottom: 2rem;
     line-height: 1.7;
+    font-weight: 400;
+    text-align: left;
+}
+
+/* Hero Video Section */
+.hero-video-section {
+    background: #f8fafc;
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+.video-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 0.5rem;
+    text-align: center;
+}
+
+.video-subtitle {
+    font-size: 0.95rem;
+    color: #64748b;
+    margin-bottom: 1.5rem;
+    text-align: center;
 }
 
 /* Feature Cards */
+.features {
+    padding: 4rem 2rem;
+    background: #ffffff;
+}
+
 .feature-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     gap: 2rem;
-    padding: 4rem 0;
+    padding: 4rem 0 2rem;
 }
 
 .feature-card {
-    background: rgba(15, 23, 42, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 1rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
     padding: 2rem;
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.feature-card:hover {
+    border-color: #10b981;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    transform: translateY(-2px);
+}
+
+.feature-icon {
+    font-size: 2.5rem;
+    color: #10b981;
+    margin-bottom: 1.5rem;
+}
+
+.feature-card h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 1rem;
+}
+
+.feature-card p {
+    font-size: 0.95rem;
+    color: #64748b;
+    line-height: 1.6;
 }
 
 .feature-card::before {
@@ -585,8 +680,7 @@
 
 .feature-card:hover {
     transform: translateY(-5px);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-    background: rgba(15, 23, 42, 0.8);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
 }
 
 .feature-icon {
@@ -738,4 +832,57 @@
     .pricing-card.popular {
         transform: scale(1);
     }
+}
+
+/* Dark Mode Styles */
+.dark .download-card {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.dark .download-card:hover {
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Dark mode footer */
+.dark .footer {
+    background: linear-gradient(to bottom, var(--background) 0%, var(--background-light) 100%);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.dark .footer-links a {
+    color: var(--text-secondary);
+}
+
+.dark .footer-links a:hover {
+    color: var(--primary-color);
+}
+
+/* Dark mode feature cards */
+html.dark .features {
+    background: #0f172a;
+}
+
+html.dark .feature-card {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+html.dark .feature-card:hover {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    border-color: #10b981;
+}
+
+html.dark .feature-card h3 {
+    color: #f1f5f9;
+}
+
+html.dark .feature-card p {
+    color: #cbd5e1;
+}
+
+html.dark .feature-icon {
+    color: #10b981;
 }

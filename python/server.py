@@ -12,7 +12,7 @@ import time
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Set
 
 import numpy as np
 # FastAPI imports removed (unused; using raw websockets)
@@ -48,6 +48,14 @@ except Exception:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("server")
 
+# Import streaming fixes
+from streaming_fixes import (
+    format_markdown_blocks,
+    should_send_final_response,
+    clean_streamed_response,
+    normalize_streaming_tokens
+)
+
 # Additional libraries and OCR/IO dependencies
 from pypdf import PdfReader
 import docx
@@ -65,6 +73,33 @@ except ImportError:
 
 # Import our new AI providers system
 from ai_providers import initialize_ai, generate_ai_response, get_ai_status, generate_ai_response_for
+
+# Import intelligent routing modules (NEW - for smart model selection)
+try:
+    from question_classifier import classify_question, QuestionType
+    from ai_router import route_model, get_router
+    from context_manager import create_context_manager
+    from confidence_scorer import score_answer
+    _has_intelligent_routing = True
+    logger.info("✅ Intelligent routing modules loaded successfully")
+except ImportError as e:
+    logger.warning(f"⚠️  Intelligent routing modules not available: {e}")
+    _has_intelligent_routing = False
+
+# Import answer quality enhancement modules (NEW - for postprocessing & quality validation)
+try:
+    from answer_quality import (
+        postprocess_answer,
+        compute_confidence,
+        check_duplicate_question,
+        cache_question_answer,
+        create_seen_tokens_log,
+    )
+    _has_answer_quality = True
+    logger.info("✅ Answer quality enhancement modules loaded successfully")
+except ImportError as e:
+    logger.warning(f"⚠️  Answer quality modules not available: {e}")
+    _has_answer_quality = False
 
 # Import Windows native capture for restricted applications
 try:
@@ -1850,30 +1885,34 @@ async def ingest_company_brief(text: str):
 
 def enhance_response_formatting(text: str) -> str:
     """
-    Enhance response formatting for better readability and interview context
+    Enhance response formatting for better readability and interview context.
+    Now includes proper markdown code block formatting.
     """
     if not text:
         return text
     
     enhanced = text
     
-    # 1. Improve paragraph structure - add line breaks for better readability
+    # 1. First apply markdown code block formatting (critical for code display)
+    enhanced = format_markdown_blocks(enhanced)
+    
+    # 2. Improve paragraph structure - add line breaks for better readability
     # Convert long sentences separated by periods into separate lines
     enhanced = re.sub(r'(\w\.)\s+(\d+\.\s*[A-Z])', r'\1\n\n\2', enhanced)  # Numbered lists
     enhanced = re.sub(r'([:.])\s*(###\s*[A-Z])', r'\1\n\n\2', enhanced)  # Headers with ###
     
-    # 2. Format coordinates and mathematical expressions properly with LaTeX
+    # 3. Format coordinates and mathematical expressions properly with LaTeX
     # Convert coordinate notation to LaTeX
     enhanced = re.sub(r'\(([i-z]),?\s*([i-z])\)', r'\\((\1, \2)\\)', enhanced)  # (i, j) -> \((i, j)\)
     enhanced = re.sub(r'\b(\d+)\s*x\s*(\d+)\s*matrix\b', r'\\(\1 \\times \2\\) matrix', enhanced)
     enhanced = re.sub(r'\b(\d+)\s*or\s*(\d+)\s*steps?\b', r'\\(\1\\) or \\(\2\\) steps', enhanced)
     
-    # 3. Improve bullet point and list formatting
+    # 4. Improve bullet point and list formatting
     enhanced = re.sub(r'^[\s]*[-•*]\s*', '• ', enhanced, flags=re.MULTILINE)
     enhanced = re.sub(r'\b(\d+)\.\s*([A-Z][^.]*:)', r'\n\n**\1. \2**\n', enhanced)  # Numbered sections
     enhanced = re.sub(r'###\s*([^\n]+)', r'\n\n### \1\n', enhanced)  # Headers
     
-    # 4. Structure interview answers better
+    # 5. Structure interview answers better
     # Look for common interview answer patterns and format them
     patterns = [
         (r'Answer Structure\s*1\.', r'\n\n**Answer Structure:**\n\n**1.**'),
@@ -2007,42 +2046,92 @@ def _extract_company_names(text: str) -> List[str]:
 
 
 def _is_company_related(question_or_text: str, company_text: str) -> bool:
+    """
+    Detect if a question is related to company information.
+    Company brief should ONLY be used when the interviewer asks about the company.
+    """
     try:
         if not question_or_text or not company_text:
             return False
         # Prefer explicit last question if present
         q = extract_last_question(question_or_text) or question_or_text
         ql = q.lower()
+        
         # If the question mentions the company name, it's relevant
         names = _extract_company_names(company_text)
         for name in names:
             if name and name.strip() and name.lower() in ql:
                 return True
-        # Heuristic phrases indicating company-related questions
+        
+        # Expanded patterns for company-related questions
+        # These patterns indicate the interviewer is asking about the company
         patterns = [
-            r"\bwhy\s+(do\s+you\s+want\s+to\s+)?work\s+(here|at\s+.+?)\b",
-            r"\bwhat\s+do\s+you\s+know\s+about\s+(us|our\s+company|.+?)\b",
-            r"\bour\s+(mission|values|culture|product|products|stack|technology|tech\s*stack|customers|market|competitors)\b",
+            # Direct company questions
+            r"\bwhy\s+(do\s+you\s+want\s+to\s+)?work\s+(here|at\s+.+?|with\s+us)\b",
+            r"\bwhat\s+do\s+you\s+know\s+about\s+(us|our\s+company|this\s+company|.+?)\b",
+            r"\btell\s+(me|us)\s+about\s+(the\s+)?company\b",
+            r"\bwhat\s+interests\s+you\s+about\s+(this\s+)?(role|position|company)\b",
+            
+            # Company attributes (using "our" or "the company")
+            r"\bour\s+(mission|values|culture|product|products|stack|technology|tech\s*stack|customers|market|competitors|team|vision)\b",
+            r"\bthe\s+company['']?s\s+(mission|values|culture|product|products|goals|vision)\b",
+            r"\bcompany\s+(mission|vision|values|culture|product|products|background|history)\b",
+            
+            # Specific company topics
             r"\babout\s+(the\s+)?company\b",
-            r"\bhow\s+(would|do)\s+you\s+improve\s+(our|the)\s+(product|website|app)\b",
-            r"\bcompany\s+(mission|vision|values|culture|product|products)\b",
+            r"\bhow\s+(would|do)\s+you\s+(fit|contribute)\s+(in|to|at)\s+(our|the|this)\s+(company|team|organization)\b",
+            r"\bhow\s+(would|do)\s+you\s+improve\s+(our|the)\s+(product|website|app|service)\b",
+            
+            # Interviewer-specific phrases
+            r"\bwhy\s+(should|do)\s+we\s+hire\s+you\b",
+            r"\bwhat\s+can\s+you\s+bring\s+to\s+(our|the|this)\s+(company|team)\b",
+            r"\bhow\s+do\s+you\s+align\s+with\s+(our|the)\s+(values|culture|mission)\b",
+            
+            # Research-based questions
+            r"\bwhat\s+do\s+you\s+think\s+about\s+(our|the)\s+(product|approach|strategy)\b",
+            r"\bwhat\s+would\s+you\s+change\s+about\s+(our|the)\s+(product|service|website)\b",
+            
+            # Company-specific terminology
+            r"\bwhy\s+(are\s+you\s+interested\s+in|this)\s+(company|organization|role\s+at)\b",
         ]
+        
         for pat in patterns:
-            if re.search(pat, ql):
+            if re.search(pat, ql, re.IGNORECASE):
+                logger.info(f"🏢 Company-related question detected (pattern: {pat[:50]}...)")
                 return True
+        
         return False
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Error checking if question is company-related: {e}")
         return False
 
 
 def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, context_type: str = "general"):
     base_ctx = chr(10).join(ctx)
     company_context = get_company_brief_text()
-    # ENV toggle to forcibly include company brief for all prompts
+    
+    # ENV toggle to forcibly include company brief for all prompts (not recommended for general use)
     include_company_always = os.getenv("INCLUDE_COMPANY_ALWAYS", "0").lower() in ("1", "true", "yes", "on")
-    if company_context and (include_company_always or _is_company_related(facts or "", company_context)):
+    
+    # CONDITIONAL COMPANY BRIEF INCLUSION
+    # Company information is ONLY included when:
+    # 1. INCLUDE_COMPANY_ALWAYS env var is set (debugging/testing only), OR
+    # 2. The question is detected as company-related (interviewer asking about the company)
+    is_company_question = _is_company_related(facts or "", company_context)
+    
+    if company_context and (include_company_always or is_company_question):
         company_block = f"Company Brief:\n{company_context}"
         base_ctx = f"{base_ctx}\n\n{company_block}" if base_ctx else company_block
+        
+        if is_company_question:
+            logger.info(f"🏢 Including company brief - Question detected as company-related")
+        elif include_company_always:
+            logger.info(f"🏢 Including company brief - INCLUDE_COMPANY_ALWAYS enabled")
+    else:
+        if company_context:
+            logger.info(f"⏭️ Skipping company brief - Question is NOT company-related (technical/behavioral)")
+        else:
+            logger.debug(f"ℹ️ No company brief available")
     
     # Core response guidelines: Always respond directly with clear, polished, complete answers
     # For transcription context, enforce brevity and conciseness
@@ -2534,6 +2623,37 @@ async def stream_llm(
 ):
     """Stream LLM response using open source AI providers"""
     
+    # ============================================================================
+    # 🎯 DUPLICATE QUESTION DETECTION
+    # ============================================================================
+    if _has_answer_quality and os.getenv("ENABLE_DUPLICATE_DETECTION", "true").lower() in ("true", "1", "yes"):
+        try:
+            is_duplicate, prev_answer_hash = check_duplicate_question(facts)
+            if is_duplicate:
+                logger.info(f"🔄 Duplicate question detected, skipping processing")
+                
+                # Send duplicate notice to UI
+                duplicate_message = "⚠️ Duplicate question detected; using previous answer context."
+                broadcast_sync({
+                    "type": out_type,
+                    "text": "",
+                    "reset": True
+                })
+                broadcast_sync({
+                    "type": out_type,
+                    "text": duplicate_message
+                })
+                broadcast_sync({
+                    "type": "duplicate_detected",
+                    "data": {
+                        "message": duplicate_message,
+                        "previous_hash": prev_answer_hash
+                    }
+                })
+                return  # Skip processing
+        except Exception as e:
+            logger.warning(f"⚠️  Duplicate detection failed: {e}")
+    
     # Ensure AI is initialized
     await ensure_ai_initialized()
     
@@ -2541,6 +2661,51 @@ async def stream_llm(
         broadcast_sync({"type": out_type, "text": "[AI system not initialized]"})
         return
 
+    # ============================================================================
+    # 🎯 ENHANCEMENT 1: INTELLIGENT QUESTION CLASSIFICATION & MODEL ROUTING
+    # ============================================================================
+    classification = None
+    original_llm_id = llm_id  # Store original for logging
+    model_params = {}
+    
+    if _has_intelligent_routing and os.getenv("ENABLE_MODEL_ROUTING", "true").lower() in ("true", "1", "yes"):
+        try:
+            # Classify the question to understand its type
+            classification = classify_question(facts)
+            logger.info(
+                f"📊 Question classified: {classification.primary_type.value} "
+                f"(confidence: {classification.confidence:.2f}, "
+                f"complexity: {classification.complexity})"
+            )
+            
+            # Route to optimal model based on question type
+            context_dict = {
+                "mode": mode,
+                "context_type": context_type,
+                "strict": strict
+            }
+            llm_id, model_params = route_model(facts, context=context_dict)
+            
+            if llm_id != original_llm_id:
+                logger.info(f"🔄 Model routing: {original_llm_id} → {llm_id}")
+                logger.info(f"📝 Model params: {model_params}")
+            
+            # Broadcast classification info to UI
+            await broadcast({
+                "type": "question_classified",
+                "data": {
+                    "question_type": classification.primary_type.value,
+                    "confidence": classification.confidence,
+                    "complexity": classification.complexity,
+                    "suggested_model": llm_id,
+                    "tags": classification.tags
+                }
+            })
+            
+        except Exception as e:
+            logger.warning(f"⚠️  Intelligent routing failed, using default: {e}")
+            llm_id = original_llm_id  # Fallback to original
+    
     # Apply smart truncation to facts if it's too long
     # This intelligently reduces content while keeping relevant parts
     original_length = len(facts)
@@ -2549,24 +2714,65 @@ async def stream_llm(
         if len(facts) < original_length:
             logger.info(f"Smart truncation: {original_length} -> {len(facts)} chars")
 
-    # Retrieve 5 nearest resume facts to provide personalization
+    # ============================================================================
+    # 🎯 ENHANCEMENT 2: ENHANCED RAG WITH RERANKING & QUERY EXPANSION
+    # ============================================================================
     ctx: List[str] = []
     if embedder is not None and (index is not None or emb_matrix is not None):
         query_text = (partial_text or "").strip() or (facts or "").strip() or (get_combined_ocr_text() or "").strip()
-        if query_text:
-            q = embedder.encode([query_text], normalize_embeddings=True).astype('float32')
-            if index is not None and _has_faiss:
-                D, I = index.search(q, 5)
-                ctx = [emb_texts[i] for i in I[0] if 0 <= i < len(emb_texts)]
-            elif emb_matrix is not None:
-                # cosine similarity with normalized embeddings reduces to dot product
-                sims = emb_matrix @ q[0]
-                topk = np.argsort(-sims)[:5]
-                ctx = [emb_texts[i] for i in topk if 0 <= i < len(emb_texts)]
+        
+        if _has_intelligent_routing and os.getenv("ENABLE_ENHANCED_RAG", "true").lower() in ("true", "1", "yes"):
+            try:
+                # Use enhanced context manager with reranking
+                context_mgr = create_context_manager(embedder, emb_matrix, emb_texts, index)
+                
+                # Retrieve with reranking and query expansion
+                resume_chunks = context_mgr.retrieve(
+                    query=query_text or facts,
+                    top_k=5,
+                    rerank=True,
+                    expand_query=True
+                )
+                
+                ctx = [chunk.text for chunk in resume_chunks]
+                
+                # Log retrieval quality
+                if resume_chunks:
+                    avg_score = sum(c.relevance_score for c in resume_chunks) / len(resume_chunks)
+                    logger.info(
+                        f"📚 Retrieved {len(resume_chunks)} resume chunks "
+                        f"(avg relevance: {avg_score:.3f}, "
+                        f"sections: {set(c.section for c in resume_chunks)})"
+                    )
+                
+            except Exception as e:
+                logger.warning(f"⚠️  Enhanced RAG failed, falling back to basic retrieval: {e}")
+                # Fallback to original logic
+                if query_text:
+                    q = embedder.encode([query_text], normalize_embeddings=True).astype('float32')
+                    if index is not None and _has_faiss:
+                        D, I = index.search(q, 5)
+                        ctx = [emb_texts[i] for i in I[0] if 0 <= i < len(emb_texts)]
+                    elif emb_matrix is not None:
+                        sims = emb_matrix @ q[0]
+                        topk = np.argsort(-sims)[:5]
+                        ctx = [emb_texts[i] for i in topk if 0 <= i < len(emb_texts)]
         else:
-            # Fallback to first few chunks if no query context yet
-            ctx = emb_texts[:5]
-
+            # Original basic retrieval logic
+            if query_text:
+                q = embedder.encode([query_text], normalize_embeddings=True).astype('float32')
+                if index is not None and _has_faiss:
+                    D, I = index.search(q, 5)
+                    ctx = [emb_texts[i] for i in I[0] if 0 <= i < len(emb_texts)]
+                elif emb_matrix is not None:
+                    # cosine similarity with normalized embeddings reduces to dot product
+                    sims = emb_matrix @ q[0]
+                    topk = np.argsort(-sims)[:5]
+                    ctx = [emb_texts[i] for i in topk if 0 <= i < len(emb_texts)]
+            else:
+                # Fallback to first few chunks if no query context yet
+                ctx = emb_texts[:5]
+    
     if extra_ctx:
         ctx.extend([chunk for chunk in extra_ctx if chunk])
 
@@ -2753,10 +2959,199 @@ async def stream_llm(
         # Log completion
         logger.info(f"✅ Streaming completed: {token_count} tokens, {len(''.join(collected))} chars total")
 
-        # Combine all collected tokens into full response text
-        full_text = ''.join(collected)
+        # ============================================================================
+        # 🎯 COMBINE AND CLEAN STREAMED TOKENS
+        # ============================================================================
+        # Use streaming_fixes helper to clean and format the collected tokens
+        full_text = clean_streamed_response(
+            collected_tokens=collected,
+            enable_formatting=True  # Apply markdown formatting
+        )
 
-        # Enhanced response quality control and validation
+        # ============================================================================
+        # 🎯 POSTPROCESSING: CLEAN UP STREAMED ANSWER
+        # ============================================================================
+        seen_tokens_log: Set[str] = set()
+        if _has_answer_quality and os.getenv("ENABLE_POSTPROCESSING", "true").lower() in ("true", "1", "yes"):
+            try:
+                # Create seen tokens log from streamed chunks (for duplicate detection)
+                if collected:
+                    # Use first few chunks as seen tokens
+                    initial_text = ''.join(collected[:10])  # First 10 chunks
+                    seen_tokens_log = create_seen_tokens_log(initial_text, max_prefix_length=256)
+                
+                # Postprocess the answer to remove duplicates and improve quality
+                original_length = len(full_text)
+                full_text = postprocess_answer(full_text, seen_tokens_log)
+                
+                if len(full_text) != original_length:
+                    logger.info(
+                        f"📝 Postprocessed answer: {original_length} → {len(full_text)} chars "
+                        f"({original_length - len(full_text)} chars removed)"
+                    )
+                
+            except Exception as e:
+                logger.warning(f"⚠️  Postprocessing failed: {e}")
+
+        # ============================================================================
+        # 🎯 ENHANCED CONFIDENCE SCORING (with answer_quality module)
+        # ============================================================================
+        enhanced_confidence = None
+        if _has_answer_quality and os.getenv("ENABLE_ENHANCED_CONFIDENCE", "true").lower() in ("true", "1", "yes"):
+            try:
+                # Determine question type for confidence scoring
+                question_type = "general"
+                if classification:
+                    question_type = classification.primary_type.value
+                
+                # Compute confidence using the new module
+                confidence_value, confidence_label = compute_confidence(full_text, question_type)
+                enhanced_confidence = {
+                    "score": confidence_value,
+                    "label": confidence_label,
+                    "question_type": question_type
+                }
+                
+                logger.info(
+                    f"📊 Enhanced confidence: {confidence_value:.2f} ({confidence_label}) "
+                    f"for {question_type} question"
+                )
+                
+                # Broadcast to UI
+                await broadcast({
+                    "type": "meta",
+                    "confidence": confidence_value,
+                    "confidence_label": confidence_label,
+                    "question_type": question_type
+                })
+                
+                # Auto-retry on very low confidence (if enabled)
+                if (confidence_label == "Low" and confidence_value < 0.3 and
+                    os.getenv("AUTO_RETRY_LOW_CONFIDENCE", "false").lower() in ("true", "1", "yes")):
+                    retry_count = getattr(stream_llm, '_enhanced_retry_count', 0)
+                    if retry_count < 1:  # Max 1 retry
+                        logger.warning(
+                            f"🔄 Very low enhanced confidence ({confidence_value:.2f}), retrying..."
+                        )
+                        stream_llm._enhanced_retry_count = retry_count + 1
+                        
+                        # Notify UI
+                        await broadcast({
+                            "type": "retry_notice",
+                            "data": {
+                                "reason": "Very low confidence (enhanced scoring)",
+                                "score": confidence_value,
+                                "label": confidence_label
+                            }
+                        })
+                        
+                        # Retry with strict mode
+                        return await stream_llm(
+                            llm_id=llm_id,
+                            facts=facts,
+                            out_type=out_type,
+                            mode=mode,
+                            strict=True,
+                            context_type=context_type,
+                            extra_ctx=extra_ctx
+                        )
+                    else:
+                        logger.warning("⚠️ Max enhanced retries reached")
+                        stream_llm._enhanced_retry_count = 0
+                
+            except Exception as e:
+                logger.warning(f"⚠️  Enhanced confidence scoring failed: {e}")
+
+        # ============================================================================
+        # 🎯 CACHE QUESTION-ANSWER PAIR (for duplicate detection)
+        # ============================================================================
+        if _has_answer_quality and os.getenv("ENABLE_DUPLICATE_DETECTION", "true").lower() in ("true", "1", "yes"):
+            try:
+                cache_question_answer(facts, full_text)
+                logger.debug(f"💾 Cached Q&A pair for duplicate detection")
+            except Exception as e:
+                logger.warning(f"⚠️  Failed to cache Q&A: {e}")
+
+        # ============================================================================
+        # 🎯 ENHANCEMENT 3: CONFIDENCE SCORING & QUALITY VALIDATION (original)
+        # ============================================================================
+        confidence_score = None
+        if _has_intelligent_routing and os.getenv("ENABLE_CONFIDENCE_SCORING", "true").lower() in ("true", "1", "yes"):
+            try:
+                # Score the answer quality and confidence
+                confidence_score = score_answer(full_text, facts)
+                
+                logger.info(
+                    f"📊 Answer confidence: {confidence_score.overall_score:.2f} "
+                    f"(recommendation: {confidence_score.recommendation})"
+                )
+                
+                # Log detailed scores
+                logger.info(
+                    f"   Completeness: {confidence_score.completeness:.2f}, "
+                    f"Relevance: {confidence_score.relevance:.2f}, "
+                    f"Technical: {confidence_score.technical_accuracy:.2f}, "
+                    f"Formatting: {confidence_score.formatting_quality:.2f}"
+                )
+                
+                # Log any issues detected
+                if confidence_score.issues:
+                    logger.info(f"   Issues: {'; '.join(confidence_score.issues[:3])}")
+                
+                # Broadcast confidence to UI
+                await broadcast({
+                    "type": "answer_confidence",
+                    "data": {
+                        "overall_score": confidence_score.overall_score,
+                        "completeness": confidence_score.completeness,
+                        "relevance": confidence_score.relevance,
+                        "technical_accuracy": confidence_score.technical_accuracy,
+                        "formatting_quality": confidence_score.formatting_quality,
+                        "recommendation": confidence_score.recommendation,
+                        "issues": confidence_score.issues[:3],  # Top 3 issues
+                        "question_type": classification.primary_type.value if classification else "unknown"
+                    }
+                })
+                
+                # Auto-retry if confidence is very low and retry is enabled
+                if (confidence_score.recommendation == "retry" and 
+                    os.getenv("AUTO_RETRY_LOW_CONFIDENCE", "false").lower() in ("true", "1", "yes")):
+                    retry_count = getattr(stream_llm, '_retry_count', 0)
+                    if retry_count < 1:  # Max 1 retry
+                        logger.warning(
+                            f"🔄 Low confidence answer ({confidence_score.overall_score:.2f}), "
+                            f"retrying with improved prompt..."
+                        )
+                        stream_llm._retry_count = retry_count + 1
+                        
+                        # Notify UI of retry
+                        await broadcast({
+                            "type": "retry_notice",
+                            "data": {
+                                "reason": "Low confidence",
+                                "score": confidence_score.overall_score,
+                                "issues": confidence_score.issues[:2]
+                            }
+                        })
+                        
+                        # Retry with strict mode for better quality
+                        return await stream_llm(
+                            llm_id=llm_id,
+                            facts=facts,
+                            out_type=out_type,
+                            mode=mode,
+                            strict=True,  # Enable strict mode for retry
+                            context_type=context_type,
+                            extra_ctx=extra_ctx
+                        )
+                    else:
+                        logger.warning("⚠️ Max retries reached, accepting low-confidence answer")
+                        stream_llm._retry_count = 0  # Reset counter
+                
+            except Exception as e:
+                logger.warning(f"⚠️ Confidence scoring failed: {e}")
+        
+        # Enhanced response quality control and validation (existing logic)
         if full_text:
             # Quality checks for better responses
             quality_issues = []
@@ -2842,6 +3237,8 @@ async def stream_llm(
         completion_sent = False
 
         # Post-filter for strict mode: remove generic filler & enforce brevity
+        # NOTE: We already streamed the response token-by-token, so we DO NOT re-broadcast
+        # the entire filtered text. Instead, we just update full_text for history/confidence.
         if strict and mode == "coach" and full_text:
             original = full_text
             # Remove common generic prefaces
@@ -2861,19 +3258,27 @@ async def stream_llm(
                 words = full_text.split()
                 if len(words) > 130:
                     full_text = " ".join(words[:130])
+            
+            # FIX: Don't re-broadcast the filtered text since we already streamed it
+            # The user already saw the full response during streaming
+            # Only log the difference for debugging
             if full_text != original:
-                # Clear previous streamed content and resend concise version
-                broadcast_sync({"type": out_type, "text": "", "reset": True, "strictFiltered": True})
-                # Stream the filtered text in one chunk for simplicity
-                broadcast_sync({"type": out_type, "text": full_text})
-                broadcast_sync({"type": out_type, "text": "", "complete": True, "strictFiltered": True})
-                completion_sent = True  # Mark as sent to prevent duplicate below
+                logger.info(f"✂️ Strict mode filtered response: {len(original)} -> {len(full_text)} chars")
+                # Do NOT send again - user already received streamed version
+                # completion_sent remains False so completion signal below is sent
+
         
-        # Send final completion signal ONLY if not already sent by strict filtering
+        # ============================================================================
+        # 🎯 SEND FINAL COMPLETION SIGNAL (EXACTLY ONCE)
+        # ============================================================================
+        # Send completion signal ONLY if not already sent
+        # This ensures we never send duplicate completion signals
         if not completion_sent:
             logger.info(f"🏁 Sending completion signal for {out_type}")
             broadcast_sync({"type": out_type, "text": "", "complete": True})
             completion_sent = True
+        else:
+            logger.info(f"⏭️ Skipping completion signal (already sent for {out_type})")
 
             # Auto-continue detection with recursive passes (up to 3)
             try:
