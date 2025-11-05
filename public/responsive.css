@@ -1,0 +1,1001 @@
+/* ========================================
+   COMPREHENSIVE RESPONSIVE DESIGN
+   Mobile-First Approach
+   ======================================== */
+
+/* ========================================
+   BASE RESPONSIVE UTILITIES
+   ======================================== */
+
+/* Ensure proper box sizing */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+/* Prevent horizontal scroll */
+html, body {
+    overflow-x: hidden;
+    width: 100%;
+}
+
+/* Responsive images and media */
+img, video, iframe {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+/* ========================================
+   HEADER & NAVIGATION - RESPONSIVE
+   ======================================== */
+
+/* Mobile: <= 768px */
+@media (max-width: 768px) {
+    /* Header adjustments */
+    header {
+        padding: 0 !important;
+    }
+
+    nav {
+        height: 64px !important;
+        padding: 0 1rem !important;
+    }
+
+    /* Logo size reduction */
+    .logo {
+        font-size: 1.1rem !important;
+        gap: 0.5rem !important;
+    }
+
+    .logo-img {
+        height: 32px !important;
+        width: 32px !important;
+    }
+
+    .logo-text {
+        font-size: 1.1rem !important;
+    }
+
+    /* Hide desktop navigation */
+    .nav-links {
+        display: none !important;
+    }
+
+    /* Show mobile menu button */
+    .mobile-menu-button {
+        display: flex !important;
+        z-index: 1002;
+    }
+
+    /* Mobile menu improvements */
+    .mobile-menu-overlay {
+        padding: 0;
+    }
+
+    .mobile-menu-content {
+        padding: 1rem;
+        overflow-y: auto;
+    }
+
+    .mobile-menu-header {
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .mobile-nav-link {
+        font-size: 1.2rem !important;
+        padding: 0.75rem 1rem !important;
+    }
+
+    /* Adjust main content to account for fixed header */
+    main {
+        padding-top: 64px;
+    }
+
+    /* Profile header for profile page */
+    .profile-header nav {
+        height: 64px !important;
+        padding: 0 1rem !important;
+    }
+}
+
+/* Tablet: 769px - 1024px */
+@media (min-width: 769px) and (max-width: 1024px) {
+    nav {
+        padding: 0 1.5rem !important;
+    }
+
+    .nav-links {
+        gap: 1rem !important;
+    }
+
+    .nav-link {
+        font-size: 0.9rem !important;
+        padding: 0.4rem 0.75rem !important;
+    }
+
+    .logo-img {
+        height: 36px !important;
+        width: 36px !important;
+    }
+}
+
+/* Desktop: > 1024px */
+@media (min-width: 1025px) {
+    .mobile-menu-button {
+        display: none !important;
+    }
+
+    .mobile-menu-overlay {
+        display: none !important;
+    }
+}
+
+/* ========================================
+   AUTH SECTION - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 768px) {
+    /* Auth section hidden on mobile - shown in mobile menu instead */
+    .auth-section {
+        display: none !important;
+    }
+
+    /* Mobile auth links in mobile menu */
+    .mobile-login-btn,
+    .mobile-profile-link,
+    .mobile-logout-btn {
+        display: flex !important;
+        align-items: center;
+        gap: 12px;
+        font-size: 1.1rem;
+        color: var(--text-color);
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    /* Tablet - compact auth section */
+    .btn-login {
+        padding: 8px 16px !important;
+        font-size: 13px !important;
+    }
+
+    .profile-trigger {
+        padding: 6px 12px !important;
+        font-size: 13px !important;
+    }
+
+    .profile-trigger span {
+        display: none !important; /* Hide name on tablet */
+    }
+
+    .profile-menu {
+        width: 240px !important;
+    }
+}
+
+/* ========================================
+   HERO SECTION - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 480px) {
+    .hero {
+        padding: 2rem 1rem !important;
+    }
+
+    .hero-title {
+        font-size: 1.75rem !important;
+        line-height: 1.2 !important;
+    }
+
+    .hero-sub {
+        font-size: 0.95rem !important;
+        line-height: 1.5 !important;
+    }
+
+    .hero-badge-top {
+        font-size: 0.7rem !important;
+    }
+
+    .pulse-badge {
+        padding: 0.4rem 0.8rem !important;
+    }
+
+    .hero-cta {
+        flex-direction: column !important;
+        gap: 0.75rem !important;
+        width: 100% !important;
+    }
+
+    .hero-cta .btn {
+        width: 100% !important;
+        padding: 0.875rem 1.5rem !important;
+        font-size: 0.95rem !important;
+    }
+
+    .payment-info {
+        font-size: 0.8rem !important;
+        margin-top: 1rem !important;
+    }
+
+    .hero-stats {
+        flex-direction: column !important;
+        gap: 1rem !important;
+    }
+
+    .stat-item {
+        text-align: center !important;
+        width: 100% !important;
+    }
+
+    .stat-number {
+        font-size: 1rem !important;
+    }
+}
+
+@media (min-width: 481px) and (max-width: 768px) {
+    .hero {
+        padding: 3rem 1.5rem !important;
+    }
+
+    .hero-title {
+        font-size: 2.25rem !important;
+        line-height: 1.2 !important;
+    }
+
+    .hero-sub {
+        font-size: 1rem !important;
+    }
+
+    .hero-cta {
+        flex-direction: column !important;
+        gap: 1rem !important;
+    }
+
+    .hero-cta .btn {
+        width: 100% !important;
+        padding: 1rem 2rem !important;
+    }
+
+    .hero-stats {
+        flex-direction: column !important;
+        gap: 1.25rem !important;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .hero {
+        padding: 4rem 2rem !important;
+    }
+
+    .hero-title {
+        font-size: 2.75rem !important;
+    }
+
+    .hero-sub {
+        font-size: 1.1rem !important;
+    }
+
+    .hero-container {
+        grid-template-columns: 1fr !important;
+        text-align: center !important;
+    }
+
+    .hero-left {
+        align-items: center !important;
+    }
+
+    .hero-right {
+        display: none !important;
+    }
+}
+
+/* ========================================
+   SECTIONS - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 480px) {
+    section {
+        padding: 2rem 1rem !important;
+    }
+
+    .section-title h2 {
+        font-size: 1.5rem !important;
+        line-height: 1.3 !important;
+    }
+
+    .section-title p {
+        font-size: 0.9rem !important;
+    }
+}
+
+@media (min-width: 481px) and (max-width: 768px) {
+    section {
+        padding: 3rem 1.5rem !important;
+    }
+
+    .section-title h2 {
+        font-size: 2rem !important;
+    }
+
+    .section-title p {
+        font-size: 1rem !important;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    section {
+        padding: 4rem 2rem !important;
+    }
+
+    .section-title h2 {
+        font-size: 2.25rem !important;
+    }
+}
+
+/* ========================================
+   FEATURES SECTION - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 640px) {
+    .features-grid,
+    .feature-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1.25rem !important;
+    }
+
+    .feature-card {
+        padding: 1.25rem !important;
+    }
+
+    .feature-icon {
+        font-size: 2rem !important;
+        width: 56px !important;
+        height: 56px !important;
+    }
+
+    .feature-card h3 {
+        font-size: 1.1rem !important;
+    }
+
+    .feature-card p {
+        font-size: 0.9rem !important;
+    }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+    .features-grid,
+    .feature-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 1.5rem !important;
+    }
+}
+
+/* ========================================
+   PRICING SECTION - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 640px) {
+    .pricing,
+    .pricing-section {
+        padding: 2rem 1rem !important;
+    }
+
+    .pricing-grid,
+    .pricing-grid-three {
+        grid-template-columns: 1fr !important;
+        gap: 1.5rem !important;
+    }
+
+    .pricing-card,
+    .pricing-card-modern {
+        transform: none !important;
+        margin: 0 !important;
+    }
+
+    .pricing-card.featured,
+    .pricing-card-modern.featured {
+        transform: none !important;
+        order: -1;
+    }
+
+    .price-amount {
+        font-size: 2.5rem !important;
+    }
+
+    .pricing-benefits {
+        flex-direction: column !important;
+        gap: 0.75rem !important;
+        align-items: flex-start !important;
+    }
+
+    .benefit-badge {
+        font-size: 0.8rem !important;
+        padding: 0.4rem 0.8rem !important;
+        width: 100% !important;
+        text-align: center !important;
+    }
+
+    .get-credits-btn {
+        width: 100% !important;
+        padding: 1rem !important;
+        font-size: 1rem !important;
+    }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+    .pricing-grid-three {
+        grid-template-columns: repeat(2, 1fr) !important;
+        max-width: 800px !important;
+        margin: 0 auto !important;
+    }
+
+    .pricing-card-modern.featured {
+        grid-column: 1 / -1 !important;
+        max-width: 400px !important;
+        margin: 0 auto !important;
+    }
+
+    .pricing-benefits {
+        flex-wrap: wrap !important;
+        gap: 0.75rem !important;
+    }
+}
+
+/* ========================================
+   DOWNLOAD SECTION & PAGE - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 640px) {
+    .download-section {
+        padding: 2rem 1rem !important;
+        border-radius: 1rem !important;
+    }
+
+    .download-header h2 {
+        font-size: 1.5rem !important;
+    }
+
+    .download-header p {
+        font-size: 0.95rem !important;
+    }
+
+    .download-options,
+    .download-grid,
+    .platforms-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+    }
+
+    .download-card,
+    .platform-card {
+        padding: 1.25rem !important;
+    }
+
+    .platform-icon {
+        font-size: 2.5rem !important;
+    }
+
+    .download-btn {
+        width: 100% !important;
+        padding: 0.875rem 1.5rem !important;
+        font-size: 0.95rem !important;
+    }
+
+    /* Download page specific */
+    .download-hero {
+        padding: 3rem 1rem !important;
+    }
+
+    .download-hero h1 {
+        font-size: 2rem !important;
+    }
+
+    .download-content {
+        padding: 2rem 1rem !important;
+    }
+
+    .guide-section,
+    .requirements-section {
+        padding: 1.5rem 1rem !important;
+    }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+    .download-options,
+    .download-grid,
+    .platforms-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 1.5rem !important;
+    }
+
+    .download-hero {
+        padding: 4rem 2rem !important;
+    }
+}
+
+/* ========================================
+   FOOTER - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 640px) {
+    footer {
+        padding: 2rem 0 !important;
+        margin-top: 3rem !important;
+    }
+
+    .footer-content {
+        grid-template-columns: 1fr !important;
+        gap: 2rem !important;
+        padding: 0 1rem !important;
+        text-align: center !important;
+    }
+
+    .footer-section {
+        text-align: center !important;
+    }
+
+    .footer-logo {
+        justify-content: center !important;
+        margin: 0 auto !important;
+    }
+
+    .social-links {
+        justify-content: center !important;
+    }
+
+    .footer-section ul {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+    }
+
+    .footer-bottom {
+        flex-direction: column !important;
+        gap: 1rem !important;
+        padding: 1.5rem 1rem !important;
+        text-align: center !important;
+    }
+
+    .footer-badges {
+        flex-direction: column !important;
+        gap: 0.75rem !important;
+        width: 100% !important;
+    }
+
+    .footer-badges .badge {
+        width: 100% !important;
+        justify-content: center !important;
+    }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+    footer {
+        padding: 2.5rem 0 !important;
+    }
+
+    .footer-content {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 2rem !important;
+        padding: 0 1.5rem !important;
+    }
+
+    .footer-section:first-child {
+        grid-column: 1 / -1 !important;
+        text-align: center !important;
+    }
+
+    .footer-section:first-child .footer-logo {
+        justify-content: center !important;
+    }
+
+    .footer-section:first-child p {
+        text-align: center !important;
+    }
+
+    .footer-section:first-child .social-links {
+        justify-content: center !important;
+    }
+
+    .footer-bottom {
+        flex-wrap: wrap !important;
+        gap: 1rem !important;
+        justify-content: center !important;
+        padding: 1.5rem 1.5rem !important;
+    }
+}
+
+/* ========================================
+   PROFILE PAGE - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 768px) {
+    .profile-container {
+        padding: 1rem !important;
+        margin-top: 64px !important;
+    }
+
+    .profile-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1.5rem !important;
+    }
+
+    .profile-card {
+        padding: 1.25rem !important;
+    }
+
+    .profile-sidebar {
+        position: static !important;
+    }
+
+    .profile-section-header h3 {
+        font-size: 1.25rem !important;
+    }
+
+    .stat-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+    }
+
+    .activity-item {
+        padding: 0.875rem !important;
+    }
+
+    .subscription-action {
+        width: 100% !important;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .profile-container {
+        padding: 1.5rem !important;
+    }
+
+    .profile-grid {
+        grid-template-columns: 1fr !important;
+        gap: 2rem !important;
+    }
+}
+
+/* ========================================
+   AUTH PAGE - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 640px) {
+    .auth-container {
+        padding: 1rem !important;
+    }
+
+    .auth-box {
+        padding: 1.5rem !important;
+        margin: 0 !important;
+    }
+
+    .auth-tabs {
+        flex-direction: row !important;
+        gap: 0.5rem !important;
+    }
+
+    .auth-tab {
+        padding: 0.75rem 1rem !important;
+        font-size: 14px !important;
+    }
+
+    .form-group label {
+        font-size: 14px !important;
+    }
+
+    .form-input {
+        padding: 0.75rem 1rem !important;
+        font-size: 14px !important;
+    }
+
+    .submit-btn,
+    .oauth-btn {
+        padding: 0.875rem 1.5rem !important;
+        font-size: 14px !important;
+    }
+
+    .back-btn {
+        position: static !important;
+        margin-bottom: 1rem !important;
+    }
+
+    /* Modal responsive */
+    .modal-content {
+        padding: 1.5rem !important;
+        margin: 1rem !important;
+        max-width: calc(100% - 2rem) !important;
+    }
+
+    .modal-header h3 {
+        font-size: 1.25rem !important;
+    }
+}
+
+/* ========================================
+   PAYMENT PAGE - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 768px) {
+    .payment-container {
+        padding: 1rem !important;
+        margin-top: 64px !important;
+    }
+
+    .payment-card {
+        padding: 1.5rem !important;
+    }
+
+    .product-info {
+        flex-direction: column !important;
+        text-align: center !important;
+    }
+
+    .product-icon {
+        margin: 0 auto !important;
+    }
+
+    .price-breakdown {
+        padding: 1rem !important;
+    }
+
+    .pay-btn {
+        width: 100% !important;
+        padding: 1rem !important;
+        font-size: 1rem !important;
+    }
+
+    .security-badges {
+        flex-direction: column !important;
+        gap: 0.75rem !important;
+    }
+}
+
+/* ========================================
+   USER GUIDE / STEPS - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 768px) {
+    .guide-container,
+    .steps-container {
+        grid-template-columns: 1fr !important;
+        gap: 1.5rem !important;
+    }
+
+    .step {
+        padding: 1.25rem !important;
+    }
+
+    .step-number {
+        font-size: 1.5rem !important;
+        width: 40px !important;
+        height: 40px !important;
+    }
+}
+
+/* ========================================
+   BUTTONS - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 640px) {
+    .btn {
+        padding: 0.875rem 1.5rem !important;
+        font-size: 0.95rem !important;
+    }
+
+    .btn-primary,
+    .btn-secondary {
+        width: 100% !important;
+        text-align: center !important;
+    }
+}
+
+/* ========================================
+   PROFILE DROPDOWN - MOBILE FIX
+   ======================================== */
+
+@media (max-width: 768px) {
+    .profile-menu {
+        position: fixed !important;
+        top: 64px !important;
+        right: 1rem !important;
+        left: 1rem !important;
+        width: auto !important;
+        max-width: 320px !important;
+        margin: 0 auto !important;
+    }
+}
+
+/* ========================================
+   THEME TOGGLE - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 768px) {
+    .theme-toggle {
+        display: none !important;
+    }
+
+    .mobile-theme-toggle {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        padding: 1rem !important;
+        font-size: 1.1rem !important;
+        color: var(--text-color) !important;
+    }
+}
+
+@media (min-width: 769px) {
+    .mobile-theme-toggle {
+        display: none !important;
+    }
+}
+
+/* ========================================
+   CONTAINER RESPONSIVE WIDTHS
+   ======================================== */
+
+.container,
+.hero-container,
+.download-content {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+    .container,
+    .hero-container,
+    .download-content {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+    }
+}
+
+@media (min-width: 1024px) {
+    .container,
+    .hero-container,
+    .download-content {
+        padding-left: 2rem;
+        padding-right: 2rem;
+    }
+}
+
+/* ========================================
+   SCROLL PROGRESS - RESPONSIVE
+   ======================================== */
+
+.scroll-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 0%;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+    z-index: 9999;
+    transition: width 0.1s ease;
+}
+
+@media (max-width: 768px) {
+    .scroll-progress {
+        height: 2px;
+    }
+}
+
+/* ========================================
+   LANDSCAPE MOBILE FIXES
+   ======================================== */
+
+@media (max-height: 500px) and (orientation: landscape) {
+    .hero {
+        padding: 2rem 1rem !important;
+    }
+
+    .hero-title {
+        font-size: 1.75rem !important;
+    }
+
+    .mobile-menu-content {
+        padding: 1rem;
+    }
+
+    .mobile-nav-link {
+        padding: 0.5rem 1rem;
+        font-size: 1rem;
+    }
+
+    nav {
+        height: 56px !important;
+    }
+
+    main {
+        padding-top: 56px !important;
+    }
+}
+
+/* ========================================
+   ACCESSIBILITY - TOUCH TARGETS
+   ======================================== */
+
+@media (hover: none) and (pointer: coarse) {
+    /* Increase touch targets for mobile */
+    .nav-link,
+    .mobile-nav-link,
+    .btn,
+    .profile-menu-item {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+    }
+
+    button,
+    a.btn {
+        min-height: 44px;
+    }
+}
+
+/* ========================================
+   TABLES - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 768px) {
+    table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+
+    .activity-table {
+        font-size: 0.875rem !important;
+    }
+}
+
+/* ========================================
+   FORMS - RESPONSIVE
+   ======================================== */
+
+@media (max-width: 640px) {
+    .form-row {
+        flex-direction: column !important;
+        gap: 1rem !important;
+    }
+
+    .form-group {
+        width: 100% !important;
+    }
+}
+
+/* ========================================
+   PRINT STYLES
+   ======================================== */
+
+@media print {
+    header,
+    footer,
+    .mobile-menu-overlay,
+    .theme-toggle,
+    .scroll-progress,
+    .back-btn,
+    button {
+        display: none !important;
+    }
+
+    body {
+        background: white !important;
+        color: black !important;
+    }
+
+    a {
+        text-decoration: underline !important;
+    }
+
+    .container,
+    section {
+        max-width: 100% !important;
+        padding: 0 !important;
+    }
+}
+

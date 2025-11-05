@@ -3,18 +3,29 @@
   "version": "0.1.0",
   "private": true,
   "description": "Privacy-first Interview AI Assistant with real-time local Whisper, multi-LLM streaming, OCR, and stealth overlay",
+  "author": {
+    "name": "Interview AI",
+    "email": "support@interview-ai.app",
+    "url": "https://github.com/Mohitsagar236/interview-ai"
+  },
+  "homepage": "https://github.com/Mohitsagar236/interview-ai",
+  "license": "MIT",
+  "copyright": "Copyright © 2025 Interview AI",
   "main": "electron/main.js",
   "scripts": {
     "postinstall": "node ./scripts/postinstall.js",
     "setup:py": "py -3 -m venv .venv && .\\.venv\\Scripts\\python.exe -m pip install -r python/requirements.txt",
     "dev": "concurrently -k -n py,app \".\\.venv\\Scripts\\python.exe python/server.py\" \"electron .\"",
     "prod": "concurrently -k -n py,app \".\\.venv\\Scripts\\python.exe python/launch_server.py\" \"electron .\"",
+    "serve": "node dev-server.js",
     "test": "node ./scripts/smoke-test.js",
     "test:comprehensive": "cd python && python run_tests.py",
     "check:env": "cd python && python check_environment.py",
     "cleanup:duplicates": "node ./scripts/cleanup-duplicates.js",
     "start": "electron .",
     "verify-build": "node ./scripts/verify-build.js",
+    "verify-prod": "node ./scripts/verify-production-build.js",
+    "generate-icons": "node ./scripts/generate-icons.js",
     "prebuild": "node ./scripts/prepare-build.js",
     "build": "electron-builder",
     "build:prod": "cross-env NODE_ENV=production electron-builder --config electron-builder-prod.json",
@@ -76,9 +87,11 @@
     }
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.79.0",
     "dotenv": "^16.4.5",
     "eventsource-parser": "^1.1.2",
     "node-fetch": "^3.3.2",
+    "razorpay": "^2.9.6",
     "tesseract.js": "^5.1.0",
     "ws": "^8.18.0"
   },
@@ -87,13 +100,16 @@
     "cross-env": "^7.0.3",
     "electron": "^31.3.1",
     "electron-builder": "^24.13.3",
+    "electron-icon-builder": "^2.0.1",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.4",
+    "to-ico": "^1.1.5",
     "wait-on": "^8.0.0"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Mohitsagar236/interview-ai.git"
   },
-  "homepage": "https://github.com/Mohitsagar236/interview-ai#readme",
   "bugs": {
     "url": "https://github.com/Mohitsagar236/interview-ai/issues"
   }

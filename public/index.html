@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="pricing.css">
     <link rel="stylesheet" href="responsive-utils.css">
     <link rel="stylesheet" href="parakeet-styles.css">
+    <link rel="stylesheet" href="responsive.css">
     <!-- Google font included once and Font Awesome via CDN -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -41,6 +42,37 @@
                     <i class="fas fa-moon"></i>
                     <i class="fas fa-sun"></i>
                 </button>
+                <!-- Auth Section -->
+                <div class="auth-section">
+                    <a href="auth.html" class="btn-login" id="header-login-btn">Login</a>
+                    <div class="user-profile-dropdown" id="user-profile-dropdown" style="display: none;">
+                        <button class="profile-trigger" id="profile-trigger">
+                            <i class="fas fa-user-circle"></i>
+                            <span id="user-name-display"></span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="profile-menu" id="profile-menu">
+                            <div class="profile-menu-header">
+                                <div class="profile-avatar">
+                                    <i class="fas fa-user-circle"></i>
+                                </div>
+                                <div class="profile-info">
+                                    <div class="profile-name" id="profile-menu-name"></div>
+                                    <div class="profile-email" id="profile-menu-email"></div>
+                                </div>
+                            </div>
+                            <div class="profile-menu-divider"></div>
+                            <a href="profile.html" class="profile-menu-item">
+                                <i class="fas fa-user"></i>
+                                <span>My Profile</span>
+                            </a>
+                            <a href="#" class="profile-menu-item" id="logout-btn">
+                                <i class="fas fa-sign-out-alt"></i>
+                                <span>Logout</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
             </div>
             <button class="mobile-menu-button" aria-label="Toggle menu">
                 <span class="hamburger-line"></span>
@@ -67,6 +99,17 @@
                     <a href="#download" class="mobile-nav-link">Download</a>
                     <a href="#guide" class="mobile-nav-link">User Guide</a>
                     <div class="mobile-nav-divider"></div>
+                    <!-- Mobile Auth Section -->
+                    <a href="auth.html" class="mobile-nav-link mobile-login-btn" id="mobile-login-btn">
+                        <i class="fas fa-sign-in-alt"></i> Login / Sign Up
+                    </a>
+                    <a href="profile.html" class="mobile-nav-link mobile-profile-link" id="mobile-profile-link" style="display: none;">
+                        <i class="fas fa-user"></i> My Profile
+                    </a>
+                    <a href="#" class="mobile-nav-link mobile-logout-btn" id="mobile-logout-btn" style="display: none;">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </a>
+                    <div class="mobile-nav-divider"></div>
                     <div class="mobile-theme-toggle">
                         <span>Theme</span>
                         <button class="theme-toggle-mobile" aria-label="Toggle theme">
@@ -91,13 +134,16 @@
                     <h1 class="hero-title">Your Real-Time <br><span class="gradient-text">AI</span> Interview Assistant</h1>
                     <p class="hero-sub">Automatically get an answer to every job interview question with ChatGPT AI software. An AI interview copilot. Real-time and private.</p>
                     <div class="hero-cta">
-                        <a href="#pricing" class="cta btn btn-primary">
-                            TRY FOR FREE
+                        <a href="download.html" class="cta btn btn-primary">
+                            DOWNLOAD FREE
                         </a>
-                        <div class="payment-info">
-                            One-time payment<br>
-                            <span class="no-subscription">No subscription</span>
-                        </div>
+                        <a href="#pricing" class="cta btn btn-secondary">
+                            GET CREDITS
+                        </a>
+                    </div>
+                    <div class="payment-info">
+                        Free to download • Pay only for credits you use<br>
+                        <span class="no-subscription">No subscription required</span>
                     </div>
                     <div class="hero-stats">
                         <div class="stat-item">
@@ -276,14 +322,15 @@
             <div class="download-content">
                 <div class="section-title">
                     <h2>Why Choose Interview AI?</h2>
-                    <p>See how we compare to traditional interview prep methods</p>
+                    <p>Our 100% private desktop app vs traditional interview prep methods</p>
                 </div>
                 <div class="comparison-table">
                     <div class="comparison-header">
                         <div class="comparison-item"></div>
                         <div class="comparison-item highlight">
-                            <i class="fas fa-crown"></i>
+                            <i class="fas fa-desktop"></i>
                             <h4>Interview AI</h4>
+                            <p style="font-size: 12px; opacity: 0.9; margin-top: 4px;">Desktop App</p>
                         </div>
                         <div class="comparison-item">
                             <h4>Interview Coaches</h4>
@@ -305,12 +352,6 @@
                         <div class="comparison-value"><i class="fas fa-times-circle"></i></div>
                     </div>
                     <div class="comparison-row">
-                        <div class="comparison-feature">Cost</div>
-                        <div class="comparison-value highlight">$79 once</div>
-                        <div class="comparison-value">$100+/hour</div>
-                        <div class="comparison-value">Free but limited</div>
-                    </div>
-                    <div class="comparison-row">
                         <div class="comparison-feature">Available 24/7</div>
                         <div class="comparison-value highlight"><i class="fas fa-check-circle"></i></div>
                         <div class="comparison-value"><i class="fas fa-times-circle"></i></div>
@@ -318,9 +359,21 @@
                     </div>
                     <div class="comparison-row">
                         <div class="comparison-feature">Privacy</div>
-                        <div class="comparison-value highlight">100% Private</div>
+                        <div class="comparison-value highlight">100% Private & Undetectable</div>
                         <div class="comparison-value">Shared with coach</div>
                         <div class="comparison-value">Private</div>
+                    </div>
+                    <div class="comparison-row">
+                        <div class="comparison-feature">Desktop App</div>
+                        <div class="comparison-value highlight">Runs Locally</div>
+                        <div class="comparison-value">N/A</div>
+                        <div class="comparison-value">N/A</div>
+                    </div>
+                    <div class="comparison-row">
+                        <div class="comparison-feature">No Browser Extension</div>
+                        <div class="comparison-value highlight"><i class="fas fa-check-circle"></i></div>
+                        <div class="comparison-value">N/A</div>
+                        <div class="comparison-value"><i class="fas fa-times-circle"></i></div>
                     </div>
                     <div class="comparison-row">
                         <div class="comparison-feature">Coding support</div>
@@ -335,91 +388,93 @@
         <section id="pricing" class="pricing">
             <div class="download-content">
             <div class="section-title">
-                <h2>Choose Your Plan</h2>
-                <p>One-time payment. No subscription. Lifetime access.</p>
+                <h2>Flexible Interview Prep</h2>
+                <p class="pricing-subtitle-main">One-time payment ✨</p>
             </div>
+            
+            <div class="pricing-benefits">
+                <span class="benefit-badge"><i class="fas fa-undo"></i> 30-Day Money Back</span>
+                <span class="benefit-badge"><i class="fas fa-infinity"></i> Credits Never Expire</span>
+                <span class="benefit-badge"><i class="fas fa-clock"></i> 1 Credit = 1h Interview</span>
+            </div>
+
             <div class="pricing-grid-three">
                 <!-- Basic Plan -->
-                <div class="pricing-card-main">
-                    <div class="card-header">
-                        <h3 class="plan-name">Basic</h3>
-                        <div class="price-main">
-                            <span class="currency">$</span>
-                            <span class="amount">49</span>
-                        </div>
-                        <p class="price-subtitle">One-time payment</p>
-                        <p class="price-desc">Perfect for getting started</p>
+                <div class="pricing-card-modern">
+                    <div class="plan-dots">
+                        <span class="dot dot-green"></span>
+                        <span class="dot dot-green"></span>
+                        <span class="dot dot-green"></span>
                     </div>
-                    <ul class="features-list">
-                        <li><i class="fas fa-check"></i> 50 interviews per month</li>
-                        <li><i class="fas fa-check"></i> ChatGPT AI integration</li>
-                        <li><i class="fas fa-check"></i> Real-time transcription</li>
-                        <li><i class="fas fa-check"></i> Single language support</li>
-                        <li><i class="fas fa-times"></i> <span style="text-decoration: line-through; opacity: 0.5;">Coding interview support</span></li>
-                        <li><i class="fas fa-check"></i> Windows & Mac only</li>
-                        <li><i class="fas fa-check"></i> Free updates (1 year)</li>
-                        <li><i class="fas fa-check"></i> Email support</li>
-                    </ul>
-                    <div class="card-footer">
-                        <a href="#download" class="cta btn btn-secondary">Get Basic</a>
-                        <span class="guarantee"><i class="fas fa-shield-alt"></i> 30-day money-back guarantee</span>
+                    <h3 class="plan-title">Basic</h3>
+                    <div class="price-display">
+                        <span class="rupee-symbol">₹</span>
+                        <span class="price-amount">499</span>
                     </div>
+                    <p class="price-usd">($5.99)</p>
+                    <p class="credit-info">3 Interview Credits</p>
+                    <a href="payment.html?product=basic" class="get-credits-btn">
+                        Get Credits <i class="fas fa-arrow-right"></i>
+                    </a>
                 </div>
 
-                <!-- Pro Plan (Most Popular) -->
-                <div class="pricing-card-main featured-plan">
-                    <div class="popular-badge">Most Popular</div>
-                    <div class="card-header">
-                        <h3 class="plan-name">Pro</h3>
-                        <div class="price-main">
-                            <span class="currency">$</span>
-                            <span class="amount">79</span>
-                        </div>
-                        <p class="price-subtitle">One-time payment</p>
-                        <p class="price-desc">Lifetime access to all features</p>
+                <!-- Plus Plan (Featured) -->
+                <div class="pricing-card-modern featured">
+                    <div class="plan-dots">
+                        <span class="dot dot-white"></span>
+                        <span class="dot dot-white"></span>
+                        <span class="dot dot-white"></span>
+                        <span class="dot dot-white"></span>
+                        <span class="dot dot-white"></span>
+                        <span class="dot dot-white"></span>
+                        <span class="dot dot-white"></span>
+                        <span class="dot dot-white"></span>
+                        <span class="dot dot-white"></span>
                     </div>
-                    <ul class="features-list">
-                        <li><i class="fas fa-check"></i> Unlimited interviews</li>
-                        <li><i class="fas fa-check"></i> ChatGPT AI integration</li>
-                        <li><i class="fas fa-check"></i> Real-time transcription</li>
-                        <li><i class="fas fa-check"></i> Multi-language support</li>
-                        <li><i class="fas fa-check"></i> Coding interview support</li>
-                        <li><i class="fas fa-check"></i> Windows, Mac & Linux</li>
-                        <li><i class="fas fa-check"></i> Lifetime free updates</li>
-                        <li><i class="fas fa-check"></i> Priority support</li>
-                    </ul>
-                    <div class="card-footer">
-                        <a href="#download" class="cta btn btn-primary">Get Pro</a>
-                        <span class="guarantee"><i class="fas fa-shield-alt"></i> 30-day money-back guarantee</span>
+                    <h3 class="plan-title">Plus</h3>
+                    <div class="price-display">
+                        <span class="rupee-symbol">₹</span>
+                        <span class="price-amount">999</span>
                     </div>
+                    <p class="price-usd">($11.99)</p>
+                    <p class="credit-info">6 Interview Credits + 2 Free</p>
+                    <a href="payment.html?product=plus" class="get-credits-btn featured-btn">
+                        Get Credits <i class="fas fa-arrow-right"></i>
+                    </a>
                 </div>
 
-                <!-- Enterprise Plan -->
-                <div class="pricing-card-main">
-                    <div class="card-header">
-                        <h3 class="plan-name">Enterprise</h3>
-                        <div class="price-main">
-                            <span class="currency">$</span>
-                            <span class="amount">149</span>
-                        </div>
-                        <p class="price-subtitle">One-time payment</p>
-                        <p class="price-desc">For teams and businesses</p>
+                <!-- Advanced Plan -->
+                <div class="pricing-card-modern">
+                    <div class="plan-dots">
+                        <span class="dot dot-green"></span>
+                        <span class="dot dot-green"></span>
+                        <span class="dot dot-green"></span>
+                        <span class="dot dot-green"></span>
+                        <span class="dot dot-green"></span>
+                        <span class="dot dot-green"></span>
+                        <span class="dot dot-yellow"></span>
+                        <span class="dot dot-yellow"></span>
+                        <span class="dot dot-yellow"></span>
+                        <span class="dot dot-yellow"></span>
+                        <span class="dot dot-yellow"></span>
+                        <span class="dot dot-yellow"></span>
                     </div>
-                    <ul class="features-list">
-                        <li><i class="fas fa-check"></i> Everything in Pro</li>
-                        <li><i class="fas fa-check"></i> Up to 5 devices</li>
-                        <li><i class="fas fa-check"></i> Advanced AI models</li>
-                        <li><i class="fas fa-check"></i> Custom integrations</li>
-                        <li><i class="fas fa-check"></i> Interview analytics</li>
-                        <li><i class="fas fa-check"></i> Team collaboration</li>
-                        <li><i class="fas fa-check"></i> Lifetime free updates</li>
-                        <li><i class="fas fa-check"></i> Dedicated support</li>
-                    </ul>
-                    <div class="card-footer">
-                        <a href="#download" class="cta btn btn-secondary">Get Enterprise</a>
-                        <span class="guarantee"><i class="fas fa-shield-alt"></i> 30-day money-back guarantee</span>
+                    <h3 class="plan-title">Advanced</h3>
+                    <div class="price-display">
+                        <span class="rupee-symbol">₹</span>
+                        <span class="price-amount">1,699</span>
                     </div>
+                    <p class="price-usd">($19.99)</p>
+                    <p class="credit-info">9 Interview Credits + 6 Free</p>
+                    <a href="payment.html?product=advanced" class="get-credits-btn">
+                        Get Credits <i class="fas fa-arrow-right"></i>
+                    </a>
                 </div>
+            </div>
+
+            <div class="pricing-footer-note">
+                <i class="fas fa-info-circle"></i>
+                <span>You can split credits into 30-minute sessions.</span>
             </div>
             </div>
         </section>
@@ -437,7 +492,7 @@
                         </div>
                         <h3>Windows</h3>
                         <p>For Windows 10 and 11</p>
-                        <a href="payment.html?product=windows" class="cta btn btn-download">Download for Windows</a>
+                        <a href="download.html" class="cta btn btn-download">Download for Windows</a>
                         <span class="download-info">Version 2.0.1 • 45 MB</span>
                     </div>
                     <div class="download-card">
@@ -446,7 +501,7 @@
                         </div>
                         <h3>macOS</h3>
                         <p>For macOS 11.0 or later</p>
-                        <a href="payment.html?product=mac" class="cta btn btn-download">Download for macOS</a>
+                        <a href="download.html" class="cta btn btn-download">Download for macOS</a>
                         <span class="download-info">Version 2.0.1 • 52 MB</span>
                     </div>
                     <div class="download-card">
@@ -455,7 +510,7 @@
                         </div>
                         <h3>Linux</h3>
                         <p>For Ubuntu, Debian, Fedora</p>
-                        <a href="payment.html?product=linux" class="cta btn btn-download">Download for Linux</a>
+                        <a href="download.html" class="cta btn btn-download">Download for Linux</a>
                         <span class="download-info">Version 2.0.1 • 48 MB</span>
                     </div>
                 </div>
@@ -561,10 +616,10 @@
             <div class="footer-section">
                 <h4>Support</h4>
                 <ul>
-                    <li><a href="#">Help Center</a></li>
-                    <li><a href="#">Contact</a></li>
-                    <li><a href="#">Privacy Policy</a></li>
-                    <li><a href="#">Terms of Service</a></li>
+                    <li><a href="help-center.html">Help Center</a></li>
+                    <li><a href="contact.html">Contact</a></li>
+                    <li><a href="privacy.html">Privacy Policy</a></li>
+                    <li><a href="terms.html">Terms of Service</a></li>
                 </ul>
             </div>
         </div>
@@ -578,6 +633,9 @@
     </footer>
 
     <!-- JavaScript -->
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="header-auth.js"></script>
     <script src="main.js"></script>
 </body>
 </html>

@@ -40,6 +40,22 @@ if (!envLoaded) {
 }
 
 // Log critical variables to verify they're loaded
+// Configure bundled Tesseract OCR path (if packaged)
+if (app.isPackaged) {
+  const tesseractExe = path.join(process.resourcesPath, 'tesseract', 'tesseract.exe');
+  const tessdataPath = path.join(process.resourcesPath, 'tesseract', 'tessdata');
+  
+  if (fs.existsSync(tesseractExe)) {
+    process.env.TESSERACT_CMD = tesseractExe;
+    process.env.TESSDATA_PREFIX = tessdataPath;
+    console.log('[OCR] ✅ Using bundled Tesseract OCR');
+    console.log(`[OCR] Tesseract: ${tesseractExe}`);
+    console.log(`[OCR] Tessdata: ${tessdataPath}`);
+  } else {
+    console.warn('[OCR] ⚠️ Bundled Tesseract not found, will try system installation');
+  }
+}
+
 console.log('[ENV] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 console.log('[ENV] Environment Variables Status:');
 const criticalVars = ['OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'DEFAULT_LLM', 'DEEPGRAM_API_KEY', 'USE_STREAMING_TRANSCRIPTION', 'STREAMING_PROVIDER'];
@@ -90,6 +106,9 @@ let coachWS = null;
 let coachWSConnecting = false;
 // File I/O cache to reduce disk operations
 let fileCache = new Map(); // path -> { data, timestamp }
+// Credits Manager
+const CreditsManager = require('./credits-manager');
+let creditsManager = null;
 const CACHE_TTL = 5000; // 5 seconds cache
 const CACHE_MAX_SIZE = 20;
 
@@ -431,6 +450,12 @@ function ensureDataPaths() {
   settingsPath = path.join(dataDir, 'settings.json');
   interviewsPath = path.join(dataDir, 'interviews.json');
   activitiesPath = path.join(dataDir, 'activities.json');
+    
+    // Initialize credits manager
+    if (!creditsManager) {
+      creditsManager = new CreditsManager(dataDir);
+    }
+    
     // Initialize files if missing
     if (!fs.existsSync(profilePath)) {
       fs.writeFileSync(profilePath, JSON.stringify({ fullName: '', email: '', phone: '', location: '', bio: '' }, null, 2));
@@ -1900,6 +1925,12 @@ ipcMain.handle('interview-start-session', (_event, id) => {
       clearInterval(interviewTickInterval); interviewTickInterval = null; activeInterviewSession = null;
     }
     if (it.status === 'completed') return { ok:false, error:'Already completed' };
+    
+    // Check credits before starting session
+    if (creditsManager && !creditsManager.hasCredits()) {
+      return { ok: false, error: 'No credits remaining. Please purchase more credits to continue.' };
+    }
+    
     activeInterviewSession = { id, startedAt: Date.now(), elapsedSec:0 };
     if (interviewTickInterval) { clearInterval(interviewTickInterval); }
     interviewTickInterval = setInterval(() => {
@@ -1907,6 +1938,12 @@ ipcMain.handle('interview-start-session', (_event, id) => {
       activeInterviewSession.elapsedSec = Math.floor((Date.now() - activeInterviewSession.startedAt)/1000);
       try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('interview-session-tick', { id, elapsedSec: activeInterviewSession.elapsedSec }); } catch {}
     }, 1000);
+    
+    // Start credits session
+    if (creditsManager) {
+      creditsManager.startSession(id);
+    }
+    
     logActivity('interview.session.start', { id });
     return { ok:true, session: activeInterviewSession };
   } catch (e) { return { ok:false, error:e.message }; }
@@ -1930,8 +1967,24 @@ ipcMain.handle('interview-end-session', (_event, id, options) => {
       writeInterviews(data);
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('interviews-updated');
     }
-    logActivity('interview.session.end', { id, durationSec });
-    return { ok:true, durationSec };
+    
+    // End credits session and deduct credits
+    let creditsResult = null;
+    if (creditsManager) {
+      creditsResult = creditsManager.endSession(id, durationSec);
+      
+      // Notify renderer about credits update
+      if (mainWindow && !mainWindow.isDestroyed() && creditsResult.success) {
+        mainWindow.webContents.send('credits-updated', {
+          creditsRemaining: creditsResult.creditsRemaining,
+          creditsUsed: creditsResult.creditsUsed,
+          sessionCredits: creditsResult.session.creditsDeducted
+        });
+      }
+    }
+    
+    logActivity('interview.session.end', { id, durationSec, creditsDeducted: creditsResult?.session?.creditsDeducted });
+    return { ok:true, durationSec, credits: creditsResult };
   } catch (e) { return { ok:false, error:e.message }; }
 });
 
@@ -1968,6 +2021,113 @@ ipcMain.handle('activity-list', (_event, limit=50) => {
     const list = (data.activities||[]).slice().sort((a,b)=> (a.ts||'').localeCompare(b.ts||'')).reverse();
     return { ok:true, activities: list.slice(0, limit) };
   } catch (e) { return { ok:false, error:e.message }; }
+});
+
+// -------------- Credits System IPC --------------
+ipcMain.handle('credits-load', () => {
+  try {
+    ensureDataPaths();
+    if (!creditsManager) {
+      return { ok: false, error: 'Credits manager not initialized' };
+    }
+    const info = creditsManager.getCreditsInfo();
+    return { ok: true, credits: info };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('credits-sync', async (_event, userId) => {
+  try {
+    ensureDataPaths();
+    if (!creditsManager) {
+      return { ok: false, error: 'Credits manager not initialized' };
+    }
+    
+    // Note: In a full implementation, you'd pass the Supabase client here
+    // For now, return current local credits
+    const info = creditsManager.getCreditsInfo();
+    return { ok: true, credits: info, message: 'Credits loaded from local storage' };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('credits-check', (_event, hoursNeeded = 0) => {
+  try {
+    ensureDataPaths();
+    if (!creditsManager) {
+      return { ok: false, error: 'Credits manager not initialized' };
+    }
+    const hasCredits = creditsManager.hasCredits(hoursNeeded);
+    const info = creditsManager.getCreditsInfo();
+    return { ok: true, hasCredits, credits: info };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('credits-start-session', (_event, sessionId) => {
+  try {
+    ensureDataPaths();
+    if (!creditsManager) {
+      return { ok: false, error: 'Credits manager not initialized' };
+    }
+    return creditsManager.startSession(sessionId);
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('credits-end-session', (_event, sessionId, durationSeconds) => {
+  try {
+    ensureDataPaths();
+    if (!creditsManager) {
+      return { ok: false, error: 'Credits manager not initialized' };
+    }
+    const result = creditsManager.endSession(sessionId, durationSeconds);
+    
+    // Log activity
+    if (result.success) {
+      logActivity('credits.session.end', {
+        sessionId,
+        durationSeconds,
+        creditsDeducted: result.session.creditsDeducted,
+        creditsRemaining: result.creditsRemaining
+      });
+    }
+    
+    return result;
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('credits-get-active-session', () => {
+  try {
+    ensureDataPaths();
+    if (!creditsManager) {
+      return { ok: false, error: 'Credits manager not initialized' };
+    }
+    const session = creditsManager.getActiveSession();
+    return { ok: true, session };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('credits-add', (_event, amount) => {
+  try {
+    ensureDataPaths();
+    if (!creditsManager) {
+      return { ok: false, error: 'Credits manager not initialized' };
+    }
+    const credits = creditsManager.addCredits(amount);
+    logActivity('credits.add', { amount, newTotal: credits.total });
+    return { ok: true, credits };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 
 // -------------- Compact Bar Download IPC --------------

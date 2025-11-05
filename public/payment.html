@@ -12,8 +12,13 @@
     <link rel="stylesheet" href="styles.css?v=2">
     <link rel="stylesheet" href="payment.css?v=2">
     <link rel="stylesheet" href="responsive-utils.css?v=2">
+    <link rel="stylesheet" href="responsive.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Razorpay Checkout -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    
     <style>
         body {
             background: #ffffff !important;
@@ -61,6 +66,7 @@
                     <div class="order-features">
                         <h3>What's Included:</h3>
                         <ul>
+                            <li><i class="fas fa-check"></i> <strong>100% Private & Undetectable</strong></li>
                             <li><i class="fas fa-check"></i> Real-time AI transcription</li>
                             <li><i class="fas fa-check"></i> Smart answer suggestions</li>
                             <li><i class="fas fa-check"></i> Screen capture OCR</li>
@@ -87,14 +93,21 @@
 
                     <div class="payment-security">
                         <i class="fas fa-lock"></i>
-                        <span>Secure payment powered by Stripe</span>
+                        <span>Secure payment powered by UPI</span>
+                    </div>
+                    
+                    <div class="privacy-badge" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 16px; border-radius: 12px; margin-top: 16px; text-align: center;">
+                        <i class="fas fa-shield-alt" style="font-size: 24px; margin-bottom: 8px;"></i>
+                        <h4 style="margin: 8px 0; font-size: 16px; font-weight: 600;">100% Private & Undetectable</h4>
+                        <p style="margin: 4px 0; font-size: 13px; opacity: 0.95;">Desktop app runs locally - no tracking, no detection</p>
                     </div>
                 </div>
             </div>
 
             <div class="payment-right">
                 <div class="payment-form-container">
-                    <h2>Payment Method</h2>
+                    <h2>Complete Your Purchase</h2>
+                    <p class="payment-instruction">Secure checkout powered by Razorpay</p>
                     
                     <form id="payment-form">
                         <div class="form-group">
@@ -110,156 +123,66 @@
 
                         <div class="form-group">
                             <label for="phone">Phone Number</label>
-                            <input type="tel" id="phone" name="phone" required placeholder="+91 98765 43210" pattern="[+]?[0-9]{10,13}">
-                            <small>For payment verification</small>
+                            <input type="tel" id="phone" name="phone" required placeholder="+919876543210" pattern="[+]?[0-9]{10,13}">
+                            <small>Required for payment processing</small>
                         </div>
 
-                        <div class="payment-method-selector">
-                            <label>Select Payment Method</label>
-                            <div class="payment-options">
-                                <button type="button" class="payment-option active" data-method="upi">
-                                    <i class="fas fa-qrcode"></i>
-                                    <span>UPI / QR Code</span>
-                                </button>
-                                <button type="button" class="payment-option" data-method="bank">
+                        <div class="payment-methods-info">
+                            <h3><i class="fas fa-credit-card"></i> Accepted Payment Methods</h3>
+                            <div class="payment-method-icons">
+                                <div class="method-item">
+                                    <i class="fas fa-mobile-alt"></i>
+                                    <span>UPI</span>
+                                </div>
+                                <div class="method-item">
+                                    <i class="fas fa-credit-card"></i>
+                                    <span>Cards</span>
+                                </div>
+                                <div class="method-item">
+                                    <i class="fas fa-wallet"></i>
+                                    <span>Wallets</span>
+                                </div>
+                                <div class="method-item">
                                     <i class="fas fa-university"></i>
-                                    <span>Bank Transfer</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- UPI Payment Section -->
-                        <div id="upi-section" class="payment-section active">
-                            <h3>Pay via UPI</h3>
-                            <p class="payment-instruction">Scan QR code or use UPI ID to pay</p>
-                            
-                            <div class="upi-apps">
-                                <h4>Supported Apps:</h4>
-                                <div class="upi-app-icons">
-                                    <div class="upi-app">
-                                        <img src="images/payment-apps/gpay.png" alt="Google Pay">
-                                        <span>GPay</span>
-                                    </div>
-                                    <div class="upi-app">
-                                        <img src="images/payment-apps/phonepe.png" alt="PhonePe">
-                                        <span>PhonePe</span>
-                                    </div>
-                                    <div class="upi-app">
-                                        <img src="images/payment-apps/paytm.png" alt="Paytm">
-                                        <span>Paytm</span>
-                                    </div>
-                                    <div class="upi-app">
-                                        <img src="images/payment-apps/BHIM.png" alt="BHIM">
-                                        <span>BHIM</span>
-                                    </div>
+                                    <span>NetBanking</span>
                                 </div>
                             </div>
-
-                            <div class="qr-code-container">
-                                <div id="qr-code"></div>
-                                <p class="qr-instruction">Scan with any UPI app</p>
-                            </div>
-
-                            <div class="upi-id-container">
-                                <label>Or Enter UPI ID Manually:</label>
-                                <div class="upi-id-box">
-                                    <input type="text" id="upi-id" readonly value="">
-                                    <button type="button" id="copy-upi" class="btn-copy">
-                                        <i class="fas fa-copy"></i> Copy
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="amount-display">
-                                <span>Amount to Pay:</span>
-                                <strong id="amount-inr">₹3,999</strong>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="transaction-id">Transaction ID / UTR Number</label>
-                                <input type="text" id="transaction-id" name="transaction-id" required placeholder="Enter 12-digit transaction ID">
-                                <small>Enter the transaction ID from your payment app after completing payment</small>
-                            </div>
-                        </div>
-
-                        <!-- Bank Transfer Section -->
-                        <div id="bank-section" class="payment-section">
-                            <h3>Bank Transfer Details</h3>
-                            <div class="bank-details">
-                                <div class="bank-detail-item">
-                                    <label>Account Name:</label>
-                                    <div class="detail-value">
-                                        <span id="bank-name">Interview AI Solutions</span>
-                                        <button type="button" class="btn-copy-inline" data-copy="bank-name">
-                                            <i class="fas fa-copy"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="bank-detail-item">
-                                    <label>Account Number:</label>
-                                    <div class="detail-value">
-                                        <span id="account-number">1234567890</span>
-                                        <button type="button" class="btn-copy-inline" data-copy="account-number">
-                                            <i class="fas fa-copy"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="bank-detail-item">
-                                    <label>IFSC Code:</label>
-                                    <div class="detail-value">
-                                        <span id="ifsc-code">SBIN0001234</span>
-                                        <button type="button" class="btn-copy-inline" data-copy="ifsc-code">
-                                            <i class="fas fa-copy"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="bank-detail-item">
-                                    <label>Bank Name:</label>
-                                    <div class="detail-value">
-                                        <span id="bank-branch">State Bank of India</span>
-                                    </div>
-                                </div>
-                                <div class="bank-detail-item highlight">
-                                    <label>Amount to Transfer:</label>
-                                    <div class="detail-value">
-                                        <span id="amount-bank">₹3,999</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="transaction-ref">Transaction Reference Number</label>
-                                <input type="text" id="transaction-ref" name="transaction-ref" placeholder="Enter bank transaction reference">
-                                <small>Enter the reference number from your bank transfer</small>
-                            </div>
+                            <p class="payment-apps-text">
+                                <small>Supports Google Pay, PhonePe, Paytm, and all major UPI apps, credit/debit cards, and net banking</small>
+                            </p>
                         </div>
 
                         <div class="form-group checkbox-group">
                             <label>
                                 <input type="checkbox" id="terms" required>
-                                <span>I have completed the payment and agree to the <a href="#terms">Terms of Service</a></span>
+                                <span>I agree to the <a href="terms.html" target="_blank">Terms of Service</a></span>
                             </label>
                         </div>
 
                         <button type="submit" id="submit-button" class="btn btn-primary btn-full">
-                            <span id="button-text">Verify Payment</span>
+                            <span id="button-text">Proceed to Payment</span>
                             <div class="spinner hidden" id="spinner"></div>
                         </button>
 
                         <div class="payment-note">
                             <i class="fas fa-info-circle"></i>
                             <div>
-                                <strong>Payment Verification:</strong>
-                                <p>Your payment will be verified within 5-10 minutes. You'll receive the download link via email once confirmed.</p>
+                                <strong>Instant Access:</strong>
+                                <p>After successful payment, you'll receive your download link immediately via email.</p>
                             </div>
                         </div>
 
                         <div class="payment-guarantee">
                             <i class="fas fa-shield-alt"></i>
                             <div>
-                                <strong>100% Secure & Verified</strong>
-                                <p>Your payment information is secure. We verify all transactions manually.</p>
+                                <strong>100% Secure Payment</strong>
+                                <p>Your payment information is encrypted and secure. Powered by Razorpay.</p>
                             </div>
+                        </div>
+
+                        <div class="razorpay-badge">
+                            <small>Secured by</small>
+                            <strong>RAZORPAY</strong>
                         </div>
                     </form>
 
@@ -285,6 +208,6 @@
         </div>
     </div>
 
-    <script src="payment.js"></script>
+    <script src="payment-razorpay.js"></script>
 </body>
 </html>

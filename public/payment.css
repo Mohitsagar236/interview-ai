@@ -893,6 +893,65 @@ html.dark .payment-note {
     border: 1px solid #e53e3e;
 }
 
+/* Payment Verification Polling Status */
+.polling-status {
+    padding: 1rem;
+    border-radius: 8px;
+    margin: 1rem 0;
+    font-size: 1rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+}
+
+.polling-status.checking {
+    background: #dbeafe;
+    color: #1e40af;
+    border: 2px solid #3b82f6;
+}
+
+.polling-status.checking::before {
+    content: '';
+    width: 20px;
+    height: 20px;
+    border: 3px solid #3b82f6;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.polling-status.success {
+    background: #d1fae5;
+    color: #065f46;
+    border: 2px solid #10b981;
+}
+
+.polling-status.success::before {
+    content: '✓';
+    font-size: 1.5rem;
+    color: #10b981;
+}
+
+.polling-status.warning {
+    background: #fef3c7;
+    color: #92400e;
+    border: 2px solid #f59e0b;
+}
+
+.polling-status.warning::before {
+    content: '⚠';
+    font-size: 1.5rem;
+    color: #f59e0b;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .payment-content {

@@ -14,9 +14,12 @@ const PAYMENT_CONFIG = {
     
     // Pricing (in INR)
     prices: {
-        windows: 3999,  // ₹3,999
-        mac: 3999,      // ₹3,999
-        subscription: 2999  // ₹2,999/month
+        basic: 499,      // ₹499
+        plus: 999,       // ₹999
+        advanced: 1699,  // ₹1,699
+        windows: 999,    // ₹999 (default)
+        mac: 999,        // ₹999 (default)
+        subscription: 999  // ₹999/month
     },
     
     // Your admin email to receive payment notifications
@@ -29,16 +32,37 @@ const productType = urlParams.get('product') || 'windows';
 
 // Product configurations
 const products = {
+    basic: {
+        name: 'Interview AI - Basic Plan',
+        description: '3 Interview Credits',
+        price: PAYMENT_CONFIG.prices.basic,
+        icon: 'fa-star',
+        downloadUrl: 'downloads/Interview AI Assistant Setup 0.1.0.exe'
+    },
+    plus: {
+        name: 'Interview AI - Plus Plan',
+        description: '6 Interview Credits + 2 Free',
+        price: PAYMENT_CONFIG.prices.plus,
+        icon: 'fa-star',
+        downloadUrl: 'downloads/Interview AI Assistant Setup 0.1.0.exe'
+    },
+    advanced: {
+        name: 'Interview AI - Advanced Plan',
+        description: '9 Interview Credits + 6 Free',
+        price: PAYMENT_CONFIG.prices.advanced,
+        icon: 'fa-star',
+        downloadUrl: 'downloads/Interview AI Assistant Setup 0.1.0.exe'
+    },
     windows: {
         name: 'Interview AI Assistant - Windows',
-        description: 'Desktop application with premium features',
+        description: '100% Private and Undetectable Desktop Application',
         price: PAYMENT_CONFIG.prices.windows,
         icon: 'fa-windows',
         downloadUrl: 'downloads/Interview AI Assistant Setup 0.1.0.exe'
     },
     mac: {
         name: 'Interview AI Assistant - macOS',
-        description: 'Optimized for Apple Silicon and Intel Macs',
+        description: '100% Private and Undetectable Desktop Application',
         price: PAYMENT_CONFIG.prices.mac,
         icon: 'fa-apple',
         downloadUrl: 'downloads/Interview AI Assistant-0.1.0.dmg'
@@ -201,15 +225,11 @@ form.addEventListener('submit', async (event) => {
 
 // Verify payment (send to backend for verification)
 async function verifyPayment(paymentData) {
-    // In production, this would call your backend API
-    // For now, we'll simulate the process
-    
     console.log('Payment verification data:', paymentData);
     
     try {
-        // PRODUCTION: Uncomment this to use real API
-        /*
-        const response = await fetch('/api/verify-payment', {
+        // Call automated verification API
+        const response = await fetch('/api/verify-payment-auto', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -219,32 +239,163 @@ async function verifyPayment(paymentData) {
         
         const result = await response.json();
         
-        if (result.success) {
-            handlePaymentSubmitted(paymentData.email);
-        } else {
-            throw new Error(result.message || 'Verification failed');
+        if (!result.success) {
+            throw new Error(result.error || 'Verification failed');
         }
-        */
         
-        // DEMO: Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // If payment verified immediately (webhook received)
+        if (result.verified) {
+            handlePaymentVerified(result, paymentData.email);
+            return;
+        }
         
-        // Store payment data in localStorage
-        const paymentInfo = {
-            ...paymentData,
-            date: new Date().toISOString(),
-            status: 'pending',
-            downloadUrl: currentProduct.downloadUrl
-        };
+        // Payment pending - start polling for verification
+        const paymentId = result.payment_id;
+        handlePaymentPending(paymentId, paymentData.email);
         
-        localStorage.setItem('payment_pending', JSON.stringify(paymentInfo));
-        
-        // Show success
-        handlePaymentSubmitted(paymentData.email);
+        // Start polling for payment status
+        startPaymentPolling(paymentId, paymentData.email);
         
     } catch (error) {
         throw error;
     }
+}
+
+// Start polling for payment verification
+let pollInterval = null;
+let pollAttempts = 0;
+const MAX_POLL_ATTEMPTS = 60; // Poll for 2 minutes (every 2 seconds)
+
+function startPaymentPolling(paymentId, email) {
+    pollAttempts = 0;
+    
+    // Update UI to show polling status
+    updatePollingStatus('Verifying payment...', 'checking');
+    
+    pollInterval = setInterval(async () => {
+        pollAttempts++;
+        
+        try {
+            const response = await fetch(`/api/verify-payment-auto?payment_id=${paymentId}`);
+            const result = await response.json();
+            
+            if (result.success && result.verified) {
+                // Payment verified!
+                clearInterval(pollInterval);
+                handlePaymentVerified(result, email);
+            } else if (pollAttempts >= MAX_POLL_ATTEMPTS) {
+                // Timeout - show manual verification message
+                clearInterval(pollInterval);
+                handlePaymentTimeout(email);
+            } else {
+                // Update progress
+                const progress = Math.min(95, (pollAttempts / MAX_POLL_ATTEMPTS) * 100);
+                updatePollingStatus(`Verifying payment... (${Math.floor(progress)}%)`, 'checking');
+            }
+        } catch (error) {
+            console.error('Polling error:', error);
+            
+            if (pollAttempts >= MAX_POLL_ATTEMPTS) {
+                clearInterval(pollInterval);
+                handlePaymentTimeout(email);
+            }
+        }
+    }, 2000); // Poll every 2 seconds
+}
+
+// Handle immediate payment verification
+function handlePaymentVerified(result, email) {
+    setLoading(false);
+    updatePollingStatus('Payment verified! 🎉', 'success');
+    
+    // Update modal with download link
+    document.getElementById('user-email').textContent = email;
+    
+    const modal = document.getElementById('success-modal');
+    const modalContent = modal.querySelector('.modal-content');
+    
+    modalContent.querySelector('h2').textContent = 'Payment Verified! 🎉';
+    modalContent.querySelector('p').textContent = 'Your payment has been confirmed. Download your app now!';
+    modalContent.querySelector('.download-info').textContent = `Download link expires in 24 hours.`;
+    
+    // Store download info
+    const downloadInfo = {
+        download_token: result.download_token,
+        download_url: result.download_url,
+        payment_id: result.payment_id,
+        verified_at: new Date().toISOString()
+    };
+    localStorage.setItem('download_info', JSON.stringify(downloadInfo));
+    
+    // Update button to trigger download
+    const downloadBtn = document.getElementById('download-now');
+    downloadBtn.textContent = 'Download Now';
+    downloadBtn.onclick = () => {
+        window.location.href = result.download_url;
+        
+        // Also send email confirmation
+        setTimeout(() => {
+            showMessage('Download started! Check your email for the download link.', 'success');
+        }, 1000);
+    };
+    
+    modal.classList.remove('hidden');
+}
+
+// Handle payment pending verification
+function handlePaymentPending(paymentId, email) {
+    setLoading(false);
+    
+    document.getElementById('user-email').textContent = email;
+    
+    // Show polling modal
+    const modal = document.getElementById('success-modal');
+    const modalContent = modal.querySelector('.modal-content');
+    
+    modalContent.querySelector('h2').textContent = 'Verifying Payment...';
+    modalContent.querySelector('p').innerHTML = '<div id="polling-status" class="polling-status"></div>';
+    modalContent.querySelector('.download-info').textContent = 'Please wait while we verify your payment. This usually takes 10-30 seconds.';
+    
+    // Hide download button initially
+    document.getElementById('download-now').style.display = 'none';
+    
+    modal.classList.remove('hidden');
+}
+
+// Update polling status in modal
+function updatePollingStatus(message, status) {
+    const statusElement = document.getElementById('polling-status');
+    if (statusElement) {
+        statusElement.textContent = message;
+        statusElement.className = `polling-status ${status}`;
+    }
+}
+
+// Handle payment verification timeout
+function handlePaymentTimeout(email) {
+    updatePollingStatus('Verification taking longer than expected', 'warning');
+    
+    const modal = document.getElementById('success-modal');
+    const modalContent = modal.querySelector('.modal-content');
+    
+    modalContent.querySelector('h2').textContent = 'Payment Submitted';
+    modalContent.querySelector('p').innerHTML = `
+        <div class="polling-status warning">
+            Verification is taking longer than expected. This can happen during high traffic.
+        </div>
+    `;
+    modalContent.querySelector('.download-info').innerHTML = `
+        We'll send the download link to <strong>${email}</strong> within 5-10 minutes once verified.<br>
+        <small>Check your email inbox and spam folder.</small>
+    `;
+    
+    // Show OK button
+    const downloadBtn = document.getElementById('download-now');
+    downloadBtn.style.display = 'block';
+    downloadBtn.textContent = 'Okay, Got It';
+    downloadBtn.onclick = () => {
+        window.location.href = 'index.html';
+    };
 }
 
 // Handle payment submission success

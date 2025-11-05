@@ -10,11 +10,27 @@
     "renderer/**/*",
     "assets/**/*",
     "public/**/*",
-    "package.json"
+    "package.json",
+    ".env",
+    "!python/**/*",
+    "!python-dist/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "python-dist/",
+      "to": "python-dist",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "external-deps/tesseract/",
+      "to": "tesseract",
+      "filter": ["**/*"]
+    }
   ],
   "extraMetadata": {
     "main": "electron/main.js"
   },
+  "copyright": "Copyright © 2025 Interview AI",
   "win": {
     "target": [
       {
@@ -31,7 +47,10 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "Interview AI"
+    "shortcutName": "Interview AI",
+    "license": "LICENSE.txt",
+    "installerIcon": "assets/icon.ico",
+    "uninstallerIcon": "assets/icon.ico"
   },
   "mac": {
     "target": [
@@ -41,7 +60,9 @@
       }
     ],
     "icon": "assets/icon.icns",
-    "category": "public.app-category.productivity"
+    "category": "public.app-category.productivity",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false
   },
   "linux": {
     "target": ["AppImage", "deb"],

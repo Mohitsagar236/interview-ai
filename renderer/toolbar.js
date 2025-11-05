@@ -318,6 +318,10 @@
   const barEl = document.querySelector(".bar");
   const speakerUser1 = $("speakerUser1");
   const speakerUser2 = $("speakerUser2");
+  
+  // Credits UI elements
+  const creditsDisplay = $("creditsDisplay");
+  const creditsAmount = $("creditsAmount");
   const statusDots = document.querySelector(".status-dots");
 
   // New UI element references
@@ -418,6 +422,10 @@
   // Initialize enhancements
   usageStats.load();
   hydrateCompanyBriefFromStorage();
+  
+  // Load credits on startup
+  loadCredits();
+  
   log.info("Toolbar initialized with enhancements enabled");
   log.debug("UI Elements found:", {
     recordInterviewerBtn: !!recordInterviewerBtn,
@@ -1470,6 +1478,89 @@
         listenStudentBtn.classList.remove("toggled");
       }
     }
+  }
+
+  // ==========================================
+  // CREDITS MANAGEMENT
+  // ==========================================
+  
+  async function loadCredits() {
+    try {
+      if (!window.electronAPI || !window.electronAPI.invoke) {
+        log.warn('electronAPI not available, credits feature disabled');
+        return;
+      }
+      
+      const result = await window.electronAPI.invoke('credits-load');
+      if (result.ok && result.credits) {
+        updateCreditsUI(result.credits);
+      } else {
+        log.warn('Failed to load credits:', result.error);
+      }
+    } catch (error) {
+      log.error('Error loading credits:', error);
+    }
+  }
+  
+  function updateCreditsUI(credits) {
+    if (!creditsDisplay || !creditsAmount) {
+      return;
+    }
+    
+    const remaining = credits.remaining || 0;
+    
+    // Update amount display
+    creditsAmount.textContent = remaining.toFixed(1);
+    
+    // Update styling based on remaining credits
+    creditsDisplay.classList.remove('low-credits', 'no-credits');
+    
+    if (remaining <= 0) {
+      creditsDisplay.classList.add('no-credits');
+    } else if (remaining < 1) {
+      creditsDisplay.classList.add('low-credits');
+    }
+    
+    // Show the credits display
+    creditsDisplay.style.display = 'flex';
+    
+    // Update tooltip
+    const hours = remaining.toFixed(1);
+    const planType = credits.planType || 'free';
+    creditsDisplay.title = `${hours} hours remaining (${planType} plan)\\nClick to view details`;
+    
+    log.info(`Credits updated: ${remaining.toFixed(1)} remaining (${credits.used.toFixed(1)}/${credits.total} used)`);
+  }
+  
+  // Credits display click handler - show details
+  if (creditsDisplay) {
+    creditsDisplay.addEventListener('click', async () => {
+      try {
+        const result = await window.electronAPI.invoke('credits-load');
+        if (result.ok && result.credits) {
+          const c = result.credits;
+          const message = `💳 Credits Information\\n\\n` +
+            `Plan: ${c.planType || 'Free'}\\n` +
+            `Total Credits: ${c.total}\\n` +
+            `Used: ${c.used.toFixed(2)}\\n` +
+            `Remaining: ${c.remaining.toFixed(2)}\\n\\n` +
+            `Total Time Used: ${c.totalTimeHours} hours (${c.sessionsCount} sessions)\\n\\n` +
+            `1 Credit = 1 Hour of interview time`;
+          
+          alert(message);
+        }
+      } catch (error) {
+        log.error('Error showing credits details:', error);
+      }
+    });
+  }
+  
+  // Listen for credits updates from main process
+  if (window.electronAPI && window.electronAPI.on) {
+    window.electronAPI.on('credits-updated', (data) => {
+      log.info('Credits updated from main process:', data);
+      loadCredits(); // Reload credits to get fresh data
+    });
   }
 
   async function connect() {

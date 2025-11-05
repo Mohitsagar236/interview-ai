@@ -10,12 +10,12 @@
        and prevented .no-drag from disabling window dragging on buttons. Cleaned & deduped. */
     .action-button { 
       display:flex; align-items:center; justify-content:center; 
-      background:#0a6bff; color:#fff; font-weight:600; font-size:14px; 
+      background:#10b981; color:#fff; font-weight:600; font-size:14px; 
       padding:10px 20px; border-radius:14px; border:none; cursor:pointer; 
       letter-spacing:0.2px; transition:all .2s ease; 
       box-shadow:0 2px 6px rgba(0,0,0,0.5); 
     }
-    .action-button:hover { background:#2482ff; }
+    .action-button:hover { background:#14b8a6; }
     .action-button:active { transform:translateY(1px); }
     .action-button svg { margin-right:6px; width:16px; height:16px; }
     :root {
@@ -24,9 +24,9 @@
       --bg-glass: rgba(18, 24, 39, 0.85);
       --fg: #e6edf3;
       --muted: #8b949e;
-      --primary: #2563eb;
-      --primary-light: #3b82f6;
-      --primary-dark: #1d4ed8;
+      --primary: #10b981;
+      --primary-light: #14b8a6;
+      --primary-dark: #059669;
       --success: #16a34a;
       --success-light: #22c55e;
       --warn: #ca8a04;
@@ -140,6 +140,56 @@
     #speakerToggle button.ghost { 
       opacity: 0.3; 
       border-color: var(--muted);
+    }
+    
+    /* Credits Display */
+    .credits-display {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--primary);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+    .credits-display:hover {
+      background: rgba(16, 185, 129, 0.25);
+      border-color: rgba(16, 185, 129, 0.5);
+    }
+    .credits-display.low-credits {
+      background: rgba(234, 179, 8, 0.15);
+      border-color: rgba(234, 179, 8, 0.3);
+      color: var(--warn);
+    }
+    .credits-display.no-credits {
+      background: rgba(220, 38, 38, 0.15);
+      border-color: rgba(220, 38, 38, 0.3);
+      color: var(--error);
+    }
+    .credits-icon {
+      width: 14px;
+      height: 14px;
+    }
+    .credits-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.2;
+    }
+    .credits-amount {
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .credits-label {
+      font-size: 9px;
+      opacity: 0.7;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
     
     /* Chat UI Styles */
@@ -932,6 +982,19 @@
       <div class="status-dot" style="background-color: var(--status-red);"></div>
       <div class="status-dot inactive" style="background-color: var(--status-blue);"></div>
       <div class="status-dot inactive" style="background-color: var(--status-gray);"></div>
+    </div>
+
+    <!-- Credits Display -->
+    <div class="credits-display no-drag" id="creditsDisplay" title="Interview credits remaining (1 credit = 1 hour)" style="display: none;">
+      <svg class="credits-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path>
+        <path d="M12 18V6"></path>
+      </svg>
+      <div class="credits-text">
+        <span class="credits-amount" id="creditsAmount">0</span>
+        <span class="credits-label">credits</span>
+      </div>
     </div>
 
     <!-- Ask AI Button -->
