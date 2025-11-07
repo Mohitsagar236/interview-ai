@@ -428,28 +428,56 @@ app.get('/api/validate-key', async (req, res, next) => {
 // ACTIVATION CODE ENDPOINTS (SIMPLIFIED DESKTOP AUTH)
 // ============================================
 
-// Generate or retrieve activation code for desktop app
+// Consolidated activation API endpoint
+app.all('/api/activation', async (req, res) => {
+    const action = req.query.action || req.body?.action;
+    
+    switch (action) {
+        case 'generate':
+            await generateActivationCodeEndpoint(req, res, supabase);
+            break;
+        case 'activate':
+            await activateDesktopEndpoint(req, res, supabase);
+            break;
+        case 'get-credits':
+            await getCreditsByCodeEndpoint(req, res, supabase);
+            break;
+        case 'update-credits':
+            await updateCreditsByCodeEndpoint(req, res, supabase);
+            break;
+        case 'deactivate':
+            await deactivateCodeEndpoint(req, res, supabase);
+            break;
+        default:
+            res.status(400).json({ 
+                error: 'Invalid action. Use: generate, activate, get-credits, update-credits, or deactivate' 
+            });
+    }
+});
+
+// Legacy endpoints for backward compatibility (redirects to consolidated endpoint)
 app.post('/api/generate-activation-code', async (req, res) => {
+    req.query.action = 'generate';
     await generateActivationCodeEndpoint(req, res, supabase);
 });
 
-// Activate desktop app with code (no login required)
 app.post('/api/activate-desktop', async (req, res) => {
+    req.query.action = 'activate';
     await activateDesktopEndpoint(req, res, supabase);
 });
 
-// Get user credits using activation code
 app.get('/api/get-credits-by-code', async (req, res) => {
+    req.query.action = 'get-credits';
     await getCreditsByCodeEndpoint(req, res, supabase);
 });
 
-// Update credits used via activation code
 app.post('/api/update-credits-by-code', async (req, res) => {
+    req.query.action = 'update-credits';
     await updateCreditsByCodeEndpoint(req, res, supabase);
 });
 
-// Deactivate activation code
 app.post('/api/deactivate-code', async (req, res) => {
+    req.query.action = 'deactivate';
     await deactivateCodeEndpoint(req, res, supabase);
 });
 

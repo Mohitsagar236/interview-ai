@@ -294,7 +294,7 @@
             console.log('[Activation] Fetching activation code for user:', userData.email);
 
             // Fetch or generate activation code
-            const response = await fetch('/api/generate-activation-code', {
+            const response = await fetch('/api/activation?action=generate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -411,7 +411,7 @@
                 throw new Error('Session expired. Please log in again.');
             }
             
-            const response = await fetch('/api/generate-activation-code', {
+            const response = await fetch('/api/activation?action=generate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -446,17 +446,23 @@
         }
 
         try {
-            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+            // Check if user is logged in (session-only mode)
+            if (!userData || !userData.authenticated) {
+                throw new Error('Session expired. Please log in again.');
+            }
+
+            // Get session token from userData
+            const sessionToken = userData.supabase_session?.access_token;
             
-            if (sessionError || !session || !session.access_token) {
-                throw new Error('Session expired. Please refresh the page and login again.');
+            if (!sessionToken) {
+                throw new Error('Session expired. Please log in again.');
             }
             
-            const response = await fetch('/api/deactivate-code', {
+            const response = await fetch('/api/activation?action=deactivate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${session.access_token}`
+                    'Authorization': `Bearer ${sessionToken}`
                 }
             });
 

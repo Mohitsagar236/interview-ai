@@ -65,7 +65,7 @@ class DesktopActivationManager {
 
             // Validate code with backend
             const response = await this.makeRequest(
-                `${this.apiBaseUrl}/api/activate-desktop`,
+                `${this.apiBaseUrl}/api/activation?action=activate`,
                 {
                     method: 'POST',
                     headers: {
@@ -155,7 +155,7 @@ class DesktopActivationManager {
             }
 
             const response = await this.makeRequest(
-                `${this.apiBaseUrl}/api/get-credits-by-code`,
+                `${this.apiBaseUrl}/api/activation?action=get-credits`,
                 {
                     method: 'GET',
                     headers: {
@@ -246,7 +246,7 @@ class DesktopActivationManager {
             }
 
             const response = await this.makeRequest(
-                `${this.apiBaseUrl}/api/update-credits-by-code`,
+                `${this.apiBaseUrl}/api/activation?action=update-credits`,
                 {
                     method: 'POST',
                     headers: {
