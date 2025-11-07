@@ -7,9 +7,9 @@
 
     // Download URLs - Update these with your actual download links
     const DOWNLOAD_URLS = {
-        windows: 'dist/Interview AI Setup 0.1.0.exe',
-        mac: 'dist/Interview-AI-0.1.0.dmg', // Update when available
-        linux: 'dist/interview-ai-0.1.0.AppImage' // Update when available
+        windows: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/Interview.AI.Setup.0.1.0.exe',
+        mac: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/Interview-AI-0.1.0.dmg', // Update when available
+        linux: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/interview-ai-0.1.0.AppImage' // Update when available
     };
 
     // Initialize
