@@ -25,6 +25,15 @@ const {
     updateCreditsEndpoint
 } = require('./api/api-keys');
 
+// Import activation code management functions
+const {
+    generateActivationCodeEndpoint,
+    activateDesktopEndpoint,
+    getCreditsByCodeEndpoint,
+    updateCreditsByCodeEndpoint,
+    deactivateCodeEndpoint
+} = require('./api/activation-codes');
+
 // API Routes - Import from api folder
 app.post('/api/create-razorpay-order', async (req, res) => {
     try {
@@ -413,6 +422,35 @@ app.get('/api/validate-key', async (req, res, next) => {
         message: 'API key is valid',
         userId: req.userId 
     });
+});
+
+// ============================================
+// ACTIVATION CODE ENDPOINTS (SIMPLIFIED DESKTOP AUTH)
+// ============================================
+
+// Generate or retrieve activation code for desktop app
+app.post('/api/generate-activation-code', async (req, res) => {
+    await generateActivationCodeEndpoint(req, res, supabase);
+});
+
+// Activate desktop app with code (no login required)
+app.post('/api/activate-desktop', async (req, res) => {
+    await activateDesktopEndpoint(req, res, supabase);
+});
+
+// Get user credits using activation code
+app.get('/api/get-credits-by-code', async (req, res) => {
+    await getCreditsByCodeEndpoint(req, res, supabase);
+});
+
+// Update credits used via activation code
+app.post('/api/update-credits-by-code', async (req, res) => {
+    await updateCreditsByCodeEndpoint(req, res, supabase);
+});
+
+// Deactivate activation code
+app.post('/api/deactivate-code', async (req, res) => {
+    await deactivateCodeEndpoint(req, res, supabase);
 });
 
 // ============================================

@@ -107,15 +107,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Main Desktop App Download
   downloadMainApp: (options) => ipcRenderer.invoke('download-main-app', options || {}),
   
-  // Desktop Authentication
-  desktopIsAuthenticated: () => ipcRenderer.invoke('desktop-is-authenticated'),
+  // Desktop Activation (Simplified Authentication)
+  desktopIsActivated: () => ipcRenderer.invoke('desktop-is-activated'),
+  desktopGetActivationStatus: () => ipcRenderer.invoke('desktop-get-activation-status'),
   desktopGetUser: () => ipcRenderer.invoke('desktop-get-user'),
-  desktopLogin: (credentials) => ipcRenderer.invoke('desktop-login', credentials),
-  desktopLogout: () => ipcRenderer.invoke('desktop-logout'),
-  desktopOpenLogin: () => ipcRenderer.invoke('desktop-open-login'),
+  desktopActivate: (code) => ipcRenderer.invoke('desktop-activate', code),
+  desktopDeactivate: () => ipcRenderer.invoke('desktop-deactivate'),
+  desktopOpenActivation: () => ipcRenderer.invoke('desktop-open-activation'),
+  desktopGetCredits: () => ipcRenderer.invoke('desktop-get-credits'),
   desktopSyncCredits: () => ipcRenderer.invoke('desktop-sync-credits'),
-  closeLoginWindow: () => ipcRenderer.invoke('close-login-window'),
+  closeActivationWindow: () => ipcRenderer.invoke('close-activation-window'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  
+  // Legacy authentication methods (deprecated, kept for backward compatibility)
+  desktopIsAuthenticated: () => ipcRenderer.invoke('desktop-is-activated'),
+  desktopLogin: () => ipcRenderer.invoke('desktop-open-activation'),
+  desktopLogout: () => ipcRenderer.invoke('desktop-deactivate'),
+  desktopOpenLogin: () => ipcRenderer.invoke('desktop-open-activation'),
+  closeLoginWindow: () => ipcRenderer.invoke('close-activation-window'),
   
   // Event listeners for main process communications
   onQuickCaptureResult: (callback) => {
@@ -213,9 +222,10 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Security enhancements
-Object.freeze(contextBridge);
-Object.freeze(ipcRenderer);
+// Note: Do NOT freeze ipcRenderer as it needs to manage internal event counts
+// The ipcRenderer is not exposed to the renderer anyway (only electronAPI is exposed)
+Object.freeze(window.electronAPI);
 
 console.log('✅ Enhanced preload script loaded successfully');
 console.log('🔧 Available APIs: captureScreen, toggleStealth, sendAudioChunk, system info, event listeners');
-console.log('🛡️ Security: Context isolation enabled, APIs frozen');
+console.log('🛡️ Security: Context isolation enabled, electronAPI frozen');

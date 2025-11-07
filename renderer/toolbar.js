@@ -1691,11 +1691,26 @@
   });
   
   // Listen for credits updates from main process
-  if (window.electronAPI && window.electronAPI.on) {
-    window.electronAPI.on('credits-updated', (data) => {
+  if (window.electronAPI && window.electronAPI.onCreditsUpdated) {
+    window.electronAPI.onCreditsUpdated((data) => {
       log.info('Credits updated from main process:', data);
-      loadCredits(); // Reload credits to get fresh data
+      
+      // Update credits UI directly with the new data
+      if (data && (data.creditsRemaining !== undefined || data.creditsTotal !== undefined)) {
+        updateCreditsUI({
+          total: data.creditsTotal || 0,
+          used: data.creditsUsed || 0,
+          remaining: data.creditsRemaining || 0,
+          planType: data.planType || 'free'
+        });
+      } else {
+        // Fallback: reload credits from storage
+        loadCredits();
+      }
     });
+    log.info('Credits update listener registered');
+  } else {
+    log.warn('electronAPI.onCreditsUpdated not available');
   }
 
   async function connect() {

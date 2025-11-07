@@ -20,6 +20,7 @@
         setupNavigation();
         setupLogout();
         setupThemeToggle();
+        await loadActivationCode(); // Load desktop app activation code
     });
 
     async function checkAuthAndLoadProfile() {
@@ -247,6 +248,209 @@
             }
         }
     }
+
+    async function loadActivationCode() {
+        const codeSection = document.getElementById('activation-code-section');
+        if (!codeSection) return;
+
+        try {
+            // Get session token
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+            
+            if (sessionError || !session || !session.access_token) {
+                console.error('Session error:', sessionError);
+                codeSection.innerHTML = `
+                    <div style="text-align: center; padding: 20px; opacity: 0.7;">
+                        <p style="font-size: 14px; margin-bottom: 12px;">Please log in to generate an activation code</p>
+                        <button onclick="window.location.href='auth.html'" style="padding: 10px 20px; background: rgba(255,255,255,0.2); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 13px;">
+                            <i class="fas fa-sign-in-alt"></i> Login
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            console.log('[Activation] Fetching activation code with token...');
+
+            // Fetch or generate activation code
+            const response = await fetch('/api/generate-activation-code', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({ regenerate: false })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || `Server error: ${response.status}`);
+            }
+
+            if (result.success && result.code) {
+                displayActivationCode(result);
+            } else {
+                throw new Error(result.error || 'Failed to generate code');
+            }
+
+        } catch (error) {
+            console.error('Error loading activation code:', error);
+            codeSection.innerHTML = `
+                <div style="text-align: center; padding: 20px;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 24px; color: #fbbf24; margin-bottom: 12px;"></i>
+                    <p style="font-size: 14px; opacity: 0.9;">Failed to load activation code</p>
+                    <p style="font-size: 12px; opacity: 0.7; margin-top: 8px;">${error.message}</p>
+                    <button onclick="location.reload()" style="margin-top: 12px; padding: 8px 16px; background: rgba(255,255,255,0.2); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 13px;">
+                        <i class="fas fa-redo"></i> Retry
+                    </button>
+                </div>
+            `;
+        }
+    }
+
+    function displayActivationCode(data) {
+        const codeSection = document.getElementById('activation-code-section');
+        if (!codeSection) return;
+
+        const code = data.code;
+        const creditsTotal = data.creditsTotal || 0;
+        const creditsUsed = data.creditsUsed || 0;
+        const creditsRemaining = creditsTotal - creditsUsed;
+
+        codeSection.innerHTML = `
+            <div class="activation-code-display">
+                <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 28px; font-weight: 700; letter-spacing: 4px; font-family: 'Courier New', monospace; margin-bottom: 12px;" id="activation-code-text">
+                            ${code}
+                        </div>
+                        <button onclick="window.copyActivationCode('${code}')" style="padding: 10px 24px; background: rgba(255,255,255,0.9); color: #4f46e5; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; transition: all 0.2s;">
+                            <i class="fas fa-copy"></i> Copy Code
+                        </button>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div style="background: rgba(255,255,255,0.1); border-radius: 6px; padding: 12px; text-align: center;">
+                        <div style="font-size: 11px; opacity: 0.8; margin-bottom: 4px;">TOTAL CREDITS</div>
+                        <div style="font-size: 20px; font-weight: 700;">${creditsTotal}</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.1); border-radius: 6px; padding: 12px; text-align: center;">
+                        <div style="font-size: 11px; opacity: 0.8; margin-bottom: 4px;">REMAINING</div>
+                        <div style="font-size: 20px; font-weight: 700;">${creditsRemaining.toFixed(1)}</div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                    <button onclick="window.regenerateActivationCode()" style="flex: 1; padding: 10px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; color: white; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                        <i class="fas fa-sync-alt"></i> Regenerate
+                    </button>
+                    <button onclick="window.deactivateCode()" style="flex: 1; padding: 10px; background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.4); border-radius: 6px; color: white; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                        <i class="fas fa-ban"></i> Deactivate
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    // Global functions for button actions
+    window.copyActivationCode = function(code) {
+        navigator.clipboard.writeText(code).then(() => {
+            showMessage('✅ Activation code copied to clipboard!');
+        }).catch(err => {
+            console.error('Failed to copy:', err);
+            showMessage('❌ Failed to copy code');
+        });
+    };
+
+    window.regenerateActivationCode = async function() {
+        if (!confirm('Are you sure you want to regenerate your activation code? The old code will stop working.')) {
+            return;
+        }
+
+        const codeSection = document.getElementById('activation-code-section');
+        codeSection.innerHTML = `
+            <div style="text-align: center; padding: 20px;">
+                <i class="fas fa-spinner fa-spin" style="font-size: 24px; opacity: 0.7;"></i>
+                <p style="margin-top: 12px; font-size: 14px; opacity: 0.8;">Regenerating code...</p>
+            </div>
+        `;
+
+        try {
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+            
+            if (sessionError || !session || !session.access_token) {
+                throw new Error('Session expired. Please refresh the page and login again.');
+            }
+            
+            const response = await fetch('/api/generate-activation-code', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({ regenerate: true })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || `Server error: ${response.status}`);
+            }
+
+            if (result.success && result.code) {
+                displayActivationCode(result);
+                showMessage('✅ New activation code generated!');
+            } else {
+                throw new Error(result.error || 'Failed to regenerate code');
+            }
+
+        } catch (error) {
+            console.error('Error regenerating code:', error);
+            showMessage('❌ Failed to regenerate code');
+            await loadActivationCode();
+        }
+    };
+
+    window.deactivateCode = async function() {
+        if (!confirm('Are you sure you want to deactivate your activation code? Your desktop app will stop working until you generate a new code.')) {
+            return;
+        }
+
+        try {
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+            
+            if (sessionError || !session || !session.access_token) {
+                throw new Error('Session expired. Please refresh the page and login again.');
+            }
+            
+            const response = await fetch('/api/deactivate-code', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
+                }
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || `Server error: ${response.status}`);
+            }
+
+            if (result.success) {
+                showMessage('✅ Activation code deactivated');
+                await loadActivationCode();
+            } else {
+                throw new Error(result.error || 'Failed to deactivate code');
+            }
+
+        } catch (error) {
+            console.error('Error deactivating code:', error);
+            showMessage('❌ Failed to deactivate code');
+        }
+    };
 
     async function loadUsageData() {
         if (!userData || !userData.id) {

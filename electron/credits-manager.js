@@ -199,6 +199,89 @@ class CreditsManager {
   }
 
   /**
+   * Sync credits using activation manager (NEW METHOD)
+   */
+  async syncWithActivation(activationManager) {
+    try {
+      console.log('[Credits] Syncing credits via activation manager...');
+
+      if (!activationManager || !activationManager.isActivated()) {
+        throw new Error('Activation manager not available or not activated');
+      }
+
+      // Get latest credits from server
+      const result = await activationManager.getCredits();
+
+      if (result.success) {
+        const credits = {
+          total: result.credits.total,
+          used: result.credits.used,
+          remaining: result.credits.remaining,
+          lastSynced: new Date().toISOString(),
+          syncedWithServer: true,
+          planType: result.planType || 'free'
+        };
+
+        this.saveCredits(credits);
+        console.log('[Credits] ✅ Synced via activation:', credits);
+        return { success: true, credits };
+      } else {
+        // Use cached data if available
+        const cachedCredits = this.loadCredits();
+        console.log('[Credits] ⚠️ Using cached credits:', cachedCredits);
+        return { success: false, error: result.error, credits: cachedCredits, cached: true };
+      }
+    } catch (error) {
+      console.error('[Credits] Error syncing via activation:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Update credits used via activation manager (NEW METHOD)
+   */
+  async updateViaActivation(activationManager, creditsUsed) {
+    try {
+      console.log('[Credits] Updating credits via activation manager:', creditsUsed);
+
+      if (!activationManager || !activationManager.isActivated()) {
+        throw new Error('Activation manager not available or not activated');
+      }
+
+      // Update credits on server
+      const result = await activationManager.updateCredits(creditsUsed);
+
+      if (result.success) {
+        // Update local credits
+        const credits = {
+          total: result.credits.total,
+          used: result.credits.used,
+          remaining: result.credits.remaining,
+          lastSynced: new Date().toISOString(),
+          syncedWithServer: true,
+          planType: this.loadCredits().planType || 'free'
+        };
+
+        this.saveCredits(credits);
+        console.log('[Credits] ✅ Updated via activation:', credits);
+        return { success: true, credits };
+      } else {
+        // Update local cache anyway
+        const currentCredits = this.loadCredits();
+        currentCredits.used = creditsUsed;
+        currentCredits.remaining = currentCredits.total - creditsUsed;
+        this.saveCredits(currentCredits);
+        
+        console.log('[Credits] ⚠️ Updated locally (cached):', currentCredits);
+        return { success: false, error: result.error, credits: currentCredits, cached: true };
+      }
+    } catch (error) {
+      console.error('[Credits] Error updating via activation:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Check if user has enough credits
    */
   hasCredits(hoursNeeded = 0) {

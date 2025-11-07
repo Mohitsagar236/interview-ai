@@ -81,6 +81,7 @@ console.log('[ENV] ━━━━━━━━━━━━━━━━━━━━�
 
 let mainWindow;
 let toolbarWindow;
+let noCreditsWindow; // Window to show when user has no credits
 let overlayWindows = [];
 let overlayDebug = false;
 let forcedStealth = !process.env.DISABLE_STEALTH_OVERLAY; // Can be disabled via environment variable
@@ -111,10 +112,11 @@ const CreditsManager = require('./credits-manager');
 let creditsManager = null;
 const CACHE_TTL = 5000; // 5 seconds cache
 const CACHE_MAX_SIZE = 20;
-// Desktop Authentication Manager
-const DesktopAuthManager = require('./desktop-auth-manager');
-let authManager = null;
-let loginWindow = null;
+// Desktop Activation Manager (Simplified Authentication)
+const DesktopActivationManager = require('./desktop-activation-manager');
+let activationManager = null;
+let activationWindow = null;
+let creditSyncInterval = null; // Periodic credit sync timer
 
 // ---------------- Backend bootstrap helpers ----------------
 function getPythonScriptsRoot() {
@@ -897,8 +899,10 @@ function createMainWindow() {
       mainWindow.webContents.openDevTools();
     }
 
-  // Auto-open compact toolbar on app start
-  try { toggleToolbarWindow(); } catch {}
+  // DON'T auto-open toolbar - only create if user is authenticated with credits
+  // The toolbar will be created after login or when user presses Ctrl+Shift+T
+  // try { toggleToolbarWindow(); } catch {}
+  
   // Kick off server auto-start shortly after UI shown to let output stream
   setTimeout(() => { try { startPythonServer(); } catch (e) { console.error('Failed to auto-start server', e); } }, 300);
   });
@@ -1002,6 +1006,215 @@ function createStealthOverlay() {
   console.log(`Created ${overlayWindows.length} stealth overlay(s)`);
 }
 
+// ==========================================
+// CREDIT GATE SYSTEM
+// ==========================================
+
+/**
+ * Check if user has credits available
+ * Returns: { hasCredits: boolean, remaining: number, total: number }
+ */
+function checkCreditsAvailable() {
+  if (!creditsManager) {
+    console.log('[Credits] Credits manager not initialized');
+    return { hasCredits: false, remaining: 0, total: 0, error: 'Credits manager not initialized' };
+  }
+
+  const creditsInfo = creditsManager.getCreditsInfo();
+  const hasCredits = creditsInfo.remaining > 0;
+  
+  console.log(`[Credits] Check: ${creditsInfo.remaining} remaining out of ${creditsInfo.total}`);
+  
+  return {
+    hasCredits,
+    remaining: creditsInfo.remaining,
+    used: creditsInfo.used,
+    total: creditsInfo.total,
+    planType: creditsInfo.planType
+  };
+}
+
+/**
+ * Show activation window for desktop app
+ */
+function showActivationWindow() {
+  // Don't create if already exists
+  if (activationWindow && !activationWindow.isDestroyed()) {
+    activationWindow.focus();
+    return activationWindow;
+  }
+
+  activationWindow = new BrowserWindow({
+    width: 500,
+    height: 650,
+    resizable: false,
+    center: true,
+    title: 'Activate - Interview AI',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
+    }
+  });
+
+  activationWindow.loadFile(path.join(__dirname, 'activation.html'));
+
+  activationWindow.on('closed', () => {
+    activationWindow = null;
+  });
+
+  console.log('[Activation] Showed activation window');
+  return activationWindow;
+}
+
+/**
+ * Show no-credits window when user has 0 credits
+ */
+function showNoCreditsWindow() {
+  // Close toolbar if it exists
+  if (toolbarWindow && !toolbarWindow.isDestroyed()) {
+    toolbarWindow.close();
+    toolbarWindow = null;
+  }
+
+  // Don't create if already exists
+  if (noCreditsWindow && !noCreditsWindow.isDestroyed()) {
+    noCreditsWindow.focus();
+    return noCreditsWindow;
+  }
+
+  noCreditsWindow = new BrowserWindow({
+    width: 520,
+    height: 700,
+    resizable: false,
+    center: true,
+    title: 'No Credits - Interview AI',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
+    }
+  });
+
+  noCreditsWindow.loadFile(path.join(__dirname, 'no-credits.html'));
+
+  noCreditsWindow.on('closed', () => {
+    noCreditsWindow = null;
+  });
+
+  console.log('[Credits] Showed no-credits window');
+  return noCreditsWindow;
+}
+
+/**
+ * Start periodic credit synchronization
+ */
+function startCreditSync() {
+  // Clear any existing interval
+  if (creditSyncInterval) {
+    clearInterval(creditSyncInterval);
+    creditSyncInterval = null;
+  }
+
+  // Only start if activated
+  if (!activationManager || !activationManager.isActivated()) {
+    console.log('[CreditSync] Not starting - desktop not activated');
+    return;
+  }
+
+  console.log('[CreditSync] Starting periodic credit sync (every 30 seconds)');
+
+  // Sync immediately
+  syncCreditsNow();
+
+  // Then sync every 30 seconds
+  creditSyncInterval = setInterval(() => {
+    syncCreditsNow();
+  }, 30000); // 30 seconds
+}
+
+/**
+ * Stop periodic credit synchronization
+ */
+function stopCreditSync() {
+  if (creditSyncInterval) {
+    clearInterval(creditSyncInterval);
+    creditSyncInterval = null;
+    console.log('[CreditSync] Stopped periodic credit sync');
+  }
+}
+
+/**
+ * Sync credits immediately from server
+ */
+async function syncCreditsNow() {
+  try {
+    if (!activationManager || !activationManager.isActivated()) {
+      console.log('[CreditSync] Skipping - not activated');
+      return;
+    }
+
+    if (!creditsManager) {
+      console.log('[CreditSync] Skipping - credits manager not initialized');
+      return;
+    }
+
+    console.log('[CreditSync] Syncing credits...');
+    const result = await creditsManager.syncWithActivation(activationManager);
+
+    if (result.success) {
+      console.log('[CreditSync] ✅ Credits synced successfully:', result.credits);
+
+      // Broadcast to all windows
+      const allWindows = [mainWindow, toolbarWindow, noCreditsWindow].filter(w => w && !w.isDestroyed());
+      allWindows.forEach(win => {
+        win.webContents.send('credits-updated', result.credits);
+      });
+
+      // Check if credits ran out
+      if (result.credits.remaining <= 0 && toolbarWindow && !toolbarWindow.isDestroyed()) {
+        console.log('[CreditSync] ⚠️ Credits depleted - showing no-credits window');
+        showNoCreditsWindow();
+      }
+
+      // Check if credits restored (close no-credits window if open)
+      if (result.credits.remaining > 0 && noCreditsWindow && !noCreditsWindow.isDestroyed()) {
+        console.log('[CreditSync] ✅ Credits restored - closing no-credits window');
+        noCreditsWindow.close();
+        noCreditsWindow = null;
+      }
+    } else {
+      console.log('[CreditSync] ⚠️ Sync failed (using cached):', result.error);
+    }
+  } catch (error) {
+    console.error('[CreditSync] Error during sync:', error);
+  }
+}
+
+/**
+ * Check credits and create toolbar only if credits available
+ * Returns: true if toolbar created, false if no credits
+ */
+function createToolbarWithCreditCheck() {
+  // Check activation first
+  if (!activationManager || !activationManager.isActivated()) {
+    console.log('[Credits] Cannot check credits - desktop not activated');
+    return false;
+  }
+
+  const creditsCheck = checkCreditsAvailable();
+  
+  if (!creditsCheck.hasCredits) {
+    console.log('[Credits] ❌ No credits available - showing no-credits window');
+    showNoCreditsWindow();
+    return false;
+  }
+
+  console.log('[Credits] ✅ Credits available - creating toolbar');
+  createToolbarWindow();
+  return true;
+}
+
 // Lightweight floating toolbar window
 function createToolbarWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
@@ -1056,6 +1269,19 @@ function createToolbarWindow() {
     try {
       const settings = readJSON(settingsPath, {});
       toolbarWindow.webContents.send('settings-loaded', settings);
+      
+      // Send initial credits if available
+      if (creditsManager) {
+        const creditsInfo = creditsManager.getCreditsInfo();
+        toolbarWindow.webContents.send('credits-updated', {
+          creditsRemaining: creditsInfo.remaining,
+          creditsUsed: creditsInfo.used,
+          creditsTotal: creditsInfo.total,
+          planType: creditsInfo.planType || 'free'
+        });
+        console.log('[Toolbar] Sent initial credits on load:', creditsInfo);
+      }
+      
       // Measure actual bar content and shrink window to snug fit (+8px padding for shadow)
       setTimeout(() => {
         if (!toolbarWindow || toolbarWindow.isDestroyed()) return;
@@ -1145,6 +1371,15 @@ function createToolbarWindow() {
 
 function toggleToolbarWindow() {
   if (!toolbarWindow || toolbarWindow.isDestroyed()) {
+    // Check credits before creating toolbar
+    if (authManager && authManager.isAuthenticated()) {
+      const creditsCheck = checkCreditsAvailable();
+      if (!creditsCheck.hasCredits) {
+        console.log('[Credits] Cannot create toolbar - no credits');
+        showNoCreditsWindow();
+        return false;
+      }
+    }
     createToolbarWindow();
     return true;
   }
@@ -2003,25 +2238,43 @@ ipcMain.handle('interview-end-session', async (_event, id, options) => {
     if (creditsManager) {
       creditsResult = creditsManager.endSession(id, durationSec);
       
-      // Sync credits to server if authenticated
-      if (authManager && authManager.isAuthenticated() && creditsResult.success) {
+      // Sync credits to server via activation manager
+      if (activationManager && activationManager.isActivated() && creditsResult.success) {
         try {
           const creditsInfo = creditsManager.getCreditsInfo();
-          await authManager.updateCredits(creditsInfo.used);
-          console.log('[Session] Credits synced to server after session end');
+          const updateResult = await creditsManager.updateViaActivation(activationManager, creditsInfo.used);
+          
+          if (updateResult.success) {
+            console.log('[Session] ✅ Credits synced to server after session end:', updateResult.credits);
+            
+            // Update creditsResult with server response
+            creditsResult.creditsRemaining = updateResult.credits.remaining;
+            creditsResult.creditsUsed = updateResult.credits.used;
+            
+            // Check if credits depleted
+            if (updateResult.credits.remaining <= 0) {
+              console.log('[Session] ⚠️ Credits depleted after session');
+              showNoCreditsWindow();
+            }
+          } else {
+            console.warn('[Session] ⚠️ Credits sync failed (using cached):', updateResult.error);
+          }
         } catch (syncError) {
           console.error('[Session] Error syncing credits to server:', syncError);
         }
       }
       
-      // Notify renderer about credits update
-      if (mainWindow && !mainWindow.isDestroyed() && creditsResult.success) {
-        mainWindow.webContents.send('credits-updated', {
-          creditsRemaining: creditsResult.creditsRemaining,
-          creditsUsed: creditsResult.creditsUsed,
-          sessionCredits: creditsResult.session.creditsDeducted
-        });
-      }
+      // Notify all windows about credits update
+      const creditsUpdateData = {
+        creditsRemaining: creditsResult.creditsRemaining,
+        creditsUsed: creditsResult.creditsUsed,
+        sessionCredits: creditsResult.session.creditsDeducted
+      };
+      
+      const allWindows = [mainWindow, toolbarWindow].filter(w => w && !w.isDestroyed());
+      allWindows.forEach(win => {
+        win.webContents.send('credits-updated', creditsUpdateData);
+      });
     }
     
     logActivity('interview.session.end', { id, durationSec, creditsDeducted: creditsResult?.session?.creditsDeducted });
@@ -2171,125 +2424,182 @@ ipcMain.handle('credits-add', (_event, amount) => {
   }
 });
 
-// -------------- Desktop Authentication IPC --------------
+// -------------- Desktop Activation IPC (Simplified Authentication) --------------
 
-// Check if user is authenticated
-ipcMain.handle('desktop-is-authenticated', () => {
+// Check if desktop is activated
+ipcMain.handle('desktop-is-activated', () => {
   try {
-    if (!authManager) {
-      return { authenticated: false, error: 'Auth manager not initialized' };
+    if (!activationManager) {
+      return { activated: false, error: 'Activation manager not initialized' };
     }
-    return { authenticated: authManager.isAuthenticated() };
+    return { activated: activationManager.isActivated() };
   } catch (e) {
-    return { authenticated: false, error: e.message };
+    return { activated: false, error: e.message };
+  }
+});
+
+// Get activation status and user data
+ipcMain.handle('desktop-get-activation-status', () => {
+  try {
+    if (!activationManager) {
+      return { ok: false, error: 'Activation manager not initialized' };
+    }
+    const status = activationManager.getActivationStatus();
+    return { ok: true, ...status };
+  } catch (e) {
+    return { ok: false, error: e.message };
   }
 });
 
 // Get user data
 ipcMain.handle('desktop-get-user', () => {
   try {
-    if (!authManager) {
-      return { ok: false, error: 'Auth manager not initialized' };
+    if (!activationManager) {
+      return { ok: false, error: 'Activation manager not initialized' };
     }
-    const userData = authManager.getUserData();
+    const userData = activationManager.getUserData();
     return { ok: true, user: userData };
   } catch (e) {
     return { ok: false, error: e.message };
   }
 });
 
-// Login
-ipcMain.handle('desktop-login', async (_event, credentials) => {
+// Activate desktop app with code
+ipcMain.handle('desktop-activate', async (_event, activationCode) => {
   try {
-    if (!authManager) {
-      return { success: false, error: 'Auth manager not initialized' };
+    if (!activationManager) {
+      return { success: false, error: 'Activation manager not initialized' };
     }
     
-    const result = await authManager.login(
-      credentials.email,
-      credentials.password,
-      credentials.supabaseUrl,
-      credentials.supabaseAnonKey
-    );
+    const result = await activationManager.activate(activationCode);
     
     if (result.success) {
-      // Sync credits after successful login
-      const creditsResult = await authManager.getCredits();
-      if (creditsResult.success && creditsManager) {
+      // Sync credits after successful activation
+      if (creditsManager) {
         const credits = {
-          total: creditsResult.credits.total,
-          used: creditsResult.credits.used,
-          remaining: creditsResult.credits.remaining,
+          total: result.credits.total,
+          used: result.credits.used,
+          remaining: result.credits.remaining,
           lastSynced: new Date().toISOString(),
           syncedWithServer: true,
-          planType: creditsResult.credits.planType
+          planType: result.planType
         };
         creditsManager.saveCredits(credits);
-        console.log('[Auth] Credits synced after login:', credits);
+        console.log('[Activation] Credits synced after activation:', credits);
+        
+        // CHECK CREDITS - Show no-credits window if 0
+        if (credits.remaining <= 0) {
+          console.log('[Credits] ❌ No credits available after activation');
+          if (activationWindow && !activationWindow.isDestroyed()) {
+            activationWindow.close();
+          }
+          showNoCreditsWindow();
+          return {
+            success: true,
+            hasCredits: false,
+            credits: credits,
+            message: 'Activation successful but no credits available'
+          };
+        }
+        
+        console.log('[Credits] ✅ Activation successful with credits');
+        
+        // Close activation window
+        if (activationWindow && !activationWindow.isDestroyed()) {
+          activationWindow.close();
+          activationWindow = null;
+        }
+        
+        // Launch toolbar window with credits
+        console.log('[Activation] Launching toolbar window...');
+        createToolbarWindow();
+        
+        // Start periodic credit sync
+        startCreditSync();
+        
+        // Notify toolbar window about credits update
+        if (toolbarWindow && !toolbarWindow.isDestroyed()) {
+          toolbarWindow.webContents.send('credits-updated', {
+            creditsRemaining: credits.remaining,
+            creditsUsed: credits.used,
+            creditsTotal: credits.total,
+            planType: credits.planType
+          });
+          console.log('[Activation] ✅ Notified toolbar about credits update');
+        }
       }
       
-      logActivity('auth.login', { email: credentials.email });
+      logActivity('activation.success', { email: result.user.email });
     }
     
-    return result;
+    return { ...result, hasCredits: true };
   } catch (e) {
-    console.error('[Auth] Login IPC error:', e);
+    console.error('[Activation] Activation IPC error:', e);
     return { success: false, error: e.message };
   }
 });
 
-// Logout
-ipcMain.handle('desktop-logout', () => {
+// Deactivate desktop app
+ipcMain.handle('desktop-deactivate', () => {
   try {
-    if (!authManager) {
-      return { ok: false, error: 'Auth manager not initialized' };
+    if (!activationManager) {
+      return { ok: false, error: 'Activation manager not initialized' };
     }
-    authManager.logout();
-    logActivity('auth.logout', {});
+    
+    // Stop credit sync
+    stopCreditSync();
+    
+    // Clear credits on deactivation
+    if (creditsManager) {
+      const emptyCredits = {
+        total: 0,
+        used: 0,
+        remaining: 0,
+        lastSynced: null,
+        syncedWithServer: false,
+        planType: 'free'
+      };
+      creditsManager.saveCredits(emptyCredits);
+      console.log('[Activation] Cleared credits on deactivation');
+    }
+    
+    // Close toolbar if it exists
+    if (toolbarWindow && !toolbarWindow.isDestroyed()) {
+      toolbarWindow.close();
+      toolbarWindow = null;
+    }
+    
+    // Close no-credits window if it exists
+    if (noCreditsWindow && !noCreditsWindow.isDestroyed()) {
+      noCreditsWindow.close();
+      noCreditsWindow = null;
+    }
+    
+    activationManager.deactivate();
+    logActivity('activation.deactivate', {});
+    
+    console.log('[Activation] Deactivation complete - all windows closed, credits cleared');
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e.message };
   }
 });
 
-// Open login window
-ipcMain.handle('desktop-open-login', () => {
+// Open activation window
+ipcMain.handle('desktop-open-activation', () => {
   try {
-    if (loginWindow && !loginWindow.isDestroyed()) {
-      loginWindow.focus();
-      return { ok: true };
-    }
-    
-    loginWindow = new BrowserWindow({
-      width: 480,
-      height: 620,
-      resizable: false,
-      center: true,
-      title: 'Login - Interview AI',
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js')
-      }
-    });
-    
-    loginWindow.loadFile(path.join(__dirname, 'login.html'));
-    
-    loginWindow.on('closed', () => {
-      loginWindow = null;
-    });
-    
+    showActivationWindow();
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e.message };
   }
 });
 
-// Close login window
-ipcMain.handle('close-login-window', () => {
+// Close activation window
+ipcMain.handle('close-activation-window', () => {
   try {
-    if (loginWindow && !loginWindow.isDestroyed()) {
-      loginWindow.close();
+    if (activationWindow && !activationWindow.isDestroyed()) {
+      activationWindow.close();
     }
     // Refresh credits in main window
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2301,35 +2611,61 @@ ipcMain.handle('close-login-window', () => {
   }
 });
 
-// Sync credits with server
-ipcMain.handle('desktop-sync-credits', async () => {
+// Get current credits
+ipcMain.handle('desktop-get-credits', async () => {
   try {
-    if (!authManager || !authManager.isAuthenticated()) {
-      return { ok: false, error: 'Not authenticated' };
+    if (!activationManager || !activationManager.isActivated()) {
+      return { success: false, error: 'Desktop not activated' };
     }
     
     if (!creditsManager) {
-      return { ok: false, error: 'Credits manager not initialized' };
+      return { success: false, error: 'Credits manager not initialized' };
     }
     
-    const result = await authManager.getCredits();
-    
-    if (result.success) {
-      const credits = {
-        total: result.credits.total,
-        used: result.credits.used,
-        remaining: result.credits.remaining,
-        lastSynced: new Date().toISOString(),
-        syncedWithServer: true,
-        planType: result.credits.planType
-      };
-      creditsManager.saveCredits(credits);
-      return { ok: true, credits };
-    } else {
-      return { ok: false, error: result.error };
-    }
+    const creditsInfo = creditsManager.getCreditsInfo();
+    return { success: true, credits: creditsInfo };
   } catch (e) {
-    console.error('[Auth] Sync credits error:', e);
+    return { success: false, error: e.message };
+  }
+});
+
+// Manually sync credits from server
+ipcMain.handle('desktop-sync-credits', async () => {
+  try {
+    await syncCreditsNow();
+    
+    if (!creditsManager) {
+      return { success: false, error: 'Credits manager not initialized' };
+    }
+    
+    const creditsInfo = creditsManager.getCreditsInfo();
+    return { success: true, credits: creditsInfo };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// Credits available - close no-credits window and allow app usage
+ipcMain.handle('credits-available', () => {
+  try {
+    if (noCreditsWindow && !noCreditsWindow.isDestroyed()) {
+      noCreditsWindow.close();
+      noCreditsWindow = null;
+    }
+    console.log('[Credits] Credits now available - user can use the app');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// Relaunch app
+ipcMain.handle('app-relaunch', () => {
+  try {
+    app.relaunch();
+    app.exit(0);
+    return { ok: true };
+  } catch (e) {
     return { ok: false, error: e.message };
   }
 });
@@ -2477,71 +2813,18 @@ ipcMain.handle('download-main-app', async (_event, options = {}) => {
 
 // Enhanced app event handlers
 app.whenReady().then(async () => {
-  // Initialize authentication manager
-  authManager = new DesktopAuthManager();
-  console.log('[Auth] Desktop authentication manager initialized');
+  // Initialize activation manager
+  activationManager = new DesktopActivationManager();
+  console.log('[Activation] Desktop activation manager initialized');
+  console.log('[Activation] ⚠️ SESSION-ONLY MODE: Activation required on every launch');
   
   createMainWindow();
   
-  // Check if user is authenticated and sync credits
-  if (!authManager.isAuthenticated()) {
-    console.log('[Auth] User not authenticated, showing login dialog');
-    // Show login dialog after a short delay to allow main window to load
-    setTimeout(() => {
-      if (loginWindow && !loginWindow.isDestroyed()) {
-        loginWindow.focus();
-      } else {
-        loginWindow = new BrowserWindow({
-          width: 480,
-          height: 620,
-          resizable: false,
-          center: true,
-          title: 'Login - Interview AI',
-          webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js')
-          }
-        });
-        
-        loginWindow.loadFile(path.join(__dirname, 'login.html'));
-        
-        loginWindow.on('closed', () => {
-          loginWindow = null;
-        });
-      }
-    }, 1000);
-  } else {
-    const userData = authManager.getUserData();
-    console.log('[Auth] User authenticated:', userData.email);
-    
-    // Sync credits from server
-    console.log('[Auth] Syncing credits from server...');
-    try {
-      const creditsResult = await authManager.getCredits();
-      if (creditsResult.success && creditsManager) {
-        const credits = {
-          total: creditsResult.credits.total,
-          used: creditsResult.credits.used,
-          remaining: creditsResult.credits.remaining,
-          lastSynced: new Date().toISOString(),
-          syncedWithServer: true,
-          planType: creditsResult.credits.planType
-        };
-        creditsManager.saveCredits(credits);
-        console.log('[Auth] Credits synced successfully:', credits);
-        
-        // Notify main window
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('credits-updated', credits);
-        }
-      } else {
-        console.error('[Auth] Failed to sync credits:', creditsResult.error);
-      }
-    } catch (error) {
-      console.error('[Auth] Error syncing credits:', error);
-    }
-  }
+  // ALWAYS show activation window on startup (no persistent activation)
+  console.log('[Activation] Showing activation dialog (required on every launch)');
+  setTimeout(() => {
+    showActivationWindow();
+  }, 1000);
   
   startHeartbeat();
   // Unified permission handler: allow media + display-capture for system audio
@@ -2646,8 +2929,21 @@ app.whenReady().then(async () => {
     console.log('✅ Global shortcuts registered:');
     console.log('   Ctrl+Shift+C: Quick screen capture');
     console.log('   Ctrl+Shift+S: Toggle stealth mode');
-    // Toggle compact toolbar
+    // Toggle compact toolbar (with credit check)
     globalShortcut.register('CommandOrControl+Shift+T', () => {
+      // Check if user has credits before showing toolbar
+      if (!authManager || !authManager.isAuthenticated()) {
+        console.log('🔒 Cannot toggle toolbar - user not authenticated');
+        return;
+      }
+      
+      const creditsCheck = checkCreditsAvailable();
+      if (!creditsCheck.hasCredits) {
+        console.log('❌ Cannot show toolbar - no credits available');
+        showNoCreditsWindow();
+        return;
+      }
+      
       const visible = toggleToolbarWindow();
       console.log(`🧰 Compact toolbar ${visible ? 'shown' : 'hidden'} via shortcut`);
     });
@@ -2682,6 +2978,19 @@ app.whenReady().then(async () => {
     try {
       const registered = globalShortcut.register('CommandOrControl+A', () => {
         try {
+          // Check if user has credits before showing toolbar
+          if (!authManager || !authManager.isAuthenticated()) {
+            console.log('🔒 Cannot toggle toolbar - user not authenticated');
+            return;
+          }
+          
+          const creditsCheck = checkCreditsAvailable();
+          if (!creditsCheck.hasCredits) {
+            console.log('❌ Cannot show toolbar - no credits available');
+            showNoCreditsWindow();
+            return;
+          }
+          
           const visible = toggleToolbarWindow();
           console.log(`🧰 Toolbar ${visible ? 'shown' : 'hidden'} via Ctrl+A`);
         } catch (e) {
@@ -2701,6 +3010,19 @@ app.whenReady().then(async () => {
     try {
       const registeredDev = globalShortcut.register('CommandOrControl+Alt+D', () => {
         try {
+          // Check authentication and credits before creating toolbar
+          if (!authManager || !authManager.isAuthenticated()) {
+            console.log('🔒 Cannot open DevTools - user not authenticated');
+            return;
+          }
+          
+          const creditsCheck = checkCreditsAvailable();
+          if (!creditsCheck.hasCredits) {
+            console.log('❌ Cannot open DevTools - no credits available');
+            showNoCreditsWindow();
+            return;
+          }
+          
           if (!toolbarWindow || toolbarWindow.isDestroyed()) {
             console.log('Toolbar window missing; creating before opening DevTools');
             createToolbarWindow();
@@ -2731,6 +3053,16 @@ app.whenReady().then(async () => {
     try {
       ipcMain.handle('toolbar-open-devtools', () => {
         try {
+          // Check authentication and credits
+          if (!authManager || !authManager.isAuthenticated()) {
+            return { ok: false, error: 'Not authenticated' };
+          }
+          
+          const creditsCheck = checkCreditsAvailable();
+          if (!creditsCheck.hasCredits) {
+            return { ok: false, error: 'No credits available' };
+          }
+          
           if (!toolbarWindow || toolbarWindow.isDestroyed()) createToolbarWindow();
           if (toolbarWindow && !toolbarWindow.webContents.isDevToolsOpened()) {
             toolbarWindow.webContents.openDevTools({ mode: 'detach' });
@@ -2815,6 +3147,9 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   console.log('Application quitting...');
+  
+  // Stop credit sync
+  stopCreditSync();
   
   // Clean up resources
   globalShortcut.unregisterAll();
