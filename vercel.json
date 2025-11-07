@@ -12,6 +12,14 @@
   ],
   "routes": [
     {
+      "src": "/api/activation",
+      "dest": "/api/activation.js"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1.js"
+    },
+    {
       "handle": "filesystem"
     },
     {
