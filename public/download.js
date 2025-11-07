@@ -5,9 +5,9 @@
     }
     window.__downloadPageLoaded = true;
 
-    // Download URLs - Direct download links (no redirect)
+    // Download URLs - Hosted directly on Vercel for instant downloads
     const DOWNLOAD_URLS = {
-        windows: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/Interview%20AI%20Setup%200.1.0.exe',
+        windows: '/downloads/Interview-AI-Setup-0.1.0.exe',
         mac: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/Interview-AI-0.1.0.dmg',
         linux: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/interview-ai-0.1.0.AppImage'
     };
@@ -18,7 +18,7 @@
         detectPlatform();
     });
 
-    // Download function - Uses proxy to force direct download
+    // Download function - Direct download from Vercel
     window.downloadApp = function(platform) {
         const url = DOWNLOAD_URLS[platform];
         
@@ -30,13 +30,10 @@
         // Show download toast
         showToast('Your download will begin shortly...');
 
-        // Use proxy to force direct download without redirect
-        const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(url)}`;
-        
-        // Trigger download
+        // Direct download - no proxy needed for Vercel-hosted files
         const link = document.createElement('a');
-        link.href = proxyUrl;
-        link.download = url.split('/').pop().replace(/%20/g, ' '); // Decode filename
+        link.href = url;
+        link.download = ''; // Let browser determine filename
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
