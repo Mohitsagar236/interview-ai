@@ -58,4 +58,4 @@ Write-Host ""
 # Optional: Open dist folder
 Write-Host "Press Enter to open the dist folder, or Ctrl+C to exit..." -ForegroundColor Cyan
 Read-Host
-Start-Process "explorer.exe" -ArgumentList (Resolve-Path "dist")
+Start-Process "explorer.exe" -ArgumentList "dist"

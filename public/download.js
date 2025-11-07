@@ -5,9 +5,9 @@
     }
     window.__downloadPageLoaded = true;
 
-    // Download URLs - Hosted directly on Vercel for instant downloads
+    // Download URLs - GitHub releases (upload file first!)
     const DOWNLOAD_URLS = {
-        windows: '/downloads/Interview-AI-Setup-0.1.0.exe',
+        windows: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/Interview-AI-Setup-0.1.0.exe',
         mac: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/Interview-AI-0.1.0.dmg',
         linux: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/interview-ai-0.1.0.AppImage'
     };
