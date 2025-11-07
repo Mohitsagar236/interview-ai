@@ -5,11 +5,11 @@
     }
     window.__downloadPageLoaded = true;
 
-    // Download URLs - Update these with your actual download links
+    // Download URLs - Direct download links (no redirect)
     const DOWNLOAD_URLS = {
-        windows: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/Interview.AI.Setup.0.1.0.exe',
-        mac: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/Interview-AI-0.1.0.dmg', // Update when available
-        linux: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/interview-ai-0.1.0.AppImage' // Update when available
+        windows: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/Interview%20AI%20Setup%200.1.0.exe',
+        mac: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/Interview-AI-0.1.0.dmg',
+        linux: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/interview-ai-0.1.0.AppImage'
     };
 
     // Initialize
@@ -30,10 +30,12 @@
         // Show download toast
         showToast('Your download will begin shortly...');
 
-        // Trigger download
+        // Trigger download with proper filename
         const link = document.createElement('a');
         link.href = url;
-        link.download = '';
+        link.download = url.split('/').pop(); // Extract filename from URL
+        link.target = '_blank'; // Open in new tab as fallback
+        link.rel = 'noopener noreferrer';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
