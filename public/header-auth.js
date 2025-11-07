@@ -10,8 +10,17 @@
 
     let supabase;
     if (window.supabase && window.supabase.createClient) {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // SESSION-ONLY: Don't persist sessions
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false,
+                detectSessionInUrl: false
+            }
+        });
     }
+    
+    console.log('⚠️ Header: Session-only mode active');
 
     document.addEventListener('DOMContentLoaded', () => {
         updateHeaderAuthState();
@@ -64,16 +73,8 @@
     }
 
     function getUserData() {
-        const localData = localStorage.getItem('interviewai_user');
+        // SESSION-ONLY: Only check sessionStorage (not localStorage)
         const sessionData = sessionStorage.getItem('interviewai_user');
-
-        if (localData) {
-            try {
-                return JSON.parse(localData);
-            } catch (e) {
-                return null;
-            }
-        }
 
         if (sessionData) {
             try {

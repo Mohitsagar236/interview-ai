@@ -9,7 +9,16 @@
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wZHlzZnhld3J5cWNtbXp0ZHhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzNzMyMjUsImV4cCI6MjA3Nzk0OTIyNX0.WsEnKex2VNpY-uKB5oVjK9iEK7Ce1o1dfRWLE5z2nIc';
 
     const supabaseLib = window.supabase;
-    const supabase = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // SESSION-ONLY: Don't persist sessions
+    const supabase = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+            persistSession: false, // Don't persist session
+            autoRefreshToken: false, // Don't auto-refresh
+            detectSessionInUrl: false // Don't detect session in URL
+        }
+    });
+    
+    console.log('⚠️ SESSION-ONLY MODE: Login required on every visit');
 
     let userData = null;
     let subscriptionData = null;
@@ -41,12 +50,8 @@
     }
 
     function getUserData() {
-        const localData = localStorage.getItem('interviewai_user');
+        // SESSION-ONLY: Only check sessionStorage (not localStorage)
         const sessionData = sessionStorage.getItem('interviewai_user');
-
-        if (localData) {
-            return JSON.parse(localData);
-        }
 
         if (sessionData) {
             return JSON.parse(sessionData);
