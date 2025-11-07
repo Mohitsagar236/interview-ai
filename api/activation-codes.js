@@ -78,20 +78,56 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
         }
 
         // If regenerating, deactivate old code
-        if (regenerate && existingCodes && existingCodes.length > 0) {
-            const { error: deactivateError } = await supabase
-                .from('activation_codes')
-                .update({ is_active: false })
-                .eq('id', existingCodes[0].id);
+        const existingCode = existingCodes && existingCodes.length > 0 ? existingCodes[0] : null;
 
-            if (deactivateError) {
-                console.error('Error deactivating old code:', deactivateError);
+        // Regenerate by updating the existing active code in place
+        if (regenerate && existingCode) {
+            const activationCode = generateActivationCode();
+            const timestamp = new Date().toISOString();
+
+            const { data: updatedCode, error: updateError } = await supabase
+                .from('activation_codes')
+                .update({
+                    code: activationCode,
+                    credits_total: creditsTotal,
+                    credits_used: creditsUsed,
+                    plan_type: planType,
+                    user_email: user.email,
+                    user_name: user.user_metadata?.name || user.email,
+                    is_active: true,
+                    updated_at: timestamp,
+                    activated_at: timestamp
+                })
+                .eq('id', existingCode.id)
+                .select()
+                .single();
+
+            if (updateError) {
+                console.error('Error regenerating activation code:', updateError);
+                return res.status(500).json({
+                    error: 'Failed to regenerate activation code',
+                    details: updateError.message,
+                    hint: updateError.hint,
+                    code: updateError.code
+                });
             }
+
+            return res.json({
+                success: true,
+                message: 'Activation code regenerated successfully',
+                code: updatedCode.code,
+                creditsTotal: updatedCode.credits_total,
+                creditsUsed: updatedCode.credits_used,
+                creditsRemaining: updatedCode.credits_total - updatedCode.credits_used,
+                planType: updatedCode.plan_type,
+                createdAt: updatedCode.created_at,
+                lastUsed: updatedCode.last_used_at
+            });
         }
 
         // If code exists and not regenerating, return existing code
-        if (!regenerate && existingCodes && existingCodes.length > 0) {
-            let codeRecord = existingCodes[0];
+        if (existingCode && !regenerate) {
+            let codeRecord = existingCode;
 
             // Keep activation record in sync with the latest subscription snapshot
             const needsSync =
@@ -132,10 +168,9 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
             });
         }
 
-        // Generate new activation code
+        // Generate new activation code for first-time users
         const activationCode = generateActivationCode();
 
-        // Store in database
         const { data: newCode, error: insertError } = await supabase
             .from('activation_codes')
             .insert({
@@ -163,7 +198,6 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
             });
         }
 
-        // Return the code
         res.json({
             success: true,
             message: regenerate ? 'Activation code regenerated successfully' : 'Activation code generated successfully',
