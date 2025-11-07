@@ -30,25 +30,37 @@ function generateActivationCode() {
  */
 async function generateActivationCodeEndpoint(req, res, supabase) {
     try {
+        console.log('[Generate Activation] Starting endpoint execution');
+        
         // Get user from Authorization header
         const authHeader = req.headers.authorization;
+        console.log('[Generate Activation] Auth header present:', !!authHeader);
+        
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            console.error('[Generate Activation] No auth token provided');
             return res.status(401).json({ error: 'Unauthorized - No auth token provided' });
         }
 
         const token = authHeader.replace('Bearer ', '');
+        console.log('[Generate Activation] Token extracted, length:', token.length);
         
         // Verify the user session
         const { data: { user }, error: authError } = await supabase.auth.getUser(token);
         
+        console.log('[Generate Activation] Auth verification - User:', !!user, 'Error:', !!authError);
+        
         if (authError || !user) {
+            console.error('[Generate Activation] Auth error:', authError);
             return res.status(401).json({ error: 'Unauthorized - Invalid token' });
         }
 
         const userId = user.id;
         const regenerate = req.body.regenerate || false;
+        
+        console.log('[Generate Activation] User ID:', userId, 'Regenerate:', regenerate);
 
         // Get user's subscription data to include in code
+        console.log('[Generate Activation] Fetching subscription data...');
         const { data: subscription, error: subError } = await supabase
             .from('subscriptions')
             .select('plan_type, credits_total, credits_used, status')
@@ -56,7 +68,9 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
             .single();
 
         if (subError && subError.code !== 'PGRST116') { // PGRST116 = no rows
-            console.error('Error fetching subscription:', subError);
+            console.error('[Generate Activation] Error fetching subscription:', subError);
+        } else {
+            console.log('[Generate Activation] Subscription data fetched successfully');
         }
 
         const planType = subscription?.plan_type || 'free';
@@ -64,7 +78,10 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
         const creditsUsed = subscription?.credits_used || 0;
         const planStatus = subscription?.status || 'active';
 
+        console.log('[Generate Activation] Plan:', planType, 'Credits:', creditsTotal, '/', creditsUsed);
+
         // Check if user already has an active activation code
+        console.log('[Generate Activation] Checking for existing codes...');
         const { data: existingCodes, error: fetchError } = await supabase
             .from('activation_codes')
             .select('*')
@@ -73,9 +90,11 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
             .limit(1);
 
         if (fetchError) {
-            console.error('Error fetching existing codes:', fetchError);
-            return res.status(500).json({ error: 'Database error' });
+            console.error('[Generate Activation] Error fetching existing codes:', fetchError);
+            return res.status(500).json({ error: 'Database error', details: fetchError.message });
         }
+
+        console.log('[Generate Activation] Existing codes found:', existingCodes?.length || 0);
 
         // If regenerating, deactivate old code
         const existingCode = existingCodes && existingCodes.length > 0 ? existingCodes[0] : null;
@@ -237,8 +256,9 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
         });
 
     } catch (error) {
-        console.error('Error in generateActivationCodeEndpoint:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('[Generate Activation] Unhandled error in generateActivationCodeEndpoint:', error);
+        console.error('[Generate Activation] Error stack:', error.stack);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 }
 

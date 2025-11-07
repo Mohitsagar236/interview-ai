@@ -31,7 +31,10 @@ module.exports = async (req, res) => {
         const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
 
         if (!supabaseUrl || !supabaseServiceKey) {
-            console.error('Missing Supabase environment variables');
+            console.error('[Activation API] Missing Supabase environment variables');
+            console.error('[Activation API] SUPABASE_URL present:', !!supabaseUrl);
+            console.error('[Activation API] SUPABASE_SERVICE_ROLE_KEY present:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+            console.error('[Activation API] SUPABASE_SERVICE_KEY present:', !!process.env.SUPABASE_SERVICE_KEY);
             return res.status(500).json({ error: 'Server configuration error' });
         }
 
@@ -39,35 +42,43 @@ module.exports = async (req, res) => {
 
         // Route based on action parameter or path
         const action = req.query.action || req.body?.action;
+        console.log('[Activation API] Received request - Method:', req.method, 'Action:', action);
 
         switch (action) {
             case 'generate':
+                console.log('[Activation API] Routing to generateActivationCodeEndpoint');
                 await generateActivationCodeEndpoint(req, res, supabase);
                 break;
             
             case 'activate':
+                console.log('[Activation API] Routing to activateDesktopEndpoint');
                 await activateDesktopEndpoint(req, res, supabase);
                 break;
             
             case 'get-credits':
+                console.log('[Activation API] Routing to getCreditsByCodeEndpoint');
                 await getCreditsByCodeEndpoint(req, res, supabase);
                 break;
             
             case 'update-credits':
+                console.log('[Activation API] Routing to updateCreditsByCodeEndpoint');
                 await updateCreditsByCodeEndpoint(req, res, supabase);
                 break;
             
             case 'deactivate':
+                console.log('[Activation API] Routing to deactivateCodeEndpoint');
                 await deactivateCodeEndpoint(req, res, supabase);
                 break;
             
             default:
+                console.error('[Activation API] Invalid action received:', action);
                 res.status(400).json({ 
                     error: 'Invalid action. Use: generate, activate, get-credits, update-credits, or deactivate' 
                 });
         }
     } catch (error) {
-        console.error('Error in activation API:', error);
+        console.error('[Activation API] Unhandled error:', error);
+        console.error('[Activation API] Error stack:', error.stack);
         res.status(500).json({ error: error.message || 'Internal server error' });
     }
 };
