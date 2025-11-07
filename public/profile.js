@@ -33,15 +33,17 @@
     });
 
     async function checkAuthAndLoadProfile() {
-        // Check authentication
+        // Check authentication (session-only mode)
         userData = getUserData();
-        const { data: { session } } = await supabase.auth.getSession();
 
-        if (!session && !userData) {
+        if (!userData || !userData.authenticated) {
             // Not authenticated, redirect to login
+            console.log('[Profile] No valid session found, redirecting to login');
             window.location.href = 'auth.html';
             return;
         }
+
+        console.log('[Profile] User authenticated:', userData.email);
 
         // Load profile data
         await loadProfileData();
@@ -259,11 +261,9 @@
         if (!codeSection) return;
 
         try {
-            // Get session token
-            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-            
-            if (sessionError || !session || !session.access_token) {
-                console.error('Session error:', sessionError);
+            // Check if user is logged in (session-only mode)
+            if (!userData || !userData.authenticated) {
+                console.error('[Activation] User not authenticated');
                 codeSection.innerHTML = `
                     <div style="text-align: center; padding: 20px; opacity: 0.7;">
                         <p style="font-size: 14px; margin-bottom: 12px;">Please log in to generate an activation code</p>
@@ -275,14 +275,30 @@
                 return;
             }
 
-            console.log('[Activation] Fetching activation code with token...');
+            // Get session token from userData
+            const sessionToken = userData.supabase_session?.access_token;
+            
+            if (!sessionToken) {
+                console.error('[Activation] No access token found');
+                codeSection.innerHTML = `
+                    <div style="text-align: center; padding: 20px; opacity: 0.7;">
+                        <p style="font-size: 14px; margin-bottom: 12px;">Session expired. Please log in again.</p>
+                        <button onclick="window.location.href='auth.html'" style="padding: 10px 20px; background: rgba(255,255,255,0.2); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 13px;">
+                            <i class="fas fa-sign-in-alt"></i> Login
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            console.log('[Activation] Fetching activation code for user:', userData.email);
 
             // Fetch or generate activation code
             const response = await fetch('/api/generate-activation-code', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${session.access_token}`
+                    'Authorization': `Bearer ${sessionToken}`
                 },
                 body: JSON.stringify({ regenerate: false })
             });
@@ -383,17 +399,23 @@
         `;
 
         try {
-            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+            // Check if user is logged in (session-only mode)
+            if (!userData || !userData.authenticated) {
+                throw new Error('Session expired. Please log in again.');
+            }
+
+            // Get session token from userData
+            const sessionToken = userData.supabase_session?.access_token;
             
-            if (sessionError || !session || !session.access_token) {
-                throw new Error('Session expired. Please refresh the page and login again.');
+            if (!sessionToken) {
+                throw new Error('Session expired. Please log in again.');
             }
             
             const response = await fetch('/api/generate-activation-code', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${session.access_token}`
+                    'Authorization': `Bearer ${sessionToken}`
                 },
                 body: JSON.stringify({ regenerate: true })
             });
