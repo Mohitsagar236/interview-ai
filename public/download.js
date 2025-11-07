@@ -18,7 +18,7 @@
         detectPlatform();
     });
 
-    // Download function
+    // Download function - Uses proxy to force direct download
     window.downloadApp = function(platform) {
         const url = DOWNLOAD_URLS[platform];
         
@@ -30,12 +30,13 @@
         // Show download toast
         showToast('Your download will begin shortly...');
 
-        // Trigger download with proper filename
+        // Use proxy to force direct download without redirect
+        const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(url)}`;
+        
+        // Trigger download
         const link = document.createElement('a');
-        link.href = url;
-        link.download = url.split('/').pop(); // Extract filename from URL
-        link.target = '_blank'; // Open in new tab as fallback
-        link.rel = 'noopener noreferrer';
+        link.href = proxyUrl;
+        link.download = url.split('/').pop().replace(/%20/g, ' '); // Decode filename
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
