@@ -117,28 +117,35 @@
 
     async function loadSubscriptionData() {
         if (!userData || !userData.id) {
+            console.log('[Subscription] No user data, setting default');
             setDefaultSubscription();
             return;
         }
 
         try {
+            console.log('[Subscription] Fetching subscription for user:', userData.id);
+            
             // Try to fetch subscription data from Supabase
-            const { data: subData } = await supabase
+            const { data: subData, error: subError } = await supabase
                 .from('subscriptions')
                 .select('*')
                 .eq('user_id', userData.id)
                 .limit(1);
 
+            console.log('[Subscription] Query result:', { subData, subError });
+
             subscriptionData = Array.isArray(subData) && subData.length > 0 ? subData[0] : null;
 
             if (subscriptionData) {
+                console.log('[Subscription] Data found:', subscriptionData);
                 updateSubscriptionUI(subscriptionData);
                 updateCreditsUI(subscriptionData);
             } else {
+                console.log('[Subscription] No subscription found, setting default');
                 setDefaultSubscription();
             }
         } catch (error) {
-            console.error('Error loading subscription:', error);
+            console.error('[Subscription] Error loading subscription:', error);
             setDefaultSubscription();
         }
     }
