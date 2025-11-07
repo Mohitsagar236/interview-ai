@@ -141,11 +141,47 @@
                 updateSubscriptionUI(subscriptionData);
                 updateCreditsUI(subscriptionData);
             } else {
-                console.log('[Subscription] No subscription found, setting default');
-                setDefaultSubscription();
+                console.log('[Subscription] No subscription found, attempting auto-sync...');
+                // Try to auto-sync from activation code
+                await syncSubscriptionFromActivationCode();
             }
         } catch (error) {
             console.error('[Subscription] Error loading subscription:', error);
+            setDefaultSubscription();
+        }
+    }
+
+    async function syncSubscriptionFromActivationCode() {
+        try {
+            const sessionToken = userData.supabase_session?.access_token;
+            if (!sessionToken) {
+                console.log('[Subscription] No token, cannot sync');
+                setDefaultSubscription();
+                return;
+            }
+
+            console.log('[Subscription] Calling sync API...');
+            const response = await fetch('/api/sync-subscription', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${sessionToken}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                console.log('[Subscription] Sync successful:', result.subscription);
+                subscriptionData = result.subscription;
+                updateSubscriptionUI(subscriptionData);
+                updateCreditsUI(subscriptionData);
+            } else {
+                console.log('[Subscription] Sync failed:', result.error);
+                setDefaultSubscription();
+            }
+        } catch (error) {
+            console.error('[Subscription] Error syncing:', error);
             setDefaultSubscription();
         }
     }
