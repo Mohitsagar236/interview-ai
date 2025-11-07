@@ -101,10 +101,13 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
 
         // Regenerate by updating the existing active code in place (retry on code collisions)
         if (regenerate && existingCode) {
+            console.log('[Generate Activation] Regenerating existing code, ID:', existingCode.id);
             let attempts = 0;
             while (attempts < 5) {
                 const activationCode = generateActivationCode();
                 const timestamp = new Date().toISOString();
+
+                console.log('[Generate Activation] Regenerate attempt', attempts + 1, 'New code:', activationCode);
 
                 const { data: updatedCode, error: updateError } = await supabase
                     .from('activation_codes')
@@ -123,6 +126,7 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
                     .single();
 
                 if (!updateError && updatedCode) {
+                    console.log('[Generate Activation] Regeneration successful');
                     return res.json({
                         success: true,
                         message: 'Activation code regenerated successfully',
@@ -138,11 +142,15 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
 
                 // Retry on unique constraint (duplicate code) collisions
                 if (updateError?.code === '23505') {
+                    console.log('[Generate Activation] Duplicate code collision, retrying...');
                     attempts += 1;
                     continue;
                 }
 
-                console.error('Error regenerating activation code:', updateError);
+                console.error('[Generate Activation] Error regenerating activation code:', updateError);
+                console.error('[Generate Activation] Error code:', updateError?.code);
+                console.error('[Generate Activation] Error message:', updateError?.message);
+                console.error('[Generate Activation] Error details:', JSON.stringify(updateError, null, 2));
                 return res.status(500).json({
                     error: 'Failed to regenerate activation code',
                     details: updateError?.message,
@@ -151,6 +159,7 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
                 });
             }
 
+            console.error('[Generate Activation] Exceeded retry attempts for regeneration');
             return res.status(500).json({
                 error: 'Failed to regenerate activation code',
                 details: 'Exceeded retry attempts while generating a unique code.'

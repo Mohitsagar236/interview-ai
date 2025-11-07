@@ -442,8 +442,20 @@
 
         } catch (error) {
             console.error('Error regenerating code:', error);
-            showMessage('❌ Failed to regenerate code');
-            await loadActivationCode();
+            console.error('Error details:', error.message);
+            showMessage('❌ Failed to regenerate code: ' + error.message);
+            
+            // Show detailed error in the code section
+            codeSection.innerHTML = `
+                <div style="text-align: center; padding: 20px;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 24px; color: #fbbf24; margin-bottom: 12px;"></i>
+                    <p style="font-size: 14px; opacity: 0.9;">Failed to regenerate activation code</p>
+                    <p style="font-size: 12px; opacity: 0.7; margin-top: 8px;">${error.message}</p>
+                    <button onclick="loadActivationCode()" style="margin-top: 12px; padding: 8px 16px; background: rgba(255,255,255,0.2); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 13px;">
+                        <i class="fas fa-redo"></i> Reload
+                    </button>
+                </div>
+            `;
         }
     };
 
