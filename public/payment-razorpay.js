@@ -13,8 +13,22 @@ const PAYMENT_CONFIG = {
         windows: 999,    // ₹999
         mac: 999,        // ₹999
         subscription: 999  // ₹999/month
+    },
+    
+    // Coupon codes
+    coupons: {
+        'WELCOME10': { discount: 10, type: 'percentage' },  // 10% off
+        'SAVE20': { discount: 20, type: 'percentage' },      // 20% off
+        'FIRSTBUY': { discount: 15, type: 'percentage' },    // 15% off
+        'FLAT100': { discount: 100, type: 'fixed' },         // ₹100 off
+        'FLAT200': { discount: 200, type: 'fixed' },         // ₹200 off
+        'FREEDOM': { discount: 100, type: 'percentage', restrictTo: ['credits', 'basic', 'plus', 'advanced'] }  // 100% off on credits only
     }
 };
+
+// Coupon state
+let appliedCoupon = null;
+let discountAmount = 0;
 
 // Get product type from URL
 const urlParams = new URLSearchParams(window.location.search);
@@ -155,6 +169,89 @@ function prefillUserData() {
 function setupEventListeners() {
     const form = document.getElementById('payment-form');
     form.addEventListener('submit', handlePayment);
+    
+    const applyCouponBtn = document.getElementById('apply-coupon-btn');
+    if (applyCouponBtn) {
+        applyCouponBtn.addEventListener('click', applyCoupon);
+    }
+}
+
+// Apply coupon code
+function applyCoupon() {
+    const couponInput = document.getElementById('coupon-code');
+    const couponCode = couponInput.value.trim().toUpperCase();
+    const couponMessage = document.getElementById('coupon-message');
+    
+    if (!couponCode) {
+        couponMessage.textContent = 'Please enter a coupon code';
+        couponMessage.className = 'coupon-message error';
+        return;
+    }
+    
+    const coupon = PAYMENT_CONFIG.coupons[couponCode];
+    
+    if (!coupon) {
+        couponMessage.textContent = 'Invalid coupon code';
+        couponMessage.className = 'coupon-message error';
+        return;
+    }
+    
+    // Check if coupon is restricted to certain products
+    if (coupon.restrictTo && !coupon.restrictTo.includes(productType)) {
+        couponMessage.textContent = 'This coupon is only valid for credit purchases';
+        couponMessage.className = 'coupon-message error';
+        return;
+    }
+    
+    // Calculate discount
+    const originalPrice = currentProduct.price;
+    
+    if (coupon.type === 'percentage') {
+        discountAmount = Math.round((originalPrice * coupon.discount) / 100);
+    } else if (coupon.type === 'fixed') {
+        discountAmount = coupon.discount;
+    }
+    
+    // Ensure discount doesn't exceed price
+    if (discountAmount > originalPrice) {
+        discountAmount = originalPrice;
+    }
+    
+    appliedCoupon = couponCode;
+    
+    // Update UI
+    updatePriceDisplay();
+    
+    // Show success message
+    const savingsText = discountAmount === originalPrice ? 'FREE!' : `You saved ₹${discountAmount}`;
+    couponMessage.textContent = `✓ Coupon applied! ${savingsText}`;
+    couponMessage.className = 'coupon-message success';
+    
+    // Disable input and button
+    couponInput.disabled = true;
+    document.getElementById('apply-coupon-btn').disabled = true;
+}
+
+// Update price display with discount
+function updatePriceDisplay() {
+    const originalPrice = currentProduct.price;
+    const finalPrice = originalPrice - discountAmount;
+    
+    // Update subtotal
+    document.getElementById('subtotal').textContent = `₹${originalPrice.toLocaleString('en-IN')}`;
+    
+    // Show/hide discount row
+    const discountRow = document.getElementById('discount-row');
+    if (discountAmount > 0) {
+        discountRow.style.display = 'flex';
+        document.getElementById('discount-code').textContent = `(${appliedCoupon})`;
+        document.getElementById('discount-amount').textContent = `-₹${discountAmount.toLocaleString('en-IN')}`;
+    } else {
+        discountRow.style.display = 'none';
+    }
+    
+    // Update total
+    document.getElementById('total').textContent = `₹${finalPrice.toLocaleString('en-IN')}`;
 }
 
 // Handle payment form submission
@@ -202,14 +299,55 @@ async function handlePayment(e) {
     buttonText.textContent = 'Processing...';
     
     try {
-        // Create Razorpay order
+        // Calculate final price with discount
+        const finalPrice = currentProduct.price - discountAmount;
+        
+        // Check if order is free (100% discount)
+        if (finalPrice === 0) {
+            // Handle free order - no payment required
+            buttonText.textContent = 'Processing Free Order...';
+            
+            // Grant credits directly for free orders
+            const result = await grantFreeCredits({
+                email: email,
+                name: name,
+                phone: phone,
+                productType: productType,
+                couponCode: appliedCoupon
+            });
+            
+            if (result.success) {
+                showMessage('🎉 Congratulations! Your credits have been granted for FREE!', 'success');
+                
+                // Show success and redirect
+                setTimeout(() => {
+                    window.location.href = 'profile.html?free=true';
+                }, 2000);
+            } else {
+                // Check if user needs to sign up
+                if (result.requiresAuth) {
+                    showMessage('Please sign up or login first to claim your free credits!', 'error');
+                    setTimeout(() => {
+                        window.location.href = `auth.html?redirect=${encodeURIComponent(window.location.href)}`;
+                    }, 2000);
+                } else {
+                    throw new Error(result.error || 'Failed to grant free credits');
+                }
+            }
+            
+            return;
+        }
+        
+        // Create Razorpay order for paid transactions
         const orderData = await createRazorpayOrder({
-            amount: currentProduct.price,
+            amount: finalPrice,
             currency: 'INR',
             productType: productType,
             email: email,
             name: name,
-            phone: phone
+            phone: phone,
+            couponCode: appliedCoupon,
+            discount: discountAmount
         });
         
         if (!orderData.success) {
@@ -255,6 +393,31 @@ async function createRazorpayOrder(orderData) {
     }
 }
 
+// Grant free credits (for 100% discount coupons like FREEDOM)
+async function grantFreeCredits(userData) {
+    try {
+        const response = await fetch(`${PAYMENT_CONFIG.apiBaseUrl}/grant-free-credits`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(userData)
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to grant free credits');
+        }
+        
+        return data;
+        
+    } catch (error) {
+        console.error('Error granting free credits:', error);
+        throw error;
+    }
+}
+
 // Open Razorpay checkout
 function openRazorpayCheckout(orderData, userDetails) {
     const options = {
@@ -263,7 +426,7 @@ function openRazorpayCheckout(orderData, userDetails) {
         currency: orderData.currency,
         name: 'Interview AI',
         description: currentProduct.name,
-        image: 'images/app-icon.svg',
+        // image removed to avoid CORS issues with local development
         order_id: orderData.orderId,
         prefill: {
             name: userDetails.name,
@@ -274,8 +437,8 @@ function openRazorpayCheckout(orderData, userDetails) {
             color: '#10b981'
         },
         handler: function(response) {
-            // Payment successful
-            handlePaymentSuccess(response, userDetails);
+            // Payment successful - pass order data to handler
+            handlePaymentSuccess(response, userDetails, orderData);
         },
         modal: {
             ondismiss: function() {
@@ -290,7 +453,7 @@ function openRazorpayCheckout(orderData, userDetails) {
 }
 
 // Handle payment success
-async function handlePaymentSuccess(response, userDetails) {
+async function handlePaymentSuccess(response, userDetails, orderData) {
     const submitButton = document.getElementById('submit-button');
     const spinner = document.getElementById('spinner');
     const buttonText = document.getElementById('button-text');
@@ -310,7 +473,8 @@ async function handlePaymentSuccess(response, userDetails) {
                 razorpay_signature: response.razorpay_signature,
                 email: userDetails.email,
                 name: userDetails.name,
-                productType: productType
+                productType: productType,
+                amount: orderData.amount // Pass amount for credit grant
             })
         });
         

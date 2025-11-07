@@ -107,6 +107,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Main Desktop App Download
   downloadMainApp: (options) => ipcRenderer.invoke('download-main-app', options || {}),
   
+  // Desktop Authentication
+  desktopIsAuthenticated: () => ipcRenderer.invoke('desktop-is-authenticated'),
+  desktopGetUser: () => ipcRenderer.invoke('desktop-get-user'),
+  desktopLogin: (credentials) => ipcRenderer.invoke('desktop-login', credentials),
+  desktopLogout: () => ipcRenderer.invoke('desktop-logout'),
+  desktopOpenLogin: () => ipcRenderer.invoke('desktop-open-login'),
+  desktopSyncCredits: () => ipcRenderer.invoke('desktop-sync-credits'),
+  closeLoginWindow: () => ipcRenderer.invoke('close-login-window'),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  
   // Event listeners for main process communications
   onQuickCaptureResult: (callback) => {
     ipcRenderer.on('quick-capture-result', (event, imageData) => {
@@ -117,6 +127,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onStealthToggled: (callback) => {
     ipcRenderer.on('stealth-toggled', (event, isActive) => {
       callback(isActive);
+    });
+  },
+  
+  onCreditsUpdated: (callback) => {
+    ipcRenderer.on('credits-updated', (event, credits) => {
+      callback(credits);
     });
   },
   onNavigateSection: (callback) => {

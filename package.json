@@ -89,6 +89,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.79.0",
     "dotenv": "^16.4.5",
+    "electron-store": "^8.1.0",
     "eventsource-parser": "^1.1.2",
     "node-fetch": "^3.3.2",
     "razorpay": "^2.9.6",
@@ -101,6 +102,7 @@
     "electron": "^31.3.1",
     "electron-builder": "^24.13.3",
     "electron-icon-builder": "^2.0.1",
+    "express": "^5.1.0",
     "png-to-ico": "^3.0.1",
     "sharp": "^0.34.4",
     "to-ico": "^1.1.5",

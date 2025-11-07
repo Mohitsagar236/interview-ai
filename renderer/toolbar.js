@@ -323,6 +323,18 @@
   const creditsDisplay = $("creditsDisplay");
   const creditsAmount = $("creditsAmount");
   const statusDots = document.querySelector(".status-dots");
+  const timeBreakdownOverlay = $("timeBreakdownOverlay");
+  const timeBreakdownClose = $("timeBreakdownClose");
+  const timeHoursValue = $("timeHoursValue");
+  const timeMinutesValue = $("timeMinutesValue");
+  const timeSecondsValue = $("timeSecondsValue");
+  const timePlanValue = $("timePlanValue");
+  const timeTotalValue = $("timeTotalValue");
+  const timeUsedValue = $("timeUsedValue");
+  const timeRemainingValue = $("timeRemainingValue");
+  const timeSessionsValue = $("timeSessionsValue");
+  const timeProgressFill = $("timeProgressFill");
+  const timeProgressText = $("timeProgressText");
 
   // New UI element references
   const recordInterviewerBtn = $("recordInterviewer");
@@ -1534,26 +1546,149 @@
   
   // Credits display click handler - show details
   if (creditsDisplay) {
-    creditsDisplay.addEventListener('click', async () => {
+    creditsDisplay.addEventListener("click", async () => {
+      if (timeBreakdownOverlay && timeBreakdownOverlay.classList.contains("show")) {
+        hideTimeBreakdownModal();
+        return;
+      }
+
       try {
-        const result = await window.electronAPI.invoke('credits-load');
-        if (result.ok && result.credits) {
-          const c = result.credits;
-          const message = `💳 Credits Information\\n\\n` +
-            `Plan: ${c.planType || 'Free'}\\n` +
-            `Total Credits: ${c.total}\\n` +
-            `Used: ${c.used.toFixed(2)}\\n` +
-            `Remaining: ${c.remaining.toFixed(2)}\\n\\n` +
-            `Total Time Used: ${c.totalTimeHours} hours (${c.sessionsCount} sessions)\\n\\n` +
-            `1 Credit = 1 Hour of interview time`;
-          
-          alert(message);
+        let creditsData = null;
+
+        if (window.electronAPI && window.electronAPI.invoke) {
+          const result = await window.electronAPI.invoke("credits-load");
+          if (result.ok && result.credits) {
+            creditsData = result.credits;
+          }
         }
+
+        if (!creditsData) {
+          log.warn("Credits data unavailable, falling back to defaults");
+          creditsData = {
+            planType: "Free",
+            total: 0,
+            used: 0,
+            remaining: 0,
+            sessionsCount: 0,
+            totalTimeHours: 0,
+          };
+        }
+
+        const remainingHours = Math.max(creditsData.remaining || 0, 0);
+        const totalSeconds = Math.floor(remainingHours * 3600);
+        const breakdown = {
+          hours: Math.floor(totalSeconds / 3600),
+          minutes: Math.floor((totalSeconds % 3600) / 60),
+          seconds: totalSeconds % 60,
+        };
+
+        showTimeBreakdownModal(creditsData, breakdown);
       } catch (error) {
-        log.error('Error showing credits details:', error);
+        log.error("Error showing credits details:", error);
+        const fallbackCredits = {
+          planType: "Free",
+          total: 0,
+          used: 0,
+          remaining: 0,
+          sessionsCount: 0,
+          totalTimeHours: 0,
+        };
+        showTimeBreakdownModal(fallbackCredits, { hours: 0, minutes: 0, seconds: 0 });
       }
     });
   }
+
+  function showTimeBreakdownModal(credits, breakdown) {
+    if (!timeBreakdownOverlay) {
+      log.error("Time breakdown overlay element not found");
+      return;
+    }
+
+    const { hours, minutes, seconds } = breakdown;
+  const totalCredits = typeof credits.total === "number" ? credits.total : Number(credits.total || 0);
+  const usedCredits = typeof credits.used === "number" ? credits.used : Number(credits.used || 0);
+  const remainingCredits = typeof credits.remaining === "number" ? credits.remaining : Number(credits.remaining || 0);
+  const percentRaw = totalCredits > 0 ? (usedCredits / totalCredits) * 100 : 0;
+  const percentUsed = Math.min(Math.max(Number(percentRaw.toFixed(1)), 0), 100);
+
+    if (timeHoursValue) timeHoursValue.textContent = String(hours);
+    if (timeMinutesValue) timeMinutesValue.textContent = String(minutes).padStart(2, "0");
+    if (timeSecondsValue) timeSecondsValue.textContent = String(seconds).padStart(2, "0");
+  if (timePlanValue) timePlanValue.textContent = credits.planType || "Free";
+  if (timeTotalValue) timeTotalValue.textContent = totalCredits.toFixed(2);
+  if (timeUsedValue) timeUsedValue.textContent = usedCredits.toFixed(2);
+  if (timeRemainingValue) timeRemainingValue.textContent = remainingCredits.toFixed(2);
+    if (timeSessionsValue) timeSessionsValue.textContent = String(credits.sessionsCount || 0);
+    if (timeProgressFill) timeProgressFill.style.width = `${percentUsed}%`;
+    if (timeProgressText) timeProgressText.textContent = `${percentUsed}% used`;
+
+    // Position relative to toolbar similar to other overlays
+    if (barEl) {
+      const barRect = barEl.getBoundingClientRect();
+      const offsetTop = Math.max(barRect.bottom + 16, 96);
+      timeBreakdownOverlay.style.top = `${offsetTop}px`;
+      timeBreakdownOverlay.style.maxHeight = `calc(100vh - ${offsetTop + 48}px)`;
+    } else {
+      timeBreakdownOverlay.style.top = "96px";
+      timeBreakdownOverlay.style.maxHeight = "calc(100vh - 160px)";
+    }
+
+    timeBreakdownOverlay.classList.add("show");
+    timeBreakdownOverlay.setAttribute("aria-hidden", "false");
+
+    if (window.electronAPI && window.electronAPI.resizeToolbarDimensions) {
+      try {
+        const barRect = barEl ? barEl.getBoundingClientRect() : { width: 360 };
+        const targetW = Math.max(Math.round(barRect.width + 60), 520);
+        window.electronAPI.resizeToolbarDimensions(targetW, 520);
+      } catch (err) {
+        log.warn("Failed to resize toolbar window for time breakdown", err);
+      }
+    } else {
+      document.body.style.height = "100vh";
+      document.body.style.overflow = "auto";
+    }
+
+    requestAnimationFrame(() => {
+      timeBreakdownOverlay.focus({ preventScroll: true });
+    });
+  }
+
+  function hideTimeBreakdownModal() {
+    if (!timeBreakdownOverlay) return;
+    timeBreakdownOverlay.classList.remove("show");
+    timeBreakdownOverlay.setAttribute("aria-hidden", "true");
+    timeBreakdownOverlay.style.top = "";
+    timeBreakdownOverlay.style.maxHeight = "";
+
+    if (window.electronAPI && window.electronAPI.resizeToolbarDimensions) {
+      queueResize();
+    } else {
+      document.body.style.height = "";
+      document.body.style.overflow = "";
+    }
+  }
+
+  if (timeBreakdownClose) {
+    timeBreakdownClose.addEventListener("click", (event) => {
+      event.preventDefault();
+      hideTimeBreakdownModal();
+    });
+  }
+
+  if (timeBreakdownOverlay) {
+    timeBreakdownOverlay.addEventListener("click", (event) => {
+      if (event.target === timeBreakdownOverlay) {
+        hideTimeBreakdownModal();
+      }
+    });
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && timeBreakdownOverlay?.classList.contains("show")) {
+      hideTimeBreakdownModal();
+    }
+  });
   
   // Listen for credits updates from main process
   if (window.electronAPI && window.electronAPI.on) {

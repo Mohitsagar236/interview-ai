@@ -226,8 +226,8 @@ async function handleLogin(event) {
             if (redirectUrl) {
                 window.location.href = redirectUrl;
             } else {
-                // Default redirect to profile page
-                window.location.href = 'profile.html';
+                // Default redirect to home page
+                window.location.href = 'index.html';
             }
         }, 800);
     } catch (error) {
@@ -346,8 +346,8 @@ async function handleSignup(event) {
             if (redirectUrl) {
                 window.location.href = redirectUrl;
             } else {
-                // Default redirect to profile page
-                window.location.href = 'profile.html';
+                // Default redirect to home page
+                window.location.href = 'index.html';
             }
         }, 1000);
     } catch (error) {

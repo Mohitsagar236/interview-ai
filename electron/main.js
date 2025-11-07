@@ -111,6 +111,10 @@ const CreditsManager = require('./credits-manager');
 let creditsManager = null;
 const CACHE_TTL = 5000; // 5 seconds cache
 const CACHE_MAX_SIZE = 20;
+// Desktop Authentication Manager
+const DesktopAuthManager = require('./desktop-auth-manager');
+let authManager = null;
+let loginWindow = null;
 
 // ---------------- Backend bootstrap helpers ----------------
 function getPythonScriptsRoot() {
@@ -1915,7 +1919,7 @@ ipcMain.handle('dashboard-stats', () => {
 let activeInterviewSession = null; // { id, startedAt, elapsedSec }
 let interviewTickInterval = null;
 
-ipcMain.handle('interview-start-session', (_event, id) => {
+ipcMain.handle('interview-start-session', async (_event, id) => {
   try {
     const data = readInterviews();
     const it = data.interviews.find(i => i.id === id);
@@ -1926,9 +1930,35 @@ ipcMain.handle('interview-start-session', (_event, id) => {
     }
     if (it.status === 'completed') return { ok:false, error:'Already completed' };
     
+    // Check authentication first
+    if (authManager && !authManager.isAuthenticated()) {
+      return { ok: false, error: 'Please login to use the desktop app. Credits are required for interview sessions.', requiresAuth: true };
+    }
+    
+    // Sync credits from server before starting session
+    if (authManager && authManager.isAuthenticated() && creditsManager) {
+      try {
+        const syncResult = await authManager.getCredits();
+        if (syncResult.success) {
+          const credits = {
+            total: syncResult.credits.total,
+            used: syncResult.credits.used,
+            remaining: syncResult.credits.remaining,
+            lastSynced: new Date().toISOString(),
+            syncedWithServer: true,
+            planType: syncResult.credits.planType
+          };
+          creditsManager.saveCredits(credits);
+          console.log('[Session] Credits synced before session start:', credits);
+        }
+      } catch (syncError) {
+        console.error('[Session] Error syncing credits:', syncError);
+      }
+    }
+    
     // Check credits before starting session
     if (creditsManager && !creditsManager.hasCredits()) {
-      return { ok: false, error: 'No credits remaining. Please purchase more credits to continue.' };
+      return { ok: false, error: 'No credits remaining. Please purchase more credits to continue.', requiresCredits: true };
     }
     
     activeInterviewSession = { id, startedAt: Date.now(), elapsedSec:0 };
@@ -1949,7 +1979,7 @@ ipcMain.handle('interview-start-session', (_event, id) => {
   } catch (e) { return { ok:false, error:e.message }; }
 });
 
-ipcMain.handle('interview-end-session', (_event, id, options) => {
+ipcMain.handle('interview-end-session', async (_event, id, options) => {
   try {
     if (!activeInterviewSession || activeInterviewSession.id !== id) return { ok:false, error:'No active session' };
     clearInterval(interviewTickInterval); interviewTickInterval = null;
@@ -1972,6 +2002,17 @@ ipcMain.handle('interview-end-session', (_event, id, options) => {
     let creditsResult = null;
     if (creditsManager) {
       creditsResult = creditsManager.endSession(id, durationSec);
+      
+      // Sync credits to server if authenticated
+      if (authManager && authManager.isAuthenticated() && creditsResult.success) {
+        try {
+          const creditsInfo = creditsManager.getCreditsInfo();
+          await authManager.updateCredits(creditsInfo.used);
+          console.log('[Session] Credits synced to server after session end');
+        } catch (syncError) {
+          console.error('[Session] Error syncing credits to server:', syncError);
+        }
+      }
       
       // Notify renderer about credits update
       if (mainWindow && !mainWindow.isDestroyed() && creditsResult.success) {
@@ -2130,6 +2171,169 @@ ipcMain.handle('credits-add', (_event, amount) => {
   }
 });
 
+// -------------- Desktop Authentication IPC --------------
+
+// Check if user is authenticated
+ipcMain.handle('desktop-is-authenticated', () => {
+  try {
+    if (!authManager) {
+      return { authenticated: false, error: 'Auth manager not initialized' };
+    }
+    return { authenticated: authManager.isAuthenticated() };
+  } catch (e) {
+    return { authenticated: false, error: e.message };
+  }
+});
+
+// Get user data
+ipcMain.handle('desktop-get-user', () => {
+  try {
+    if (!authManager) {
+      return { ok: false, error: 'Auth manager not initialized' };
+    }
+    const userData = authManager.getUserData();
+    return { ok: true, user: userData };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// Login
+ipcMain.handle('desktop-login', async (_event, credentials) => {
+  try {
+    if (!authManager) {
+      return { success: false, error: 'Auth manager not initialized' };
+    }
+    
+    const result = await authManager.login(
+      credentials.email,
+      credentials.password,
+      credentials.supabaseUrl,
+      credentials.supabaseAnonKey
+    );
+    
+    if (result.success) {
+      // Sync credits after successful login
+      const creditsResult = await authManager.getCredits();
+      if (creditsResult.success && creditsManager) {
+        const credits = {
+          total: creditsResult.credits.total,
+          used: creditsResult.credits.used,
+          remaining: creditsResult.credits.remaining,
+          lastSynced: new Date().toISOString(),
+          syncedWithServer: true,
+          planType: creditsResult.credits.planType
+        };
+        creditsManager.saveCredits(credits);
+        console.log('[Auth] Credits synced after login:', credits);
+      }
+      
+      logActivity('auth.login', { email: credentials.email });
+    }
+    
+    return result;
+  } catch (e) {
+    console.error('[Auth] Login IPC error:', e);
+    return { success: false, error: e.message };
+  }
+});
+
+// Logout
+ipcMain.handle('desktop-logout', () => {
+  try {
+    if (!authManager) {
+      return { ok: false, error: 'Auth manager not initialized' };
+    }
+    authManager.logout();
+    logActivity('auth.logout', {});
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// Open login window
+ipcMain.handle('desktop-open-login', () => {
+  try {
+    if (loginWindow && !loginWindow.isDestroyed()) {
+      loginWindow.focus();
+      return { ok: true };
+    }
+    
+    loginWindow = new BrowserWindow({
+      width: 480,
+      height: 620,
+      resizable: false,
+      center: true,
+      title: 'Login - Interview AI',
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'preload.js')
+      }
+    });
+    
+    loginWindow.loadFile(path.join(__dirname, 'login.html'));
+    
+    loginWindow.on('closed', () => {
+      loginWindow = null;
+    });
+    
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// Close login window
+ipcMain.handle('close-login-window', () => {
+  try {
+    if (loginWindow && !loginWindow.isDestroyed()) {
+      loginWindow.close();
+    }
+    // Refresh credits in main window
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('credits-updated');
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// Sync credits with server
+ipcMain.handle('desktop-sync-credits', async () => {
+  try {
+    if (!authManager || !authManager.isAuthenticated()) {
+      return { ok: false, error: 'Not authenticated' };
+    }
+    
+    if (!creditsManager) {
+      return { ok: false, error: 'Credits manager not initialized' };
+    }
+    
+    const result = await authManager.getCredits();
+    
+    if (result.success) {
+      const credits = {
+        total: result.credits.total,
+        used: result.credits.used,
+        remaining: result.credits.remaining,
+        lastSynced: new Date().toISOString(),
+        syncedWithServer: true,
+        planType: result.credits.planType
+      };
+      creditsManager.saveCredits(credits);
+      return { ok: true, credits };
+    } else {
+      return { ok: false, error: result.error };
+    }
+  } catch (e) {
+    console.error('[Auth] Sync credits error:', e);
+    return { ok: false, error: e.message };
+  }
+});
+
 // -------------- Compact Bar Download IPC --------------
 ipcMain.handle('download-compact-bar', async (_event, type) => {
   try {
@@ -2272,8 +2476,73 @@ ipcMain.handle('download-main-app', async (_event, options = {}) => {
 });
 
 // Enhanced app event handlers
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Initialize authentication manager
+  authManager = new DesktopAuthManager();
+  console.log('[Auth] Desktop authentication manager initialized');
+  
   createMainWindow();
+  
+  // Check if user is authenticated and sync credits
+  if (!authManager.isAuthenticated()) {
+    console.log('[Auth] User not authenticated, showing login dialog');
+    // Show login dialog after a short delay to allow main window to load
+    setTimeout(() => {
+      if (loginWindow && !loginWindow.isDestroyed()) {
+        loginWindow.focus();
+      } else {
+        loginWindow = new BrowserWindow({
+          width: 480,
+          height: 620,
+          resizable: false,
+          center: true,
+          title: 'Login - Interview AI',
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            preload: path.join(__dirname, 'preload.js')
+          }
+        });
+        
+        loginWindow.loadFile(path.join(__dirname, 'login.html'));
+        
+        loginWindow.on('closed', () => {
+          loginWindow = null;
+        });
+      }
+    }, 1000);
+  } else {
+    const userData = authManager.getUserData();
+    console.log('[Auth] User authenticated:', userData.email);
+    
+    // Sync credits from server
+    console.log('[Auth] Syncing credits from server...');
+    try {
+      const creditsResult = await authManager.getCredits();
+      if (creditsResult.success && creditsManager) {
+        const credits = {
+          total: creditsResult.credits.total,
+          used: creditsResult.credits.used,
+          remaining: creditsResult.credits.remaining,
+          lastSynced: new Date().toISOString(),
+          syncedWithServer: true,
+          planType: creditsResult.credits.planType
+        };
+        creditsManager.saveCredits(credits);
+        console.log('[Auth] Credits synced successfully:', credits);
+        
+        // Notify main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('credits-updated', credits);
+        }
+      } else {
+        console.error('[Auth] Failed to sync credits:', creditsResult.error);
+      }
+    } catch (error) {
+      console.error('[Auth] Error syncing credits:', error);
+    }
+  }
+  
   startHeartbeat();
   // Unified permission handler: allow media + display-capture for system audio
   try {

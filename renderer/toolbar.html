@@ -142,54 +142,336 @@
       border-color: var(--muted);
     }
     
-    /* Credits Display */
+    /* Credits Display - Minimalist Chip Design */
     .credits-display {
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 6px 10px;
-      background: rgba(16, 185, 129, 0.15);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-      border-radius: 12px;
-      font-size: 12px;
+      gap: 7px;
+      padding: 7px 13px;
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      border-radius: 20px;
+      font-size: 13px;
       font-weight: 600;
-      color: var(--primary);
+      color: #6ee7b7;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
       user-select: none;
+      position: relative;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+    .credits-display::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 20px;
+      padding: 1px;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.4), transparent, rgba(16, 185, 129, 0.2));
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      mask-composite: exclude;
+      opacity: 0;
+      transition: opacity 0.25s ease;
     }
     .credits-display:hover {
-      background: rgba(16, 185, 129, 0.25);
+      background: rgba(30, 41, 59, 0.8);
       border-color: rgba(16, 185, 129, 0.5);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.15);
+      transform: scale(1.02);
     }
+    .credits-display:hover::after {
+      opacity: 1;
+    }
+    .credits-display:active {
+      transform: scale(0.98);
+      box-shadow: 0 1px 4px rgba(16, 185, 129, 0.15),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+    
+    /* Low Credits State */
     .credits-display.low-credits {
-      background: rgba(234, 179, 8, 0.15);
-      border-color: rgba(234, 179, 8, 0.3);
-      color: var(--warn);
+      background: rgba(45, 40, 30, 0.6);
+      border-color: rgba(234, 179, 8, 0.35);
+      color: #fde047;
+    }
+    .credits-display.low-credits::after {
+      background: linear-gradient(135deg, rgba(234, 179, 8, 0.4), transparent, rgba(234, 179, 8, 0.2));
+    }
+    .credits-display.low-credits:hover {
+      background: rgba(45, 40, 30, 0.8);
+      border-color: rgba(234, 179, 8, 0.5);
+      box-shadow: 0 4px 12px rgba(234, 179, 8, 0.2),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    }
+    
+    /* No Credits State */
+    .credits-display.no-credits {
+      background: rgba(50, 30, 30, 0.6);
+      border-color: rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+    }
+    .credits-display.no-credits::after {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.4), transparent, rgba(239, 68, 68, 0.2));
+    }
+    .credits-display.no-credits:hover {
+      background: rgba(50, 30, 30, 0.8);
+      border-color: rgba(239, 68, 68, 0.5);
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    }
+    @keyframes gentle-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.75; }
     }
     .credits-display.no-credits {
-      background: rgba(220, 38, 38, 0.15);
-      border-color: rgba(220, 38, 38, 0.3);
-      color: var(--error);
+      animation: gentle-pulse 2.5s ease-in-out infinite;
     }
+    
+    /* Icon Styling */
     .credits-icon {
-      width: 14px;
-      height: 14px;
+      width: 16px;
+      height: 16px;
+      opacity: 0.9;
+      transition: all 0.25s ease;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
     }
+    .credits-display:hover .credits-icon {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+    
+    /* Text Styling */
     .credits-text {
       display: flex;
-      flex-direction: column;
-      line-height: 1.2;
+      align-items: baseline;
+      gap: 4px;
+      line-height: 1;
     }
     .credits-amount {
-      font-size: 13px;
+      font-size: 15px;
       font-weight: 700;
+      letter-spacing: -0.02em;
     }
     .credits-label {
-      font-size: 9px;
+      font-size: 11px;
       opacity: 0.7;
+      text-transform: lowercase;
+      letter-spacing: 0.02em;
+      font-weight: 500;
+    }
+    
+    /* Time Breakdown Modal - Matching Company Brief Style */
+    .time-breakdown-modal {
+      position: fixed;
+      top: 96px;
+      left: 50%;
+      transform: translate(-50%, -16px);
+      width: min(500px, 92vw);
+      max-height: calc(100vh - 160px);
+      display: flex;
+      flex-direction: column;
+      border-radius: 16px;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      background: linear-gradient(145deg, rgba(18,24,39,0.94), rgba(25,32,48,0.92));
+      box-shadow: 0 20px 40px -18px rgba(0,0,0,0.65), 0 4px 18px -6px rgba(0,0,0,0.5);
+      backdrop-filter: blur(14px) saturate(160%);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      overflow: hidden;
+      transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s ease;
+      z-index: 10001;
+      -webkit-app-region: none;
+    }
+    .time-breakdown-modal.show {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translate(-50%, 0);
+    }
+    .time-breakdown-content {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: transparent;
+      -webkit-app-region: none;
+      padding: 0;
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(30px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .time-breakdown-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .time-breakdown-header h3 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--fg);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .time-breakdown-close {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: none;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--fg);
+      font-size: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      line-height: 1;
+      padding: 0;
+      -webkit-app-region: no-drag;
+      user-select: none;
+    }
+    .time-breakdown-close:hover {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      transform: scale(1.1);
+    }
+    .time-breakdown-close:active {
+      transform: scale(0.95);
+    }
+    .time-breakdown-main {
+      padding: 24px;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    .time-breakdown-main::-webkit-scrollbar {
+      width: 6px;
+    }
+    .time-breakdown-main::-webkit-scrollbar-track {
+      background: rgba(12, 18, 32, 0.6);
+      border-radius: 8px;
+    }
+    .time-breakdown-main::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, rgba(16, 185, 129, 0.55), rgba(20, 184, 166, 0.45));
+      border-radius: 8px;
+    }
+    .time-breakdown-main::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(180deg, rgba(16, 185, 129, 0.7), rgba(20, 184, 166, 0.6));
+    }
+    .time-breakdown-main {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(16, 185, 129, 0.55) rgba(12, 18, 32, 0.6);
+    }
+    .time-display {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 28px;
+      padding: 24px;
+      background: rgba(16, 185, 129, 0.08);
+      border-radius: 16px;
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+    .time-unit {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      min-width: 70px;
+    }
+    .time-value {
+      font-size: 36px;
+      font-weight: 800;
+      color: #6ee7b7;
+      text-shadow: 0 2px 8px rgba(110, 231, 183, 0.3);
+      font-variant-numeric: tabular-nums;
+    }
+    .time-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 600;
+    }
+    .time-separator {
+      font-size: 32px;
+      font-weight: 700;
+      color: rgba(110, 231, 183, 0.4);
+      margin: 0 4px;
+      align-self: flex-start;
+      margin-top: 8px;
+    }
+    .time-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .stat-label {
+      font-size: 11px;
+      color: var(--muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      font-weight: 500;
+    }
+    .stat-value {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--fg);
+    }
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #10b981, #14b8a6);
+      border-radius: 10px;
+      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+    }
+    .progress-text {
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .time-breakdown-footer {
+      padding: 16px 24px;
+      background: rgba(255, 255, 255, 0.03);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      text-align: center;
+      border-radius: 0 0 20px 20px;
+    }
+    .time-breakdown-footer small {
+      color: var(--muted);
+      font-size: 12px;
     }
     
     /* Chat UI Styles */
@@ -985,11 +1267,9 @@
     </div>
 
     <!-- Credits Display -->
-    <div class="credits-display no-drag" id="creditsDisplay" title="Interview credits remaining (1 credit = 1 hour)" style="display: none;">
-      <svg class="credits-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"></circle>
-        <path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path>
-        <path d="M12 18V6"></path>
+    <div class="credits-display no-drag" id="creditsDisplay" title="Available credits · Click to purchase more" style="display: none;">
+      <svg class="credits-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+        <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM9 7a.75.75 0 000 1.5h1.5c.98 0 1.813.626 2.122 1.5H9A.75.75 0 009 11.25h3.622a2.251 2.251 0 01-2.122 1.5H9a.75.75 0 00-.53 1.28l3 3a.75.75 0 001.06-1.06L10.8 14.24c1.399-.232 2.467-1.383 2.467-2.74a3.75 3.75 0 00-3.75-3.75H9zm6 4.5a.75.75 0 000 1.5h.008a.75.75 0 000-1.5H15z" clip-rule="evenodd"/>
       </svg>
       <div class="credits-text">
         <span class="credits-amount" id="creditsAmount">0</span>
@@ -1062,6 +1342,63 @@
   <!-- Highlight.js for syntax highlighting -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+
+  <!-- Time breakdown overlay -->
+  <div id="timeBreakdownOverlay" class="time-breakdown-modal" role="dialog" aria-modal="true" aria-labelledby="timeBreakdownTitle" aria-hidden="true" tabindex="-1">
+    <div class="time-breakdown-content" role="document">
+      <div class="time-breakdown-header">
+        <h3 id="timeBreakdownTitle">⏱️ Time Breakdown</h3>
+        <button class="time-breakdown-close" id="timeBreakdownClose" type="button" aria-label="Close time breakdown">×</button>
+      </div>
+      <div class="time-breakdown-main">
+        <div class="time-display">
+          <div class="time-unit">
+            <span class="time-value" id="timeHoursValue">0</span>
+            <span class="time-label">hours</span>
+          </div>
+          <div class="time-separator">:</div>
+          <div class="time-unit">
+            <span class="time-value" id="timeMinutesValue">00</span>
+            <span class="time-label">minutes</span>
+          </div>
+          <div class="time-separator">:</div>
+          <div class="time-unit">
+            <span class="time-value" id="timeSecondsValue">00</span>
+            <span class="time-label">seconds</span>
+          </div>
+        </div>
+        <div class="time-stats">
+          <div class="stat-item">
+            <span class="stat-label">Plan Type</span>
+            <span class="stat-value" id="timePlanValue">Free</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Total Credits</span>
+            <span class="stat-value" id="timeTotalValue">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Credits Used</span>
+            <span class="stat-value" id="timeUsedValue">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Remaining</span>
+            <span class="stat-value" id="timeRemainingValue">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Sessions</span>
+            <span class="stat-value" id="timeSessionsValue">0</span>
+          </div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="timeProgressFill"></div>
+        </div>
+        <div class="progress-text" id="timeProgressText">0% used</div>
+      </div>
+      <div class="time-breakdown-footer">
+        <small>💡 1 credit = 1 hour of interview time</small>
+      </div>
+    </div>
+  </div>
 
   <!-- Company brief overlay -->
   <div id="companyBriefOverlay" class="company-brief-overlay" role="dialog" aria-modal="true" aria-labelledby="companyBriefTitle" aria-hidden="true" tabindex="-1">

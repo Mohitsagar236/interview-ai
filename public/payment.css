@@ -411,6 +411,71 @@ html.dark .form-group small {
     color: #94a3b8;
 }
 
+/* Coupon Code Styles */
+.coupon-input-wrapper {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.coupon-input-wrapper input {
+    flex: 1;
+}
+
+.btn-apply-coupon {
+    padding: 0.75rem 1.5rem;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.btn-apply-coupon:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.btn-apply-coupon:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.coupon-message {
+    display: block;
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.coupon-message.success {
+    color: #10b981;
+}
+
+.coupon-message.error {
+    color: #ef4444;
+}
+
+.discount-applied {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    padding: 0.75rem;
+    border-radius: 6px;
+    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+}
+
+.discount-applied i {
+    font-size: 1.25rem;
+}
+
 .stripe-element {
     padding: 0.75rem;
     border: 1px solid #e2e8f0;

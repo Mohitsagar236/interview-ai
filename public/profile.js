@@ -151,6 +151,8 @@
         const planNames = {
             'free': 'Free Plan',
             'basic': 'Basic Plan',
+            'plus': 'Plus Plan',
+            'advanced': 'Advanced Plan',
             'premium': 'Premium Plan',
             'pro': 'Pro Plan'
         };
@@ -158,38 +160,55 @@
         const planName = planNames[sub.plan_type] || sub.plan_type || 'Free Plan';
         const isPaid = sub.plan_type !== 'free';
 
-        document.getElementById('plan-badge').textContent = planName.replace(' Plan', '');
-        document.getElementById('plan-name').textContent = planName;
-        document.getElementById('plan-description').textContent = sub.description || 'Interview AI subscription';
+        const planBadge = document.getElementById('plan-badge');
+        const planNameEl = document.getElementById('plan-name');
+        const planDesc = document.getElementById('plan-description');
+        
+        if (planBadge) planBadge.textContent = planName.replace(' Plan', '');
+        if (planNameEl) planNameEl.textContent = planName;
+        if (planDesc) planDesc.textContent = sub.description || 'Interview AI subscription';
 
         // Status
         const isActive = sub.status === 'active';
-        document.getElementById('subscription-status').innerHTML = `<span class="status-badge ${isActive ? 'active' : ''}">${sub.status || 'Active'}</span>`;
+        const statusEl = document.getElementById('subscription-status');
+        if (statusEl) {
+            statusEl.innerHTML = `<span class="status-badge ${isActive ? 'active' : ''}">${sub.status || 'Active'}</span>`;
+        }
 
         // Dates
         if (sub.start_date) {
             const startDate = new Date(sub.start_date);
-            document.getElementById('subscription-start').textContent = startDate.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            });
+            const startEl = document.getElementById('subscription-start');
+            if (startEl) {
+                startEl.textContent = startDate.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+            }
         }
 
         if (sub.end_date) {
             const endDate = new Date(sub.end_date);
-            document.getElementById('subscription-expiry').textContent = endDate.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            });
+            const expiryElement = document.getElementById('subscription-expiry');
+            if (expiryElement) {
+                expiryElement.textContent = endDate.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+            }
         } else {
-            document.getElementById('subscription-expiry').textContent = isPaid ? 'Lifetime' : 'Never';
+            const expiryElement = document.getElementById('subscription-expiry');
+            if (expiryElement) {
+                expiryElement.textContent = isPaid ? 'Lifetime' : 'Never';
+            }
         }
 
         // Update upgrade button
-        if (isPaid) {
-            document.getElementById('upgrade-btn').style.display = 'none';
+        const upgradeBtn = document.getElementById('upgrade-btn');
+        if (isPaid && upgradeBtn) {
+            upgradeBtn.style.display = 'none';
         }
     }
 
@@ -198,27 +217,34 @@
         const creditsUsed = sub.credits_used || 0;
         const creditsRemaining = creditsTotal - creditsUsed;
         
-        // Update credits display
-        document.getElementById('credits-total').textContent = creditsTotal;
-        document.getElementById('credits-used').textContent = creditsUsed.toFixed(1);
-        document.getElementById('credits-remaining').textContent = creditsRemaining.toFixed(1);
-        document.getElementById('credits-hours').textContent = creditsRemaining.toFixed(1);
+        // Update credits display with null checks
+        const creditsT = document.getElementById('credits-total');
+        const creditsU = document.getElementById('credits-used');
+        const creditsR = document.getElementById('credits-remaining');
+        const creditsH = document.getElementById('credits-hours');
+        
+        if (creditsT) creditsT.textContent = creditsTotal;
+        if (creditsU) creditsU.textContent = creditsUsed.toFixed(1);
+        if (creditsR) creditsR.textContent = creditsRemaining.toFixed(1);
+        if (creditsH) creditsH.textContent = creditsRemaining.toFixed(1);
         
         // Show/hide credits display based on whether user has credits
         const creditsDisplay = document.getElementById('credits-display');
-        if (creditsTotal > 0) {
-            creditsDisplay.style.display = 'block';
-            
-            // Update color based on remaining credits
-            if (creditsRemaining <= 0) {
-                creditsDisplay.style.background = 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)';
-            } else if (creditsRemaining < 1) {
-                creditsDisplay.style.background = 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)';
+        if (creditsDisplay) {
+            if (creditsTotal > 0) {
+                creditsDisplay.style.display = 'block';
+                
+                // Update color based on remaining credits
+                if (creditsRemaining <= 0) {
+                    creditsDisplay.style.background = 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)';
+                } else if (creditsRemaining < 1) {
+                    creditsDisplay.style.background = 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)';
+                } else {
+                    creditsDisplay.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                }
             } else {
-                creditsDisplay.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                creditsDisplay.style.display = 'none';
             }
-        } else {
-            creditsDisplay.style.display = 'none';
         }
     }
 
