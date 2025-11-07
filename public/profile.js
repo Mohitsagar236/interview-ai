@@ -373,8 +373,11 @@
                 </div>
                 
                 <div style="margin-top: 12px;">
-                    <button onclick="window.testActivationEndpoint()" style="width: 100%; padding: 10px; background: rgba(251,191,36,0.2); border: 1px solid rgba(251,191,36,0.4); border-radius: 6px; color: white; cursor: pointer; font-size: 13px; transition: all 0.2s;">
-                        <i class="fas fa-bug"></i> Debug: Test Endpoint
+                    <button onclick="window.testActivationEndpoint(false)" style="width: 100%; padding: 10px; background: rgba(251,191,36,0.2); border: 1px solid rgba(251,191,36,0.4); border-radius: 6px; color: white; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                        <i class="fas fa-bug"></i> Debug: Test Generate
+                    </button>
+                    <button onclick="window.testActivationEndpoint(true)" style="width: 100%; padding: 10px; margin-top: 8px; background: rgba(168,85,247,0.2); border: 1px solid rgba(168,85,247,0.4); border-radius: 6px; color: white; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                        <i class="fas fa-sync-alt"></i> Debug: Test Regenerate
                     </button>
                     <div id="debug-output" style="margin-top: 8px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 6px; font-family: monospace; font-size: 11px; display: none; max-height: 200px; overflow-y: auto;"></div>
                 </div>
@@ -505,10 +508,10 @@
     };
 
     // Debug function to test activation endpoint
-    window.testActivationEndpoint = async function() {
+    window.testActivationEndpoint = async function(regenerate = false) {
         const debugOutput = document.getElementById('debug-output');
         debugOutput.style.display = 'block';
-        debugOutput.innerHTML = '⏳ Testing endpoint...\n';
+        debugOutput.innerHTML = `⏳ Testing ${regenerate ? 'REGENERATE' : 'GENERATE'} endpoint...\n`;
 
         try {
             // Check if user is logged in
@@ -524,6 +527,7 @@
 
             debugOutput.innerHTML += `✓ Token found (${sessionToken.length} chars)\n`;
             debugOutput.innerHTML += `✓ User: ${userData.email}\n`;
+            debugOutput.innerHTML += `✓ Regenerate: ${regenerate}\n`;
             debugOutput.innerHTML += `\n📡 Calling API...\n`;
 
             // Test the endpoint
@@ -533,7 +537,7 @@
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${sessionToken}`
                 },
-                body: JSON.stringify({ regenerate: false })
+                body: JSON.stringify({ regenerate: regenerate })
             });
 
             const result = await response.json();
