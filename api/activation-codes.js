@@ -80,48 +80,62 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
         // If regenerating, deactivate old code
         const existingCode = existingCodes && existingCodes.length > 0 ? existingCodes[0] : null;
 
-        // Regenerate by updating the existing active code in place
+        // Regenerate by updating the existing active code in place (retry on code collisions)
         if (regenerate && existingCode) {
-            const activationCode = generateActivationCode();
-            const timestamp = new Date().toISOString();
+            let attempts = 0;
+            while (attempts < 5) {
+                const activationCode = generateActivationCode();
+                const timestamp = new Date().toISOString();
 
-            const { data: updatedCode, error: updateError } = await supabase
-                .from('activation_codes')
-                .update({
-                    code: activationCode,
-                    credits_total: creditsTotal,
-                    credits_used: creditsUsed,
-                    plan_type: planType,
-                    user_email: user.email,
-                    user_name: user.user_metadata?.name || user.email,
-                    is_active: true,
-                    updated_at: timestamp,
-                    activated_at: timestamp
-                })
-                .eq('id', existingCode.id)
-                .select()
-                .single();
+                const { data: updatedCode, error: updateError } = await supabase
+                    .from('activation_codes')
+                    .update({
+                        code: activationCode,
+                        credits_total: creditsTotal,
+                        credits_used: creditsUsed,
+                        plan_type: planType,
+                        user_email: user.email,
+                        user_name: user.user_metadata?.name || user.email,
+                        is_active: true,
+                        updated_at: timestamp,
+                        activated_at: timestamp
+                    })
+                    .eq('id', existingCode.id)
+                    .select()
+                    .single();
 
-            if (updateError) {
+                if (!updateError && updatedCode) {
+                    return res.json({
+                        success: true,
+                        message: 'Activation code regenerated successfully',
+                        code: updatedCode.code,
+                        creditsTotal: updatedCode.credits_total,
+                        creditsUsed: updatedCode.credits_used,
+                        creditsRemaining: updatedCode.credits_total - updatedCode.credits_used,
+                        planType: updatedCode.plan_type,
+                        createdAt: updatedCode.created_at,
+                        lastUsed: updatedCode.last_used_at
+                    });
+                }
+
+                // Retry on unique constraint (duplicate code) collisions
+                if (updateError?.code === '23505') {
+                    attempts += 1;
+                    continue;
+                }
+
                 console.error('Error regenerating activation code:', updateError);
                 return res.status(500).json({
                     error: 'Failed to regenerate activation code',
-                    details: updateError.message,
-                    hint: updateError.hint,
-                    code: updateError.code
+                    details: updateError?.message,
+                    hint: updateError?.hint,
+                    code: updateError?.code
                 });
             }
 
-            return res.json({
-                success: true,
-                message: 'Activation code regenerated successfully',
-                code: updatedCode.code,
-                creditsTotal: updatedCode.credits_total,
-                creditsUsed: updatedCode.credits_used,
-                creditsRemaining: updatedCode.credits_total - updatedCode.credits_used,
-                planType: updatedCode.plan_type,
-                createdAt: updatedCode.created_at,
-                lastUsed: updatedCode.last_used_at
+            return res.status(500).json({
+                error: 'Failed to regenerate activation code',
+                details: 'Exceeded retry attempts while generating a unique code.'
             });
         }
 
@@ -168,46 +182,59 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
             });
         }
 
-        // Generate new activation code for first-time users
-        const activationCode = generateActivationCode();
+        // Generate new activation code for first-time users (retry on code collisions)
+        let attempts = 0;
+        while (attempts < 5) {
+            const activationCode = generateActivationCode();
 
-        const { data: newCode, error: insertError } = await supabase
-            .from('activation_codes')
-            .insert({
-                user_id: userId,
-                code: activationCode,
-                credits_total: creditsTotal,
-                credits_used: creditsUsed,
-                plan_type: planType,
-                user_email: user.email,
-                user_name: user.user_metadata?.name || user.email,
-                is_active: true,
-                created_at: new Date().toISOString()
-            })
-            .select()
-            .single();
+            const { data: newCode, error: insertError } = await supabase
+                .from('activation_codes')
+                .insert({
+                    user_id: userId,
+                    code: activationCode,
+                    credits_total: creditsTotal,
+                    credits_used: creditsUsed,
+                    plan_type: planType,
+                    user_email: user.email,
+                    user_name: user.user_metadata?.name || user.email,
+                    is_active: true,
+                    created_at: new Date().toISOString()
+                })
+                .select()
+                .single();
 
-        if (insertError) {
+            if (!insertError && newCode) {
+                return res.json({
+                    success: true,
+                    message: 'Activation code generated successfully',
+                    code: activationCode,
+                    creditsTotal: creditsTotal,
+                    creditsUsed: creditsUsed,
+                    creditsRemaining: creditsTotal - creditsUsed,
+                    planType: planType,
+                    createdAt: newCode.created_at,
+                    instructions: 'Enter this code in your desktop app to activate it and sync your credits.'
+                });
+            }
+
+            if (insertError?.code === '23505') {
+                attempts += 1;
+                continue;
+            }
+
             console.error('Error creating activation code:', insertError);
             console.error('Error details:', JSON.stringify(insertError, null, 2));
             return res.status(500).json({ 
                 error: 'Failed to create activation code',
-                details: insertError.message,
-                hint: insertError.hint,
-                code: insertError.code
+                details: insertError?.message,
+                hint: insertError?.hint,
+                code: insertError?.code
             });
         }
 
-        res.json({
-            success: true,
-            message: regenerate ? 'Activation code regenerated successfully' : 'Activation code generated successfully',
-            code: activationCode,
-            creditsTotal: creditsTotal,
-            creditsUsed: creditsUsed,
-            creditsRemaining: creditsTotal - creditsUsed,
-            planType: planType,
-            createdAt: newCode.created_at,
-            instructions: 'Enter this code in your desktop app to activate it and sync your credits.'
+        return res.status(500).json({
+            error: 'Failed to create activation code',
+            details: 'Exceeded retry attempts while generating a unique code.'
         });
 
     } catch (error) {
