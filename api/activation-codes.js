@@ -126,7 +126,13 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
 
         if (insertError) {
             console.error('Error creating activation code:', insertError);
-            return res.status(500).json({ error: 'Failed to create activation code' });
+            console.error('Error details:', JSON.stringify(insertError, null, 2));
+            return res.status(500).json({ 
+                error: 'Failed to create activation code',
+                details: insertError.message,
+                hint: insertError.hint,
+                code: insertError.code
+            });
         }
 
         // Return the code
