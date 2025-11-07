@@ -13,7 +13,7 @@
     const supabase = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         auth: {
             persistSession: false, // Don't persist session
-            autoRefreshToken: false, // Don't auto-refresh
+            autoRefreshToken: true, // Enable auto-refresh for session duration
             detectSessionInUrl: false // Don't detect session in URL
         }
     });
@@ -30,7 +30,84 @@
         setupLogout();
         setupThemeToggle();
         await loadActivationCode(); // Load desktop app activation code
+        startSessionMonitor(); // Monitor and refresh session
     });
+
+    // Monitor session and refresh if needed
+    function startSessionMonitor() {
+        // Check session every 30 seconds
+        setInterval(async () => {
+            const user = getUserData();
+            if (!user || !user.supabase_session) {
+                console.log('[Session] No session found, redirecting to login');
+                window.location.href = 'auth.html';
+                return;
+            }
+
+            // Check if token is about to expire (within 5 minutes)
+            const session = user.supabase_session;
+            if (session && session.expires_at) {
+                const expiresAt = session.expires_at * 1000; // Convert to milliseconds
+                const now = Date.now();
+                const timeUntilExpiry = expiresAt - now;
+                const fiveMinutes = 5 * 60 * 1000;
+
+                if (timeUntilExpiry < fiveMinutes) {
+                    console.log('[Session] Token expiring soon, refreshing...');
+                    await refreshSession();
+                }
+            }
+        }, 30000); // Check every 30 seconds
+    }
+
+    // Refresh the session
+    async function refreshSession() {
+        try {
+            const user = getUserData();
+            if (!user || !user.supabase_session) {
+                throw new Error('No session to refresh');
+            }
+
+            // Set the session first
+            const { data, error } = await supabase.auth.setSession({
+                access_token: user.supabase_session.access_token,
+                refresh_token: user.supabase_session.refresh_token
+            });
+
+            if (error) throw error;
+
+            if (data.session) {
+                console.log('[Session] Token refreshed successfully');
+                // Update stored session
+                user.supabase_session = data.session;
+                user.timestamp = Date.now();
+                sessionStorage.setItem('interviewai_user', JSON.stringify(user));
+            }
+        } catch (error) {
+            console.error('[Session] Refresh failed:', error);
+            // If refresh fails, redirect to login
+            window.location.href = 'auth.html';
+        }
+    }
+
+    // Ensure session is set before making API calls
+    async function ensureSession() {
+        const user = getUserData();
+        if (!user || !user.supabase_session) {
+            throw new Error('No session found');
+        }
+
+        // Set the session in Supabase client
+        const { error } = await supabase.auth.setSession({
+            access_token: user.supabase_session.access_token,
+            refresh_token: user.supabase_session.refresh_token
+        });
+
+        if (error) {
+            console.error('[Session] Failed to set session:', error);
+            await refreshSession(); // Try to refresh
+        }
+    }
 
     async function checkAuthAndLoadProfile() {
         // Check authentication (session-only mode)
@@ -44,6 +121,16 @@
         }
 
         console.log('[Profile] User authenticated:', userData.email);
+
+        // Ensure session is set in Supabase client
+        try {
+            await ensureSession();
+            console.log('[Profile] Session restored in Supabase client');
+        } catch (error) {
+            console.error('[Profile] Failed to restore session:', error);
+            window.location.href = 'auth.html';
+            return;
+        }
 
         // Load profile data
         await loadProfileData();
