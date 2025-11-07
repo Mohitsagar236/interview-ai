@@ -13,9 +13,13 @@ class DesktopActivationManager {
         // Session-only storage (clears on app restart)
         this.sessionData = null;
         
-        this.apiBaseUrl = 'http://localhost:3000'; // Change to production URL when deployed
+        // Use production API URL
+        this.apiBaseUrl = process.env.NODE_ENV === 'production' 
+            ? 'https://interviewai.space' 
+            : 'http://localhost:3000';
         
         console.log('[Activation] Session-only activation manager initialized');
+        console.log('[Activation] API URL:', this.apiBaseUrl);
         console.log('[Activation] ⚠️ Activation required on every app launch');
     }
 
