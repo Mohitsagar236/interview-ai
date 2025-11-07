@@ -371,6 +371,13 @@
                         <i class="fas fa-ban"></i> Deactivate
                     </button>
                 </div>
+                
+                <div style="margin-top: 12px;">
+                    <button onclick="window.testActivationEndpoint()" style="width: 100%; padding: 10px; background: rgba(251,191,36,0.2); border: 1px solid rgba(251,191,36,0.4); border-radius: 6px; color: white; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                        <i class="fas fa-bug"></i> Debug: Test Endpoint
+                    </button>
+                    <div id="debug-output" style="margin-top: 8px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 6px; font-family: monospace; font-size: 11px; display: none; max-height: 200px; overflow-y: auto;"></div>
+                </div>
             </div>
         `;
     }
@@ -482,6 +489,63 @@
         } catch (error) {
             console.error('Error deactivating code:', error);
             showMessage('❌ Failed to deactivate code');
+        }
+    };
+
+    // Debug function to test activation endpoint
+    window.testActivationEndpoint = async function() {
+        const debugOutput = document.getElementById('debug-output');
+        debugOutput.style.display = 'block';
+        debugOutput.innerHTML = '⏳ Testing endpoint...\n';
+
+        try {
+            // Check if user is logged in
+            if (!userData || !userData.authenticated) {
+                throw new Error('Not authenticated');
+            }
+
+            const sessionToken = userData.supabase_session?.access_token;
+            
+            if (!sessionToken) {
+                throw new Error('No session token found');
+            }
+
+            debugOutput.innerHTML += `✓ Token found (${sessionToken.length} chars)\n`;
+            debugOutput.innerHTML += `✓ User: ${userData.email}\n`;
+            debugOutput.innerHTML += `\n📡 Calling API...\n`;
+
+            // Test the endpoint
+            const response = await fetch('/api/activation?action=generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${sessionToken}`
+                },
+                body: JSON.stringify({ regenerate: false })
+            });
+
+            const result = await response.json();
+
+            debugOutput.innerHTML += `\n📊 Response Status: ${response.status}\n`;
+            debugOutput.innerHTML += `📊 Response OK: ${response.ok}\n\n`;
+            debugOutput.innerHTML += `📄 Response Body:\n`;
+            debugOutput.innerHTML += JSON.stringify(result, null, 2);
+
+            if (!response.ok) {
+                debugOutput.innerHTML += `\n\n❌ ERROR DETECTED\n`;
+                debugOutput.innerHTML += `Status: ${response.status}\n`;
+                debugOutput.innerHTML += `Message: ${result.error || 'Unknown error'}\n`;
+                if (result.details) {
+                    debugOutput.innerHTML += `Details: ${result.details}\n`;
+                }
+            } else {
+                debugOutput.innerHTML += `\n\n✅ SUCCESS!\n`;
+            }
+
+        } catch (error) {
+            debugOutput.innerHTML += `\n\n❌ EXCEPTION:\n`;
+            debugOutput.innerHTML += `${error.message}\n`;
+            debugOutput.innerHTML += `\nStack:\n${error.stack}`;
         }
     };
 
