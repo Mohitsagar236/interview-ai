@@ -97,8 +97,7 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
                         user_email: user.email,
                         user_name: user.user_metadata?.name || user.email,
                         is_active: true,
-                        updated_at: timestamp,
-                        activated_at: timestamp
+                        updated_at: timestamp
                     })
                     .eq('id', existingCode.id)
                     .select()
