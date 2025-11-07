@@ -113,7 +113,41 @@
             output.innerHTML = '<div class="loading">⏳ Checking authentication...</div>';
 
             try {
-                // Check if we have userData in sessionStorage (from profile.js)
+                // First try to get current session from Supabase directly
+                const response = await fetch('/api/auth-user', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.authenticated && data.supabase_session) {
+                        userData = data;
+                        sessionToken = data.supabase_session.access_token;
+                        
+                        // Store for later use
+                        sessionStorage.setItem('userData', JSON.stringify(userData));
+                        
+                        document.getElementById('status').className = 'status success';
+                        document.getElementById('status').textContent = 'Authenticated';
+                        document.getElementById('userInfo').textContent = userData.email || 'Unknown';
+                        document.getElementById('diagBtn').disabled = false;
+                        document.getElementById('genBtn').disabled = false;
+                        
+                        output.innerHTML = `<div class="status success">✓ Authentication Found</div>\n` +
+                            `User Email: ${userData.email}\n` +
+                            `User ID: ${userData.id}\n` +
+                            `Token Length: ${sessionToken?.length || 0} characters\n` +
+                            `Token Present: ${!!sessionToken}\n` +
+                            `Session Mode: ${data.session_based ? 'SESSION-ONLY' : 'COOKIE-BASED'}`;
+                        return;
+                    }
+                }
+
+                // Fallback: Check sessionStorage (from profile.js)
                 const storedData = sessionStorage.getItem('userData');
                 if (storedData) {
                     userData = JSON.parse(storedData);
@@ -125,18 +159,22 @@
                     document.getElementById('diagBtn').disabled = false;
                     document.getElementById('genBtn').disabled = false;
                     
-                    output.innerHTML = `<div class="status success">✓ Authentication Found</div>\n` +
+                    output.innerHTML = `<div class="status success">✓ Authentication Found (from cache)</div>\n` +
                         `User Email: ${userData.email}\n` +
                         `User ID: ${userData.id}\n` +
                         `Token Length: ${sessionToken?.length || 0} characters\n` +
                         `Token Present: ${!!sessionToken}`;
                 } else {
-                    throw new Error('No authentication data found. Please log in from the profile page.');
+                    throw new Error('No authentication found. Please log in at: https://interviewai.space/profile.html');
                 }
             } catch (error) {
                 document.getElementById('status').className = 'status error';
                 document.getElementById('status').textContent = 'Error';
-                output.innerHTML = `<div class="status error">✗ Authentication Failed</div>\n${error.message}`;
+                output.innerHTML = `<div class="status error">✗ Authentication Failed</div>\n${error.message}\n\n` +
+                    `<strong>Please log in first:</strong>\n` +
+                    `1. Open: <a href="/profile.html" style="color: #93c5fd;">https://interviewai.space/profile.html</a>\n` +
+                    `2. Log in with your email\n` +
+                    `3. Come back to this page and try again`;
             }
         }
 
