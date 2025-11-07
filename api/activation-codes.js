@@ -91,15 +91,43 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
 
         // If code exists and not regenerating, return existing code
         if (!regenerate && existingCodes && existingCodes.length > 0) {
+            let codeRecord = existingCodes[0];
+
+            // Keep activation record in sync with the latest subscription snapshot
+            const needsSync =
+                codeRecord.credits_total !== creditsTotal ||
+                codeRecord.credits_used !== creditsUsed ||
+                codeRecord.plan_type !== planType;
+
+            if (needsSync) {
+                const { data: syncedCode, error: syncError } = await supabase
+                    .from('activation_codes')
+                    .update({
+                        credits_total: creditsTotal,
+                        credits_used: creditsUsed,
+                        plan_type: planType,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', codeRecord.id)
+                    .select()
+                    .single();
+
+                if (!syncError && syncedCode) {
+                    codeRecord = syncedCode;
+                } else if (syncError) {
+                    console.error('Error syncing activation code snapshot:', syncError);
+                }
+            }
+
             return res.json({
                 success: true,
                 message: 'Activation code already exists',
-                code: existingCodes[0].code,
-                creditsTotal: existingCodes[0].credits_total,
-                creditsUsed: existingCodes[0].credits_used,
-                planType: existingCodes[0].plan_type,
-                createdAt: existingCodes[0].created_at,
-                lastUsed: existingCodes[0].last_used_at,
+                code: codeRecord.code,
+                creditsTotal: codeRecord.credits_total,
+                creditsUsed: codeRecord.credits_used,
+                planType: codeRecord.plan_type,
+                createdAt: codeRecord.created_at,
+                lastUsed: codeRecord.last_used_at,
                 isExisting: true
             });
         }
