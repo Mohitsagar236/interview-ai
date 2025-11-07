@@ -161,7 +161,7 @@
             }
 
             console.log('[Subscription] Calling sync API...');
-            const response = await fetch('/api/sync-subscription', {
+            const response = await fetch('/api/activation?action=sync-subscription', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${sessionToken}`,

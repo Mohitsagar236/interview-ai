@@ -540,11 +540,85 @@ async function deactivateCodeEndpoint(req, res, supabase) {
     }
 }
 
+/**
+ * Sync subscription data from activation code
+ * POST /api/activation?action=sync-subscription
+ */
+async function syncSubscriptionFromActivationCode(req, res, supabase) {
+    try {
+        // Get user from Authorization header
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const token = authHeader.replace('Bearer ', '');
+        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+        
+        if (authError || !user) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const userId = user.id;
+
+        // Get activation code data for this user
+        const { data: activationCode, error: codeError } = await supabase
+            .from('activation_codes')
+            .select('plan_type, credits_total, credits_used')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .single();
+
+        if (codeError || !activationCode) {
+            return res.status(404).json({ 
+                error: 'No active activation code found',
+                details: 'Please generate an activation code first'
+            });
+        }
+
+        // Create or update subscription from activation code data
+        const { data: subscription, error: subError } = await supabase
+            .from('subscriptions')
+            .upsert({
+                user_id: userId,
+                plan_type: activationCode.plan_type || 'free',
+                credits_total: activationCode.credits_total || 0,
+                credits_used: activationCode.credits_used || 0,
+                status: 'active',
+                updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'user_id'
+            })
+            .select()
+            .single();
+
+        if (subError) {
+            console.error('Error syncing subscription:', subError);
+            return res.status(500).json({ 
+                error: 'Failed to sync subscription',
+                details: subError.message
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Subscription synced successfully',
+            subscription: subscription
+        });
+
+    } catch (error) {
+        console.error('Error in syncSubscriptionFromActivationCode:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
 module.exports = {
     generateActivationCode,
     generateActivationCodeEndpoint,
     activateDesktopEndpoint,
     getCreditsByCodeEndpoint,
     updateCreditsByCodeEndpoint,
-    deactivateCodeEndpoint
+    deactivateCodeEndpoint,
+    syncSubscriptionFromActivationCode
 };
+

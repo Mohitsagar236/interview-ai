@@ -1,12 +1,13 @@
 // Consolidated serverless function for all activation code operations
-// Handles: generate, activate, credits, deactivate
+// Handles: generate, activate, credits, deactivate, sync-subscription
 const { createClient } = require('@supabase/supabase-js');
 const {
     generateActivationCodeEndpoint,
     activateDesktopEndpoint,
     getCreditsByCodeEndpoint,
     updateCreditsByCodeEndpoint,
-    deactivateCodeEndpoint
+    deactivateCodeEndpoint,
+    syncSubscriptionFromActivationCode
 } = require('./activation-codes');
 
 module.exports = async (req, res) => {
@@ -68,6 +69,11 @@ module.exports = async (req, res) => {
             case 'deactivate':
                 console.log('[Activation API] Routing to deactivateCodeEndpoint');
                 await deactivateCodeEndpoint(req, res, supabase);
+                break;
+            
+            case 'sync-subscription':
+                console.log('[Activation API] Routing to syncSubscription');
+                await syncSubscriptionFromActivationCode(req, res, supabase);
                 break;
             
             default:
