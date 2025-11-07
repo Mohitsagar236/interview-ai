@@ -66,6 +66,10 @@ class DesktopActivationManager {
         try {
             // Normalize code
             const normalizedCode = activationCode.replace(/\s+/g, '').toUpperCase();
+            
+            console.log('[Activation] Attempting activation...');
+            console.log('[Activation] API URL:', this.apiBaseUrl);
+            console.log('[Activation] Code:', normalizedCode.substring(0, 4) + '...');
 
             // Validate code with backend
             const response = await this.makeRequest(
@@ -86,8 +90,12 @@ class DesktopActivationManager {
                 }
             );
 
+            console.log('[Activation] Server response:', response);
+
             if (!response.success) {
-                throw new Error(response.error || 'Activation failed');
+                const errorMsg = response.error || response.details || 'Activation failed';
+                console.error('[Activation] Activation failed:', errorMsg);
+                throw new Error(errorMsg);
             }
 
             // Check if code has credits remaining
@@ -358,6 +366,9 @@ class DesktopActivationManager {
             });
 
             req.on('error', (error) => {
+                console.error('[Activation] HTTP request error:', error);
+                console.error('[Activation] URL:', url);
+                console.error('[Activation] Error code:', error.code);
                 reject(error);
             });
 
