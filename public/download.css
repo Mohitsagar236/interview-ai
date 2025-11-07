@@ -228,6 +228,119 @@ html.dark .guide-step h4 {
     line-height: 1.6;
 }
 
+/* Security Notice */
+.security-notice {
+    margin-top: 48px;
+    padding: 32px;
+    background: linear-gradient(135deg, #fef3c7 0%, #fef9e7 100%);
+    border: 2px solid #fbbf24;
+    border-radius: 16px;
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    text-align: left;
+}
+
+html.dark .security-notice {
+    background: linear-gradient(135deg, #422006 0%, #451a03 100%);
+    border-color: #d97706;
+}
+
+.notice-icon {
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    background: #fbbf24;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 24px;
+}
+
+html.dark .notice-icon {
+    background: #d97706;
+}
+
+.notice-content h4 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #92400e;
+    margin-bottom: 12px;
+}
+
+html.dark .notice-content h4 {
+    color: #fbbf24;
+}
+
+.notice-content p {
+    font-size: 15px;
+    color: #78350f;
+    line-height: 1.6;
+    margin-bottom: 16px;
+}
+
+html.dark .notice-content p {
+    color: #fcd34d;
+}
+
+.bypass-steps {
+    background: rgba(251, 191, 36, 0.2);
+    padding: 16px 20px;
+    border-radius: 12px;
+    margin: 16px 0;
+}
+
+html.dark .bypass-steps {
+    background: rgba(217, 119, 6, 0.2);
+}
+
+.bypass-steps strong {
+    display: block;
+    font-weight: 600;
+    color: #92400e;
+    margin-bottom: 8px;
+}
+
+html.dark .bypass-steps strong {
+    color: #fbbf24;
+}
+
+.bypass-steps ol {
+    margin: 8px 0 0 20px;
+    padding: 0;
+}
+
+.bypass-steps li {
+    font-size: 14px;
+    color: #78350f;
+    margin: 6px 0;
+    line-height: 1.5;
+}
+
+html.dark .bypass-steps li {
+    color: #fde68a;
+}
+
+.bypass-steps strong {
+    font-weight: 700;
+}
+
+.notice-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #a16207;
+    margin-top: 16px;
+    margin-bottom: 0 !important;
+}
+
+html.dark .notice-footer {
+    color: #fcd34d;
+}
+
 /* System Requirements */
 .system-requirements {
     max-width: 1200px;
