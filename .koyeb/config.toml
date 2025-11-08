@@ -1,0 +1,10 @@
+# Koyeb Configuration
+# Forces Docker build instead of buildpacks
+
+[build]
+type = "docker"
+dockerfile = "Dockerfile"
+context = "."
+
+[deploy]
+instances = 1
