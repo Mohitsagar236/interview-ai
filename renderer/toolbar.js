@@ -4505,6 +4505,17 @@
           startInterviewerRecording();
         }
       });
+      
+      // Listen for Ask AI shortcut (Ctrl+Q)
+      window.electron.ipcRenderer.on("trigger-ask-ai", () => {
+        log.info("Ask AI triggered via Ctrl+Q shortcut");
+        // Click the capture and analyze button
+        if (captureAnalyzeBtn && !captureAnalyzeBtn.disabled) {
+          captureAnalyzeBtn.click();
+        } else {
+          log.warn("Capture button not available or disabled");
+        }
+      });
     } else if (window.require) {
       // Fallback if contextIsolation disabled (unlikely here)
       try {
@@ -4516,6 +4527,14 @@
             });
           } else {
             startInterviewerRecording();
+          }
+        });
+        
+        // Listen for Ask AI shortcut (Ctrl+Q)
+        ipcRenderer.on("trigger-ask-ai", () => {
+          log.info("Ask AI triggered via Ctrl+Q shortcut");
+          if (captureAnalyzeBtn && !captureAnalyzeBtn.disabled) {
+            captureAnalyzeBtn.click();
           }
         });
       } catch {}
@@ -4832,12 +4851,21 @@
         }
       }
 
-      // Ctrl+Shift+C: Capture screen
-      if (e.ctrlKey && e.shiftKey && e.key === "C") {
+      // Ctrl+C: Quick capture screen (matching global shortcut)
+      if (e.ctrlKey && !e.shiftKey && e.key === "c" && !isInputFocused) {
         e.preventDefault();
         if (captureAnalyzeBtn && !captureAnalyzeBtn.disabled) {
           captureAnalyzeBtn.click();
-          log.info("Keyboard shortcut: Capture screen (Ctrl+Shift+C)");
+          log.info("Keyboard shortcut: Capture screen (Ctrl+C)");
+        }
+      }
+      
+      // Ctrl+Q: Ask AI / Capture and Analyze (matching global shortcut)
+      if (e.ctrlKey && e.key === "q" && !isInputFocused) {
+        e.preventDefault();
+        if (captureAnalyzeBtn && !captureAnalyzeBtn.disabled) {
+          captureAnalyzeBtn.click();
+          log.info("Keyboard shortcut: Ask AI (Ctrl+Q)");
         }
       }
 
@@ -4868,39 +4896,25 @@
         }
       }
 
-      // Ctrl+A: Toggle toolbar visibility (hide/unhide)
-      if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "a") {
+      // Ctrl+/: Toggle toolbar visibility (hide/unhide) - matching global shortcut
+      if (e.ctrlKey && e.key === "/" && !isInputFocused) {
         e.preventDefault();
         if (
           window.electronAPI &&
           typeof window.electronAPI.toggleToolbar === "function"
         ) {
           window.electronAPI.toggleToolbar();
-          log.info("Keyboard shortcut: Toggle toolbar visibility (Ctrl+A)");
+          log.info("Keyboard shortcut: Toggle toolbar visibility (Ctrl+/)");
         } else if (
           window.electronAPI &&
           typeof window.electronAPI.hideToolbar === "function"
         ) {
           window.electronAPI.hideToolbar();
-          log.info("Keyboard shortcut: Hide toolbar (Ctrl+A fallback)");
+          log.info("Keyboard shortcut: Hide toolbar (Ctrl+/ fallback)");
         } else {
           try {
             window.close();
           } catch (_) {}
-        }
-      }
-
-      // Ctrl+Shift+A: Ask AI (if not typing in input)
-      if (
-        e.ctrlKey &&
-        e.shiftKey &&
-        e.key.toLowerCase() === "a" &&
-        !isInputFocused
-      ) {
-        e.preventDefault();
-        if (askAiBtn && !askAiBtn.disabled && !askAiBtn._busy) {
-          askAiBtn.click();
-          log.info("Keyboard shortcut: Ask AI (Ctrl+Shift+A)");
         }
       }
     });
