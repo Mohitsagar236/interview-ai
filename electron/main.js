@@ -2474,59 +2474,77 @@ ipcMain.handle('desktop-activate', async (_event, activationCode) => {
     const result = await activationManager.activate(activationCode);
     
     if (result.success) {
+      console.log('[Activation] ✅ Activation successful, processing...');
+      
       // Sync credits after successful activation
+      const credits = {
+        total: result.credits.total,
+        used: result.credits.used,
+        remaining: result.credits.remaining,
+        lastSynced: new Date().toISOString(),
+        syncedWithServer: true,
+        planType: result.planType
+      };
+      
       if (creditsManager) {
-        const credits = {
-          total: result.credits.total,
-          used: result.credits.used,
-          remaining: result.credits.remaining,
-          lastSynced: new Date().toISOString(),
-          syncedWithServer: true,
-          planType: result.planType
-        };
         creditsManager.saveCredits(credits);
         console.log('[Activation] Credits synced after activation:', credits);
-        
-        // CHECK CREDITS - Show no-credits window if 0
-        if (credits.remaining <= 0) {
-          console.log('[Credits] ❌ No credits available after activation');
-          if (activationWindow && !activationWindow.isDestroyed()) {
-            activationWindow.close();
-          }
-          showNoCreditsWindow();
-          return {
-            success: true,
-            hasCredits: false,
-            credits: credits,
-            message: 'Activation successful but no credits available'
-          };
-        }
-        
-        console.log('[Credits] ✅ Activation successful with credits');
-        
-        // Close activation window
+      } else {
+        console.warn('[Activation] ⚠️ creditsManager not initialized, but continuing...');
+      }
+      
+      // CHECK CREDITS - Show no-credits window if 0
+      if (credits.remaining <= 0) {
+        console.log('[Credits] ❌ No credits available after activation');
         if (activationWindow && !activationWindow.isDestroyed()) {
           activationWindow.close();
-          activationWindow = null;
         }
-        
-        // Launch toolbar window with credits
-        console.log('[Activation] Launching toolbar window...');
+        showNoCreditsWindow();
+        return {
+          success: true,
+          hasCredits: false,
+          credits: credits,
+          message: 'Activation successful but no credits available'
+        };
+      }
+      
+      console.log('[Credits] ✅ Activation successful with credits');
+      
+      // Close activation window
+      if (activationWindow && !activationWindow.isDestroyed()) {
+        console.log('[Activation] Closing activation window...');
+        activationWindow.close();
+        activationWindow = null;
+      }
+      
+      // Launch toolbar window with credits
+      console.log('[Activation] Launching toolbar window...');
+      try {
         createToolbarWindow();
-        
-        // Start periodic credit sync
+        console.log('[Activation] ✅ Toolbar window created');
+      } catch (toolbarError) {
+        console.error('[Activation] ❌ Error creating toolbar:', toolbarError);
+      }
+      
+      // Start periodic credit sync
+      try {
         startCreditSync();
-        
-        // Notify toolbar window about credits update
-        if (toolbarWindow && !toolbarWindow.isDestroyed()) {
-          toolbarWindow.webContents.send('credits-updated', {
-            creditsRemaining: credits.remaining,
-            creditsUsed: credits.used,
-            creditsTotal: credits.total,
-            planType: credits.planType
-          });
-          console.log('[Activation] ✅ Notified toolbar about credits update');
-        }
+        console.log('[Activation] ✅ Credit sync started');
+      } catch (syncError) {
+        console.error('[Activation] ⚠️ Error starting credit sync:', syncError);
+      }
+      
+      // Notify toolbar window about credits update
+      if (toolbarWindow && !toolbarWindow.isDestroyed()) {
+        toolbarWindow.webContents.send('credits-updated', {
+          creditsRemaining: credits.remaining,
+          creditsUsed: credits.used,
+          creditsTotal: credits.total,
+          planType: credits.planType
+        });
+        console.log('[Activation] ✅ Notified toolbar about credits update');
+      } else {
+        console.warn('[Activation] ⚠️ Toolbar window not ready for notification');
       }
       
       logActivity('activation.success', { email: result.user.email });
