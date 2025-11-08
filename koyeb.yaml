@@ -6,11 +6,13 @@ app:
   
 services:
   - name: backend
-    # Docker build configuration
+    # Docker build configuration (CRITICAL: must use Docker, not buildpacks)
     build:
       type: docker
       dockerfile: Dockerfile
       context: .
+      buildpack:
+        run_command: "python python/start_server.py"
     
     # Service configuration
     instance:

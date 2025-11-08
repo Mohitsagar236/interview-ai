@@ -22,5 +22,5 @@ ENV CLOUD_MODE=true
 ENV PORT=8765
 ENV HOST=0.0.0.0
 
-# Run the server
-CMD ["python", "python/server.py"]
+# Run the server using start_server.py
+CMD ["python", "python/start_server.py"]
