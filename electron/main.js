@@ -2961,9 +2961,10 @@ app.whenReady().then(async () => {
     // Toggle compact toolbar - Ctrl+/ (hide/unhide)
     const toolbarToggleRegistered = globalShortcut.register('CommandOrControl+/', () => {
       console.log('🔥 [Shortcut] Toolbar toggle triggered (Ctrl+/)');
-      // Check if user has credits before showing toolbar
-      if (!authManager || !authManager.isAuthenticated()) {
-        console.log('🔒 Cannot toggle toolbar - user not authenticated');
+      // Check if user has activated before showing toolbar
+      if (!activationManager || !activationManager.isActivated()) {
+        console.log('🔒 Cannot toggle toolbar - user not activated');
+        showActivationWindow();
         return;
       }
       
@@ -3047,9 +3048,10 @@ app.whenReady().then(async () => {
       const registeredDev = globalShortcut.register('CommandOrControl+Alt+D', () => {
         console.log('🔥 [Shortcut] DevTools toggle triggered (Ctrl+Alt+D)');
         try {
-          // Check authentication and credits before creating toolbar
-          if (!authManager || !authManager.isAuthenticated()) {
-            console.log('🔒 Cannot open DevTools - user not authenticated');
+          // Check activation and credits before creating toolbar
+          if (!activationManager || !activationManager.isActivated()) {
+            console.log('🔒 Cannot open DevTools - user not activated');
+            showActivationWindow();
             return;
           }
           
@@ -3096,9 +3098,9 @@ app.whenReady().then(async () => {
     try {
       ipcMain.handle('toolbar-open-devtools', () => {
         try {
-          // Check authentication and credits
-          if (!authManager || !authManager.isAuthenticated()) {
-            return { ok: false, error: 'Not authenticated' };
+          // Check activation and credits
+          if (!activationManager || !activationManager.isActivated()) {
+            return { ok: false, error: 'Not activated' };
           }
           
           const creditsCheck = checkCreditsAvailable();
