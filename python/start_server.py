@@ -7,6 +7,13 @@ import os
 import sys
 import time
 import asyncio
+from dotenv import load_dotenv
+
+# Load environment variables from parent directory's .env file
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+env_path = os.path.join(parent_dir, '.env')
+load_dotenv(env_path)
+print(f"✅ Loaded environment from: {env_path}")
 
 # Add the parent directory to the path so we can import the server module
 current_dir = os.path.dirname(os.path.abspath(__file__))
