@@ -1,6 +1,7 @@
 import asyncio
 
 import base64
+import http
 import io
 import json
 import logging
@@ -3970,6 +3971,33 @@ async def ws_router(websocket, path):
             await websocket.close()
 
 
+async def process_request(path, request_headers):
+    """
+    Process HTTP requests before WebSocket upgrade.
+    This allows health checks from cloud platforms (Koyeb, Railway, etc.)
+    to work without needing a WebSocket upgrade.
+    """
+    # Health check endpoints - respond with HTTP 200
+    if path in ("/health", "/"):
+        # Check if this is a regular HTTP GET request (not WebSocket upgrade)
+        upgrade_header = request_headers.get("Upgrade", "").lower()
+        if upgrade_header != "websocket":
+            # Return HTTP response for health check
+            health_data = json.dumps({
+                "status": "healthy",
+                "mode": "cloud" if CLOUD_MODE else "local",
+                "ai_providers": get_ai_status(),
+                "timestamp": time.time()
+            })
+            return (
+                http.HTTPStatus.OK,
+                [("Content-Type", "application/json")],
+                health_data.encode()
+            )
+    # If not a health check, proceed with normal WebSocket handling
+    return None
+
+
 async def main():
     # Initialize AI providers on startup (background) and start server immediately
     logger.info("Starting AI Interview Assistant Server...")
@@ -4007,8 +4035,12 @@ async def main():
             logger.info("Setting allowed WebSocket origins: %s", ALLOWED_ORIGINS)
             kwargs['origins'] = ALLOWED_ORIGINS
 
+        # Add process_request handler for HTTP health checks
+        kwargs['process_request'] = process_request
+
         async with serve(ws_router, HOST, available_port, max_size=8 * 1024 * 1024, **kwargs):
             logger.info("Server listening on ws://%s:%d (Cloud Mode: %s)", HOST, available_port, CLOUD_MODE)
+            logger.info("HTTP health checks available at http://%s:%d/health", HOST, available_port)
             # Keep the server running indefinitely
             try:
                 while True:

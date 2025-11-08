@@ -14,10 +14,11 @@ const config = {
   },
   
   production: {
-    // Production mode connects to cloud backend on Railway
-    // ⚠️ UPDATE THIS URL after deploying your backend to Railway
-    // Railway URL format: wss://your-app-name.up.railway.app
-    serverUrl: process.env.SERVER_URL || 'wss://interview-ai-backend.up.railway.app',
+    // Production mode connects to cloud backend via custom domain
+    // Using api.interviewai.space (custom domain avoids firewall blocks)
+    // Koyeb automatically handles port routing, use standard wss:// (port 443)
+    serverUrl: process.env.SERVER_URL || 'wss://api.interviewai.space',
+    
     useLocalServer: false,
     cloudMode: true,
     enableDevTools: false,
