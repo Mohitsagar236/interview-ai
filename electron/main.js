@@ -2882,9 +2882,9 @@ app.whenReady().then(async () => {
   console.log('[Shortcuts] Registering global keyboard shortcuts...');
   
   try {
-    // Quick capture shortcut - Ctrl+C
-    const captureRegistered = globalShortcut.register('CommandOrControl+C', async () => {
-      console.log('🔥 [Shortcut] Quick capture triggered (Ctrl+C)');
+    // Quick capture shortcut - Alt+C
+    const captureRegistered = globalShortcut.register('Alt+C', async () => {
+      console.log('🔥 [Shortcut] Quick capture triggered (Alt+C)');
       try {
         const image = await captureScreen();
         if (image && mainWindow) {
@@ -2922,9 +2922,9 @@ app.whenReady().then(async () => {
     });
     
     if (!captureRegistered) {
-      console.error('❌ [Shortcuts] Failed to register Ctrl+C (may be in use by another app)');
+      console.error('❌ [Shortcuts] Failed to register Alt+C (may be in use by another app)');
     } else {
-      console.log('✅ [Shortcuts] Ctrl+C registered (Quick capture)');
+      console.log('✅ [Shortcuts] Alt+C registered (Quick capture)');
     }
 
     // Quick toggle stealth mode
@@ -3021,16 +3021,39 @@ app.whenReady().then(async () => {
       console.log('✅ [Shortcuts] Ctrl+Alt+I registered');
     }
 
-    // Ask AI button - Ctrl+Q
-    const askAIRegistered = globalShortcut.register('CommandOrControl+Q', () => {
+    // Ask AI button - Ctrl+Q (capture and analyze)
+    const askAIRegistered = globalShortcut.register('CommandOrControl+Q', async () => {
       console.log('🔥 [Shortcut] Ask AI triggered (Ctrl+Q)');
       try {
-        if (toolbarWindow && !toolbarWindow.isDestroyed()) {
+        // Check if user is activated
+        if (!activationManager || !activationManager.isActivated()) {
+          console.log('🔒 Cannot use Ask AI - user not activated');
+          showActivationWindow();
+          return;
+        }
+        
+        // Check credits
+        const creditsCheck = checkCreditsAvailable();
+        if (!creditsCheck.hasCredits) {
+          console.log('❌ Cannot use Ask AI - no credits available');
+          showNoCreditsWindow();
+          return;
+        }
+        
+        // Ensure toolbar exists
+        if (!toolbarWindow || toolbarWindow.isDestroyed()) {
+          console.log('Creating toolbar window for Ask AI...');
+          createToolbarWindow();
+        }
+        
+        // Capture screen and send to toolbar
+        const image = await captureScreen();
+        if (image && toolbarWindow && !toolbarWindow.isDestroyed()) {
           // Send message to toolbar to trigger AI button click
           toolbarWindow.webContents.send('trigger-ask-ai');
           console.log('🤖 AI button triggered via Ctrl+Q');
         } else {
-          console.log('Toolbar window not available for AI trigger');
+          console.log('❌ Toolbar window not available or capture failed');
         }
       } catch (e) {
         console.error('Ask AI shortcut failed:', e.message);
@@ -3130,7 +3153,7 @@ app.whenReady().then(async () => {
       ipcMain.handle('check-shortcuts', () => {
         try {
           const shortcuts = [
-            'CommandOrControl+C',
+            'Alt+C',
             'CommandOrControl+/',
             'CommandOrControl+Q',
             'CommandOrControl+Shift+S',

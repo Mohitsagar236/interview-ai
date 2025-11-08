@@ -4851,12 +4851,12 @@
         }
       }
 
-      // Ctrl+C: Quick capture screen (matching global shortcut)
-      if (e.ctrlKey && !e.shiftKey && e.key === "c" && !isInputFocused) {
+      // Alt+C: Quick capture screen (matching global shortcut)
+      if (e.altKey && e.key === "c" && !isInputFocused) {
         e.preventDefault();
         if (captureAnalyzeBtn && !captureAnalyzeBtn.disabled) {
           captureAnalyzeBtn.click();
-          log.info("Keyboard shortcut: Capture screen (Ctrl+C)");
+          log.info("Keyboard shortcut: Capture screen (Alt+C)");
         }
       }
       
