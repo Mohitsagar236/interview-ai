@@ -253,8 +253,13 @@ def needs_image(text: str) -> bool:
 # Server/network defaults
 # Support cloud deployment via environment variables
 CLOUD_MODE = os.getenv('CLOUD_MODE', 'false').lower() in ('true', '1', 'yes', 'on')
-HOST = os.getenv('HOST', '0.0.0.0' if CLOUD_MODE else 'localhost')
-PORT = int(os.getenv('PORT', '8765'))
+# Prefer an explicit HOST env var. If a PORT is provided by the platform (for
+# example Koyeb or Heroku), default to binding on 0.0.0.0 so external health
+# checks and load balancers can reach the service. When running locally and
+# no PORT is set, keep the default of 'localhost' for safety.
+HOST = os.getenv('HOST') or ('0.0.0.0' if (CLOUD_MODE or os.getenv('PORT')) else 'localhost')
+# Use PORT if provided by the environment (platform buildpacks usually set PORT)
+PORT = int(os.getenv('PORT') or '8765')
 DEFAULT_LLM = os.getenv("DEFAULT_LLM", "openai/gpt-4o-mini")
 
 # CORS configuration for cloud deployment
