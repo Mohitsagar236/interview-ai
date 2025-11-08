@@ -7,19 +7,22 @@
 
 const https = require('https');
 const http = require('http');
+const { app } = require('electron');
 
 class DesktopActivationManager {
     constructor() {
         // Session-only storage (clears on app restart)
         this.sessionData = null;
         
-        // Use production API URL
-        this.apiBaseUrl = process.env.NODE_ENV === 'production' 
+        // Use production API URL when app is packaged, localhost for development
+        const isProduction = app ? app.isPackaged : (process.env.NODE_ENV === 'production');
+        this.apiBaseUrl = isProduction 
             ? 'https://interviewai.space' 
             : 'http://localhost:3000';
         
         console.log('[Activation] Session-only activation manager initialized');
         console.log('[Activation] API URL:', this.apiBaseUrl);
+        console.log('[Activation] Is Packaged:', isProduction);
         console.log('[Activation] ⚠️ Activation required on every app launch');
     }
 
