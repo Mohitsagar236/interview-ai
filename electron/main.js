@@ -2879,10 +2879,12 @@ app.whenReady().then(async () => {
   }
 
   // Global shortcuts
+  console.log('[Shortcuts] Registering global keyboard shortcuts...');
+  
   try {
     // Quick capture shortcut
-    globalShortcut.register('CommandOrControl+Shift+C', async () => {
-      console.log('🔥 Quick capture triggered');
+    const captureRegistered = globalShortcut.register('CommandOrControl+Shift+C', async () => {
+      console.log('🔥 [Shortcut] Quick capture triggered (Ctrl+Shift+C)');
       try {
         const image = await captureScreen();
         if (image && mainWindow) {
@@ -2918,10 +2920,16 @@ app.whenReady().then(async () => {
         console.error('Quick capture failed:', error);
       }
     });
+    
+    if (!captureRegistered) {
+      console.error('❌ [Shortcuts] Failed to register Ctrl+Shift+C (may be in use by another app)');
+    } else {
+      console.log('✅ [Shortcuts] Ctrl+Shift+C registered');
+    }
 
     // Quick toggle stealth mode
-    globalShortcut.register('CommandOrControl+Shift+S', () => {
-      console.log('🔥 Quick stealth toggle triggered');
+    const stealthRegistered = globalShortcut.register('CommandOrControl+Shift+S', () => {
+      console.log('🔥 [Shortcut] Quick stealth toggle triggered (Ctrl+Shift+S)');
       const isStealthActive = overlayWindows.length > 0;
       
       if (isStealthActive) {
@@ -2943,12 +2951,16 @@ app.whenReady().then(async () => {
         mainWindow.webContents.send('stealth-toggled', !isStealthActive);
       }
     });
+    
+    if (!stealthRegistered) {
+      console.error('❌ [Shortcuts] Failed to register Ctrl+Shift+S (may be in use by another app)');
+    } else {
+      console.log('✅ [Shortcuts] Ctrl+Shift+S registered');
+    }
 
-    console.log('✅ Global shortcuts registered:');
-    console.log('   Ctrl+Shift+C: Quick screen capture');
-    console.log('   Ctrl+Shift+S: Toggle stealth mode');
     // Toggle compact toolbar (with credit check)
-    globalShortcut.register('CommandOrControl+Shift+T', () => {
+    const toolbarToggleRegistered = globalShortcut.register('CommandOrControl+Shift+T', () => {
+      console.log('🔥 [Shortcut] Toolbar toggle triggered (Ctrl+Shift+T)');
       // Check if user has credits before showing toolbar
       if (!authManager || !authManager.isAuthenticated()) {
         console.log('🔒 Cannot toggle toolbar - user not authenticated');
@@ -2965,18 +2977,31 @@ app.whenReady().then(async () => {
       const visible = toggleToolbarWindow();
       console.log(`🧰 Compact toolbar ${visible ? 'shown' : 'hidden'} via shortcut`);
     });
-    console.log('   Ctrl+Shift+T: Toggle compact toolbar');
+    
+    if (!toolbarToggleRegistered) {
+      console.error('❌ [Shortcuts] Failed to register Ctrl+Shift+T (may be in use by another app)');
+    } else {
+      console.log('✅ [Shortcuts] Ctrl+Shift+T registered');
+    }
+    
     // Minimize window
-    globalShortcut.register('CommandOrControl+M', () => {
+    const minimizeRegistered = globalShortcut.register('CommandOrControl+M', () => {
+      console.log('🔥 [Shortcut] Minimize triggered (Ctrl+M)');
       if (mainWindow && !mainWindow.isMinimized()) {
         mainWindow.minimize();
         console.log('🗕 Window minimized via shortcut');
       }
     });
-    console.log('   Ctrl+M: Minimize window');
+    
+    if (!minimizeRegistered) {
+      console.error('❌ [Shortcuts] Failed to register Ctrl+M (may be in use by another app)');
+    } else {
+      console.log('✅ [Shortcuts] Ctrl+M registered');
+    }
 
     // Toggle interviewer recording (system/output) shortcut
-    globalShortcut.register('CommandOrControl+Alt+I', () => {
+    const interviewerToggleRegistered = globalShortcut.register('CommandOrControl+Alt+I', () => {
+      console.log('🔥 [Shortcut] Interviewer toggle triggered (Ctrl+Alt+I)');
       try {
         if (toolbarWindow && !toolbarWindow.isDestroyed()) {
           toolbarWindow.webContents.send('toggle-interviewer-recording');
@@ -2988,13 +3013,19 @@ app.whenReady().then(async () => {
         console.error('Interviewer toggle shortcut failed:', e.message);
       }
     });
-    console.log('   Ctrl+Alt+I: Toggle interviewer recording');
+    
+    if (!interviewerToggleRegistered) {
+      console.error('❌ [Shortcuts] Failed to register Ctrl+Alt+I (may be in use by another app)');
+    } else {
+      console.log('✅ [Shortcuts] Ctrl+Alt+I registered');
+    }
 
     // Alternate quick toolbar visibility toggle (Ctrl+A)
     // NOTE: This overrides the typical Select All behavior at a global level.
     // If this proves disruptive, consider changing to a different combo.
     try {
       const registered = globalShortcut.register('CommandOrControl+A', () => {
+        console.log('🔥 [Shortcut] Toolbar toggle triggered (Ctrl+A)');
         try {
           // Check if user has credits before showing toolbar
           if (!authManager || !authManager.isAuthenticated()) {
@@ -3016,9 +3047,9 @@ app.whenReady().then(async () => {
         }
       });
       if (registered) {
-        console.log('   Ctrl+A: Toggle toolbar (alternate)');
+        console.log('✅ [Shortcuts] Ctrl+A registered (toolbar toggle)');
       } else {
-        console.warn('   Ctrl+A registration failed (already in use)');
+        console.error('❌ [Shortcuts] Ctrl+A registration failed (already in use)');
       }
     } catch (e) {
       console.error('Failed to register Ctrl+A shortcut:', e.message);
@@ -3027,6 +3058,7 @@ app.whenReady().then(async () => {
     // Toolbar DevTools toggle (Ctrl+Alt+D)
     try {
       const registeredDev = globalShortcut.register('CommandOrControl+Alt+D', () => {
+        console.log('🔥 [Shortcut] DevTools toggle triggered (Ctrl+Alt+D)');
         try {
           // Check authentication and credits before creating toolbar
           if (!authManager || !authManager.isAuthenticated()) {
@@ -3059,13 +3091,19 @@ app.whenReady().then(async () => {
         }
       });
       if (registeredDev) {
-        console.log('   Ctrl+Alt+D: Toggle toolbar DevTools');
+        console.log('✅ [Shortcuts] Ctrl+Alt+D registered (DevTools)');
       } else {
-        console.warn('   Ctrl+Alt+D registration failed (already in use)');
+        console.error('❌ [Shortcuts] Ctrl+Alt+D registration failed (already in use)');
       }
     } catch (e) {
       console.error('Failed to register Ctrl+Alt+D shortcut:', e.message);
     }
+    
+    // Summary of registered shortcuts
+    console.log('\n📋 [Shortcuts] Registration Summary:');
+    console.log('   Global shortcuts are registered and will work system-wide');
+    console.log('   If a shortcut doesn\'t work, it may be captured by Windows or another app');
+    console.log('   Check the console for "[Shortcut]" logs when pressing keys\n');
 
     // IPC handler to open toolbar devtools from renderer (e.g., F12 inside toolbar)
     try {
@@ -3096,6 +3134,35 @@ app.whenReady().then(async () => {
       });
     } catch (e) {
       console.error('Failed to register toolbar-open-devtools IPC:', e.message);
+    }
+    
+    // IPC handler to check registered shortcuts
+    try {
+      ipcMain.handle('check-shortcuts', () => {
+        try {
+          const shortcuts = [
+            'CommandOrControl+Shift+C',
+            'CommandOrControl+Shift+S',
+            'CommandOrControl+Shift+T',
+            'CommandOrControl+M',
+            'CommandOrControl+Alt+I',
+            'CommandOrControl+A',
+            'CommandOrControl+Alt+D'
+          ];
+          
+          const registered = shortcuts.map(shortcut => ({
+            shortcut,
+            registered: globalShortcut.isRegistered(shortcut)
+          }));
+          
+          console.log('[Shortcuts] Status check:', registered);
+          return { ok: true, shortcuts: registered };
+        } catch (e) {
+          return { ok: false, error: e.message };
+        }
+      });
+    } catch (e) {
+      console.error('Failed to register check-shortcuts IPC:', e.message);
     }
     
   } catch (error) {
