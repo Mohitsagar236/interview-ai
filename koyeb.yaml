@@ -19,7 +19,7 @@ services:
       type: nano  # Free tier (512 MB RAM)
     
     ports:
-      - port: 8765
+      - port: 8000
         protocol: http
     
     # Environment variables (set these in Koyeb dashboard)
@@ -27,7 +27,7 @@ services:
       - name: CLOUD_MODE
         value: "true"
       - name: PORT
-        value: "8765"
+        value: "8000"
       - name: HOST
         value: "0.0.0.0"
       - name: ALLOWED_ORIGINS
@@ -41,7 +41,7 @@ services:
     # Health check
     health_checks:
       - http:
-          port: 8765
+          port: 8000
           path: /health
     
     # Regions (choose one)
