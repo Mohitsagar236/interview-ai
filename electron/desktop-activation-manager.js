@@ -14,16 +14,18 @@ class DesktopActivationManager {
         // Session-only storage (clears on app restart)
         this.sessionData = null;
         
-        // Use production API URL when app is packaged, localhost for development
-        const isProduction = app ? app.isPackaged : (process.env.NODE_ENV === 'production');
+        // Use production API URL when app is packaged OR NODE_ENV is production
+        const isProduction = app ? (app.isPackaged || process.env.NODE_ENV === 'production') : (process.env.NODE_ENV === 'production');
         this.apiBaseUrl = isProduction 
             ? 'https://interviewai.space' 
             : 'http://localhost:3000';
         
         console.log('[Activation] Session-only activation manager initialized');
         console.log('[Activation] API URL:', this.apiBaseUrl);
-        console.log('[Activation] Is Packaged:', isProduction);
-        console.log('[Activation] ⚠️ Activation required on every app launch');
+        console.log('[Activation] Is Packaged:', app ? app.isPackaged : false);
+        console.log('[Activation] NODE_ENV:', process.env.NODE_ENV);
+        console.log('[Activation] Using Production:', isProduction);
+        console.log('[Activation] ⚠️  Activation required on every app launch');
     }
 
     /**

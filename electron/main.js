@@ -2838,11 +2838,19 @@ app.whenReady().then(async () => {
   
   createMainWindow();
   
-  // ALWAYS show activation window on startup (no persistent activation)
-  console.log('[Activation] Showing activation dialog (required on every launch)');
-  setTimeout(() => {
-    showActivationWindow();
-  }, 1000);
+  // Check if we should skip activation (for cloud/testing mode)
+  const skipActivation = process.env.SKIP_ACTIVATION === 'true' || process.env.NODE_ENV === 'production';
+  
+  if (skipActivation) {
+    console.log('[Activation] ⚠️ Skipping activation (SKIP_ACTIVATION=true or NODE_ENV=production)');
+    console.log('[Activation] App will run in cloud mode without activation checks');
+  } else {
+    // ALWAYS show activation window on startup (no persistent activation)
+    console.log('[Activation] Showing activation dialog (required on every launch)');
+    setTimeout(() => {
+      showActivationWindow();
+    }, 1000);
+  }
   
   startHeartbeat();
   // Unified permission handler: allow media + display-capture for system audio

@@ -14,8 +14,8 @@ class DesktopAuthManager {
             encryptionKey: 'interview-ai-desktop-auth-key' // In production, use obfuscated/env key
         });
         
-        // Use production API URL when app is packaged, localhost for development
-        const isProduction = app ? app.isPackaged : (process.env.NODE_ENV === 'production');
+        // Use production API URL when app is packaged OR NODE_ENV is production
+        const isProduction = app ? (app.isPackaged || process.env.NODE_ENV === 'production') : (process.env.NODE_ENV === 'production');
         this.apiBaseUrl = isProduction 
             ? 'https://interviewai.space' 
             : 'http://localhost:3000';

@@ -5,19 +5,19 @@
 
 const config = {
   development: {
-    // Development mode uses local Python server
-    serverUrl: 'ws://localhost:8765',
-    useLocalServer: true,
-    cloudMode: false,
+    // Development mode: Use local server by default for development
+    // Set USE_LOCAL_SERVER=false to test with cloud backend
+    serverUrl: process.env.USE_LOCAL_SERVER === 'false' ? 'wss://interview-ai-backend-mohitsagar236.koyeb.app' : 'ws://localhost:8765',
+    useLocalServer: process.env.USE_LOCAL_SERVER !== 'false',
+    cloudMode: process.env.USE_LOCAL_SERVER === 'false',
     enableDevTools: true,
     logLevel: 'debug'
   },
   
   production: {
-    // Production mode connects to cloud backend via custom domain
-    // Using api.interviewai.space (custom domain avoids firewall blocks)
-    // Koyeb automatically handles port routing, use standard wss:// (port 443)
-    serverUrl: process.env.SERVER_URL || 'wss://api.interviewai.space',
+    // Production mode connects to cloud backend via Koyeb
+    // Koyeb automatically handles port routing and SSL/TLS termination
+    serverUrl: process.env.SERVER_URL || 'wss://interview-ai-backend-mohitsagar236.koyeb.app',
     
     useLocalServer: false,
     cloudMode: true,
