@@ -20,7 +20,7 @@ services:
       - port: 8000
         protocol: http
     
-    # Environment variables (set these in Koyeb dashboard)
+    # Environment variables
     env:
       - name: CLOUD_MODE
         value: "true"
@@ -31,10 +31,111 @@ services:
       - name: ALLOWED_ORIGINS
         value: "*"
       
-      # Add these API keys in Koyeb dashboard (don't commit them here!)
-      # - name: OPENAI_API_KEY
-      # - name: DEEPGRAM_API_KEY
-      # - name: DEFAULT_LLM
+      # API Keys (IMPORTANT: Set these in Koyeb dashboard for security)
+      - name: OPENROUTER_API_KEY
+        value: "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"
+      - name: OPENAI_BASE_URL
+        value: "https://openrouter.ai/api/v1"
+      - name: DEFAULT_LLM
+        value: "openai/gpt-4o-mini"
+      - name: DEEPGRAM_API_KEY
+        value: "4bfe6cc554cfdef77f2adc9fc7d3ea140f10b24d"
+      
+      # Streaming Configuration
+      - name: USE_STREAMING_TRANSCRIPTION
+        value: "true"
+      - name: STREAMING_PROVIDER
+        value: "deepgram"
+      - name: STREAMING_SAMPLE_RATE
+        value: "16000"
+      - name: STREAMING_ENCODING
+        value: "linear16"
+      - name: STREAMING_CHANNELS
+        value: "1"
+      - name: STREAMING_INTERIM_RESULTS
+        value: "false"
+      - name: STREAMING_PUNCTUATE
+        value: "true"
+      - name: STREAMING_SMART_FORMAT
+        value: "true"
+      - name: STREAMING_LANGUAGE
+        value: "en-US"
+      - name: STREAMING_MODEL
+        value: "nova-2"
+      - name: STREAMING_VAD_EVENTS
+        value: "true"
+      - name: STREAMING_ENDPOINTING
+        value: "300"
+      
+      # AI Configuration
+      - name: AI_TEMPERATURE
+        value: "0.1"
+      - name: AI_MAX_TOKENS
+        value: "1500"
+      - name: AI_MAX_NEW_TOKENS
+        value: "1500"
+      - name: AI_CONTINUE_PASSES
+        value: "1"
+      
+      # Feature Flags
+      - name: AUTO_COACH_ENABLED
+        value: "false"
+      - name: STREAM_CHUNK_MODE
+        value: "fast"
+      - name: STREAM_FORCE_YIELD_SECONDS
+        value: "0.01"
+      - name: STREAM_BUFFER_THRESHOLD
+        value: "1"
+      - name: ENABLE_MODEL_ROUTING
+        value: "true"
+      - name: ENABLE_ENHANCED_RAG
+        value: "true"
+      - name: ENABLE_CONFIDENCE_SCORING
+        value: "true"
+      - name: AUTO_RETRY_LOW_CONFIDENCE
+        value: "false"
+      - name: BUDGET_MODE
+        value: "false"
+      - name: MAX_COST_PER_REQUEST
+        value: "0.10"
+      - name: ENABLE_DUPLICATE_DETECTION
+        value: "true"
+      - name: ENABLE_POSTPROCESSING
+        value: "true"
+      - name: ENABLE_ENHANCED_CONFIDENCE
+        value: "true"
+      - name: ANSWER_RELEVANCE_ENFORCEMENT
+        value: "1"
+      - name: TRANSCRIPTION_HISTORY_MODE
+        value: "off"
+      - name: CAPTURE_HISTORY_MODE
+        value: "off"
+      - name: AUTO_STRICT_COACH
+        value: "1"
+      - name: DISABLE_HISTORY_FOR_COACH
+        value: "1"
+      - name: ISOLATE_CURRENT_QUESTION
+        value: "1"
+      
+      # Supabase Configuration
+      - name: SUPABASE_URL
+        value: "https://npdysfxewryqcmmztdxl.supabase.co"
+      - name: SUPABASE_ANON_KEY
+        value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wZHlzZnhld3J5cWNtbXp0ZHhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzNzMyMjUsImV4cCI6MjA3Nzk0OTIyNX0.WsEnKex2VNpY-uKB5oVjK9iEK7Ce1o1dfRWLE5z2nIc"
+      - name: SUPABASE_SERVICE_KEY
+        value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wZHlzZnhld3J5cWNtbXp0ZHhsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjM3MzIyNSwiZXhwIjoyMDc3OTQ5MjI1fQ.EH-T6rww0phbKYSYwGVtQG4hgbI-J5NP5F5lSrp3y98"
+      
+      # Razorpay Configuration
+      - name: RAZORPAY_KEY_ID
+        value: "rzp_test_RcEI8dtQ84PUHn"
+      - name: RAZORPAY_KEY_SECRET
+        value: "ZIPXEyFC1UCLvQzEOT98DG4H"
+      
+      # OpenRouter Attribution
+      - name: OPENROUTER_SITE_URL
+        value: "http://localhost"
+      - name: OPENROUTER_SITE_NAME
+        value: "Interview AI Assistant"
     
     # Health check
     health_checks:
