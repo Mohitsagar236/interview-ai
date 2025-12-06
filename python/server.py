@@ -3981,7 +3981,9 @@ async def process_request(path, request_headers):
     if path in ("/health", "/"):
         # Check if this is a regular HTTP GET request (not WebSocket upgrade)
         upgrade_header = request_headers.get("Upgrade", "").lower()
+        # Log debug info for non-upgrade requests so we can differentiate health checks vs bad HTTP
         if upgrade_header != "websocket":
+            logger.debug("process_request: responding HTTP 200 for path=%s, Upgrade=%s, remote=%s", path, upgrade_header, request_headers.get('X-Forwarded-For') or request_headers.get('Host'))
             # Return HTTP response for health check
             health_data = json.dumps({
                 "status": "healthy",
