@@ -6,11 +6,9 @@ app:
   
 services:
   - name: backend
-    # Docker build configuration (CRITICAL: must use Docker, not buildpacks)
+    # Buildpack deployment (no Docker required)
     build:
-      type: docker
-      dockerfile: Dockerfile
-      context: .
+      type: buildpack
       buildpack:
         run_command: "python python/start_server.py"
     

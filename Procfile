@@ -1,2 +1,2 @@
-# Heroku/Railway Procfile
-web: python python/server.py
+# Koyeb/Heroku/Railway Procfile
+web: python python/start_server.py
