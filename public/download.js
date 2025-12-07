@@ -5,24 +5,15 @@
     }
     window.__downloadPageLoaded = true;
 
-    // Download URLs - Direct links to GitHub releases
-    const DOWNLOAD_URLS = {
-        windows: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/Interview.AI.Setup.0.1.0.exe',
-        mac: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/Interview-AI-0.1.0.dmg',
-        linux: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/interview-ai-0.1.0.AppImage'
-    };
-
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
         setupThemeToggle();
         detectPlatform();
     });
 
-    // Download function - Direct download from Vercel
+    // Download function - Uses proxy to avoid GitHub redirect issues
     window.downloadApp = function(platform) {
-        const url = DOWNLOAD_URLS[platform];
-        
-        if (!url) {
+        if (!platform) {
             showToast('Download not available for this platform yet');
             return;
         }
@@ -30,10 +21,13 @@
         // Show download toast
         showToast('Your download will begin shortly...');
 
-        // Direct download - no proxy needed for Vercel-hosted files
+        // Use our proxy endpoint to download from GitHub
+        const proxyUrl = `/api/download?platform=${platform}`;
+        
+        // Trigger download
         const link = document.createElement('a');
-        link.href = url;
-        link.download = ''; // Let browser determine filename
+        link.href = proxyUrl;
+        link.download = ''; // Browser will use filename from Content-Disposition header
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
