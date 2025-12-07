@@ -11,7 +11,7 @@
         detectPlatform();
     });
 
-    // Download function - Uses proxy to avoid GitHub redirect issues
+    // Download function - Uses proxy endpoint with direct GitHub fallback
     window.downloadApp = function(platform) {
         if (!platform) {
             showToast('Download not available for this platform yet');
@@ -21,18 +21,22 @@
         // Show download toast
         showToast('Your download will begin shortly...');
 
-        // Use our proxy endpoint to download from GitHub
-        const proxyUrl = `/api/download?platform=${platform}`;
+        // Use our API endpoint which redirects to GitHub release
+        const downloadUrl = `/api/download?platform=${platform}`;
         
-        // Trigger download
+        // Create invisible link and trigger download
         const link = document.createElement('a');
-        link.href = proxyUrl;
-        link.download = ''; // Browser will use filename from Content-Disposition header
+        link.href = downloadUrl;
+        link.style.display = 'none';
         document.body.appendChild(link);
         link.click();
-        document.body.removeChild(link);
+        
+        // Clean up after a delay
+        setTimeout(() => {
+            document.body.removeChild(link);
+        }, 100);
 
-        // Track download (optional)
+        // Track download
         trackDownload(platform);
     };
 
