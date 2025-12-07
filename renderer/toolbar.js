@@ -2289,11 +2289,34 @@
   // Audio helpers removed: handled inside AudioWorklet (audio-level-processor.js)
 
   async function connectAudioSocket() {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       try {
-        const port = state.serverPort || 8765;
-        console.log("[Audio] Opening audio WebSocket to port", port, "...");
-        state.audioWs = new WebSocket(`ws://localhost:${port}/audio`);
+        // Determine audio endpoint based on mode
+        let audioUrl;
+        
+        // Get config to check if cloud mode is enabled
+        let config = null;
+        try {
+          if (window.electronAPI && window.electronAPI.getConfig) {
+            config = await window.electronAPI.getConfig();
+          }
+        } catch (e) {
+          console.log("[Audio] Could not get config:", e);
+        }
+        
+        // In cloud mode, use the cloud server's audio endpoint
+        if (config && config.cloudMode && config.serverUrl) {
+          // Convert https:// to wss:// or http:// to ws://
+          audioUrl = config.serverUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:') + '/audio';
+          console.log("[Audio] Cloud mode - connecting to:", audioUrl);
+        } else {
+          // Local mode - use localhost
+          const port = state.serverPort || 8765;
+          audioUrl = `ws://localhost:${port}/audio`;
+          console.log("[Audio] Local mode - opening audio WebSocket to port", port, "...");
+        }
+        
+        state.audioWs = new WebSocket(audioUrl);
         state.audioWs.binaryType = "arraybuffer";
         state.audioWs.onopen = () => {
           console.log("[Audio] Audio WebSocket OPEN");
