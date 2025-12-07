@@ -986,6 +986,8 @@ async def handle_ui(ws):
     # Generate unique session ID for this connection
     import uuid
     session_id = str(uuid.uuid4())
+    user_id = None  # Will be set from first message containing user_id
+    
     ui_clients[session_id] = ws
     client_sessions[ws] = session_id
     
@@ -999,6 +1001,12 @@ async def handle_ui(ws):
                 if not message:
                     continue
                 msg = json.loads(message)
+                
+                # CRITICAL: Extract user_id from message (sent by desktop app)
+                if "user_id" in msg and not user_id:
+                    user_id = msg.get("user_id")
+                    logger.info(f"[Session {session_id}] User identified: {user_id}")
+                
                 # Support both 'type' and older 'action' keys
                 mtype = msg.get("type") or msg.get("action")
                 
@@ -1016,7 +1024,7 @@ async def handle_ui(ws):
                     llm = DEFAULT_LLM
                     facts = msg.get("facts", "")
                     context_type = msg.get("contextType", "general")  # Get context type from client
-                    await stream_llm(llm, facts, context_type=context_type)
+                    await stream_llm(llm, facts, context_type=context_type, session_id=session_id)
                 elif mtype == "ocr":
                     # Run OCR in thread pool to avoid blocking the event loop
                     try:
