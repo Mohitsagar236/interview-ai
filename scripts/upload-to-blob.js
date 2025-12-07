@@ -17,6 +17,7 @@ async function uploadInstaller(filePath, token) {
   const blob = await put(fileName, fileBuffer, {
     access: 'public',
     token: token,
+    'allowOverwrite': 'true',  // Allow overwriting existing files (correct param name)
   });
   
   console.log(`✅ Uploaded: ${blob.url}`);
