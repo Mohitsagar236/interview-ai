@@ -3,11 +3,13 @@
  * Manages environment-specific settings for development vs production
  */
 
+const { app } = require('electron');
+
 const config = {
   development: {
     // Development mode: Use local server by default for development
     // Set USE_LOCAL_SERVER=false to test with cloud backend
-    serverUrl: process.env.USE_LOCAL_SERVER === 'false' ? 'wss://interview-ai-backend-mohitsagar236.koyeb.app' : 'ws://localhost:8765',
+    serverUrl: process.env.USE_LOCAL_SERVER === 'false' ? 'wss://api.interviewai.space' : 'ws://localhost:8765',
     useLocalServer: process.env.USE_LOCAL_SERVER !== 'false',
     cloudMode: process.env.USE_LOCAL_SERVER === 'false',
     enableDevTools: true,
@@ -15,9 +17,9 @@ const config = {
   },
   
   production: {
-    // Production mode connects to cloud backend via Koyeb
+    // Production mode ALWAYS connects to cloud backend via Koyeb
     // Koyeb automatically handles port routing and SSL/TLS termination
-    serverUrl: process.env.SERVER_URL || 'wss://interview-ai-backend-mohitsagar236.koyeb.app',
+    serverUrl: 'wss://api.interviewai.space',
     
     useLocalServer: false,
     cloudMode: true,
@@ -40,12 +42,14 @@ const config = {
 };
 
 // Determine current environment
-const env = process.env.NODE_ENV || 'development';
+// IMPORTANT: When packaged, always use production mode (cloud backend)
+const env = (app && app.isPackaged) ? 'production' : (process.env.NODE_ENV || 'development');
 
 // Export the appropriate configuration
 const currentConfig = config[env] || config.development;
 
 console.log(`[CONFIG] Running in ${env} mode`);
+console.log(`[CONFIG] Is Packaged: ${app && app.isPackaged}`);
 console.log(`[CONFIG] Server URL: ${currentConfig.serverUrl}`);
 console.log(`[CONFIG] Cloud Mode: ${currentConfig.cloudMode}`);
 

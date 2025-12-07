@@ -5,7 +5,7 @@ console.log('\n========================================');
 console.log('TESTING CLOUD BACKEND CONNECTION');
 console.log('========================================\n');
 
-const cloudUrl = 'wss://interview-ai.breakable-benny.koyeb.app';
+const cloudUrl = 'wss://interview-ai-backend-mohitsagar236.koyeb.app/ui';
 
 console.log(`Connecting to: ${cloudUrl}...`);
 
