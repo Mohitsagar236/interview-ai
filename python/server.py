@@ -264,7 +264,16 @@ PORT = int(os.getenv('PORT') or '8765')
 DEFAULT_LLM = os.getenv("DEFAULT_LLM", "openai/gpt-4o-mini")
 
 # CORS configuration for cloud deployment
-ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', '*').split(',') if CLOUD_MODE else None
+# If ALLOWED_ORIGINS is '*', set to None to accept all origins
+# Otherwise split comma-separated origins
+origins_env = os.getenv('ALLOWED_ORIGINS', '*')
+if CLOUD_MODE:
+    if origins_env == '*':
+        ALLOWED_ORIGINS = None  # None means accept all origins
+    else:
+        ALLOWED_ORIGINS = origins_env.split(',')
+else:
+    ALLOWED_ORIGINS = None
 
 # Log deployment mode
 if CLOUD_MODE:
@@ -4033,9 +4042,14 @@ async def main():
             logger.warning("Invalid WS_PING_* env values; using defaults")
 
         # Add CORS origins support for cloud deployment
-        if CLOUD_MODE and ALLOWED_ORIGINS:
-            logger.info("Setting allowed WebSocket origins: %s", ALLOWED_ORIGINS)
-            kwargs['origins'] = ALLOWED_ORIGINS
+        # If ALLOWED_ORIGINS is None, the websockets library accepts all origins
+        # If it's a list, only those origins are allowed
+        if CLOUD_MODE:
+            if ALLOWED_ORIGINS is None:
+                logger.info("Setting allowed WebSocket origins: all origins (*)")
+            else:
+                logger.info("Setting allowed WebSocket origins: %s", ALLOWED_ORIGINS)
+                kwargs['origins'] = ALLOWED_ORIGINS
 
         # Add process_request handler for HTTP health checks
         kwargs['process_request'] = process_request
