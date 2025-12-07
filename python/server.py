@@ -692,6 +692,34 @@ def process_ocr_image(image_bytes: bytes) -> str:
                 best_label,
                 best_config,
             )
+            
+            # Enhance with visual content detection
+            try:
+                img_array = np.array(img_gray)
+                edges = auto_contrast.filter(ImageFilter.FIND_EDGES)
+                edge_array = np.array(edges)
+                edge_ratio = np.count_nonzero(edge_array > 30) / edge_array.size
+                img_rgb_array = np.array(img_raw)
+                color_variance = np.var(img_rgb_array)
+                
+                # Detect visual elements
+                if edge_ratio > 0.15 or color_variance > 2000:
+                    content_types = []
+                    if edge_ratio > 0.25:
+                        content_types.append("diagram or flowchart")
+                    elif edge_ratio > 0.15:
+                        content_types.append("chart or graph")
+                    if color_variance > 5000:
+                        content_types.append("colorful image")
+                    elif color_variance > 2000 and not content_types:
+                        content_types.append("visual content")
+                    
+                    if content_types:
+                        visual_note = f"\n\n[Visual Analysis: The screen capture contains {' and '.join(content_types)}. The above text was extracted via OCR, but visual elements are also present in the image.]"
+                        best_text += visual_note
+                        logger.info(f"Visual content detected: {', '.join(content_types)}")
+            except Exception as e:
+                logger.debug(f"Visual content detection failed: {e}")
         else:
             logger.warning("OCR extracted no text")
 
@@ -796,7 +824,12 @@ def is_garbled_text(text: str) -> bool:
     return False
 
 
-async def handle_auto_answer_after_capture(text: str, source: str):
+async def handle_auto_answer_after_capture(text: str, source: str, session_id: str = None):
+    """Automatically trigger AI answer after capturing text (OCR/transcript/etc).
+    
+    Args:
+        session_id: WebSocket session ID for user isolation (if None, broadcasts to all)
+    """
     """
     Centralized handler for auto-answering after screen capture.
     Prevents duplicate responses and improves garbled text detection.
@@ -846,20 +879,20 @@ async def handle_auto_answer_after_capture(text: str, source: str):
         if q:
             # Question detected - answer it
             logger.info(f"Auto-triggering AI for detected question from {source}: {q[:100]}...")
-            broadcast_sync({"type": "coach", "text": "", "reset": True})
-            await stream_llm(DEFAULT_LLM, q, out_type="coach", mode="coach", strict=False, context_type="capture")
+            broadcast_sync({"type": "coach", "text": "", "reset": True}, session_id=session_id)
+            await stream_llm(DEFAULT_LLM, q, out_type="coach", mode="coach", strict=False, context_type="capture", session_id=session_id)
         elif len(text.strip()) > 50:
             # No clear question, but substantial content
             logger.info(f"Auto-triggering AI to answer based on captured content from {source}...")
-            broadcast_sync({"type": "coach", "text": "", "reset": True})
+            broadcast_sync({"type": "coach", "text": "", "reset": True}, session_id=session_id)
             # Pass the content directly
-            await stream_llm(DEFAULT_LLM, text[:2000], out_type="coach", mode="coach", strict=False, context_type="capture")
+            await stream_llm(DEFAULT_LLM, text[:2000], out_type="coach", mode="coach", strict=False, context_type="capture", session_id=session_id)
         elif is_capture_mode and len(text.strip()) > 10:
             # For capture mode, provide analysis even for shorter text
             logger.info(f"Auto-triggering AI for short capture content from {source} (capture mode)...")
-            broadcast_sync({"type": "coach", "text": "", "reset": True})
+            broadcast_sync({"type": "coach", "text": "", "reset": True}, session_id=session_id)
             prompt = f"Please analyze this captured text and provide helpful insights or answer any questions you can identify:\n\n{text[:1000]}"
-            await stream_llm(DEFAULT_LLM, prompt, out_type="coach", mode="coach", strict=False, context_type="capture")
+            await stream_llm(DEFAULT_LLM, prompt, out_type="coach", mode="coach", strict=False, context_type="capture", session_id=session_id)
         else:
             logger.info(f"Captured text from {source} too short (<{10 if is_capture_mode else 50} chars) - skipping auto-answer")
     
@@ -1050,7 +1083,7 @@ async def handle_ui(ws):
                                     "stage": "received",
                                     "bytes": len(arr),
                                     "captureIndex": msg.get("captureIndex"),
-                                })
+                                }, session_id=session_id)
                             except Exception:
                                 pass
                         
@@ -1061,8 +1094,13 @@ async def handle_ui(ws):
                         # If improved processor / legacy returned install guidance, pass through
                         raw_text = text or ""
                         t_lower = raw_text.lower()
+                        
+                        # Flag to track if we should send helpful troubleshooting tips
+                        send_troubleshooting_response = False
+                        
                         if not raw_text.strip():
-                            # Provide user-facing hints when extraction is blank
+                            # No text detected - prepare troubleshooting tips
+                            send_troubleshooting_response = True
                             hints = [
                                 "No text detected from screen capture.",
                                 "Tips:",
@@ -1085,7 +1123,7 @@ async def handle_ui(ws):
                                     "stage": "processed",
                                     "empty": not bool(raw_text.strip()),
                                     "length": len(raw_text),
-                                })
+                                }, session_id=session_id)
                             except Exception:
                                 pass
                         
@@ -1286,23 +1324,66 @@ async def handle_ui(ws):
                             except Exception as retry_e:
                                 logger.warning(f"Windows capture retry failed: {retry_e}")
 
+                        # Send OCR result back to client
+                        ocr_response = {
+                            "type": "ocr_result" if structured else "ocr",
+                            "text": text or "",
+                            "captureIndex": capture_index,
+                            "totalCaptures": len(captured_ocr_texts)
+                        }
+                        
+                        if structured:
+                            ocr_response["structured"] = structured
+                        
+                        if meta:
+                            ocr_response["meta"] = meta
+                        
+                        await broadcast(ocr_response, session_id=session_id)
+                        logger.info(f"[OCR] Sent result to session {session_id}: {len(text or '')} chars")
+
                         # Auto-trigger AI response after capture
                         # Enable by default - AI will automatically analyze captured content
                         auto_coach_on_capture = os.getenv("AUTO_COACH_ON_CAPTURE", "1").lower() in ("1", "true", "yes", "on")
                         
-                        if auto_coach_on_capture and text and text.strip():
-                            await handle_auto_answer_after_capture(text, "ocr")
+                        if auto_coach_on_capture:
+                            if send_troubleshooting_response:
+                                # When no text detected, provide helpful troubleshooting guidance via AI
+                                logger.info("[OCR] No text detected - triggering AI troubleshooting response")
+                                broadcast_sync({"type": "coach", "text": "", "reset": True}, session_id=session_id)
+                                
+                                troubleshooting_prompt = """The screen capture OCR detected no text. Please provide a helpful response addressing this issue with the following talking points:
+
+• Increase Capture Area: Ensure that the capture area is sufficiently large to encompass the entire text. A larger area can help improve OCR accuracy.
+
+• Avoid Small Selections: Make sure that the selection is not too small. The longest side of the capture should be greater than approximately 1200 pixels after any upscaling.
+
+• Check Color Contrast: If using a dark mode IDE, switch to a light theme or zoom in to improve contrast. High contrast between text and background can aid in better text detection.
+
+• Disable Fast Mode: Set OCR_FAST_MODE=0 in the environment configuration file (.env) and restart the application for a deeper scan.
+
+• Verify Tesseract Installation: Confirm that Tesseract is properly installed on the system. You can check this by running 'tesseract' in the command prompt.
+
+• Set TESSERACT_CMD: If Tesseract is installed but not recognized, ensure that the TESSERACT_CMD variable is set correctly in the environment.
+
+• Enable Debugging: Turn on debugging by setting OCR_DEBUG=1 to see the preprocessing status, which can provide insights into what might be going wrong.
+
+Please provide specific, actionable steps to resolve the OCR text detection issue."""
+                                
+                                await stream_llm(DEFAULT_LLM, troubleshooting_prompt, out_type="coach", mode="coach", strict=False, context_type="capture", session_id=session_id)
+                            elif text and text.strip():
+                                # Normal case: text was detected, analyze it
+                                await handle_auto_answer_after_capture(text, "ocr", session_id=session_id)
                     except Exception as e:
                         logger.exception("OCR error")
                         error_msg = str(e)
                         if "tesseract is not installed" in error_msg.lower() or "tesseractnotfounderror" in str(type(e)).lower():
                             install_msg = "[Tesseract is required for OCR. Please install from: https://github.com/UB-Mannheim/tesseract/wiki. Be sure to check 'Add to PATH' during installation. After installing, restart the application.]"
-                            await broadcast({"type": "ocr", "text": install_msg})
+                            await broadcast({"type": "ocr", "text": install_msg}, session_id=session_id)
                         elif "file not found" in error_msg.lower() or "the system cannot find the file" in error_msg.lower():
                             path_msg = "[Tesseract was found, but couldn't be executed. Make sure it's properly installed and added to PATH. Restart the application after installation.]"
-                            await broadcast({"type": "ocr", "text": path_msg})
+                            await broadcast({"type": "ocr", "text": path_msg}, session_id=session_id)
                         else:
-                            await broadcast({"type": "ocr", "text": f"[OCR error: {e}]"})
+                            await broadcast({"type": "ocr", "text": f"[OCR error: {e}]"}, session_id=session_id)
                 elif mtype == "windows_capture":
                     # Windows native screen capture for restricted applications
                     try:
@@ -1310,7 +1391,7 @@ async def handle_ui(ws):
                             await broadcast({
                                 "type": "ocr",
                                 "text": "[Windows native capture not available. Install pywin32: pip install pywin32]"
-                            })
+                            }, session_id=session_id)
                         else:
                             monitor_index = msg.get("monitor", 0)
                             window_title = msg.get("window_title")
@@ -1354,7 +1435,7 @@ async def handle_ui(ws):
                                     "captureIndex": capture_index,
                                     "totalCaptures": len(captured_ocr_texts),
                                     "method": result.get('method', 'windows')
-                                })
+                                }, session_id=session_id)
                                 
                                 logger.info(f"✅ Windows capture successful: {len(text or '')} characters extracted")
                                 
@@ -1362,15 +1443,15 @@ async def handle_ui(ws):
                                 auto_coach_on_capture = os.getenv("AUTO_COACH_ON_CAPTURE", "1").lower() in ("1", "true", "yes", "on")
                                 
                                 if auto_coach_on_capture and text and text.strip():
-                                    await handle_auto_answer_after_capture(text, "windows")
+                                    await handle_auto_answer_after_capture(text, "windows", session_id=session_id)
                             else:
                                 await broadcast({
                                     "type": "ocr",
                                     "text": "[Windows capture failed - see logs for details]"
-                                })
+                                }, session_id=session_id)
                     except Exception as e:
                         logger.exception("Windows capture error")
-                        await broadcast({"type": "ocr", "text": f"[Windows capture error: {e}]"})
+                        await broadcast({"type": "ocr", "text": f"[Windows capture error: {e}]"}, session_id=session_id)
                 elif mtype == "list_windows":
                     # List available windows for capture
                     try:
@@ -1379,20 +1460,20 @@ async def handle_ui(ws):
                                 "type": "windows_list",
                                 "windows": [],
                                 "error": "Windows capture not available"
-                            })
+                            }, session_id=session_id)
                         else:
                             windows = get_available_windows()
                             await broadcast({
                                 "type": "windows_list",
                                 "windows": [{"title": w["title"], "hwnd": w["hwnd"]} for w in windows[:50]]  # Limit to 50
-                            })
+                            }, session_id=session_id)
                     except Exception as e:
                         logger.exception("List windows error")
                         await broadcast({
                             "type": "windows_list",
                             "windows": [],
                             "error": str(e)
-                        })
+                        }, session_id=session_id)
                 elif mtype == "resume":
                     # Accept resume as (name, data bytes) or (filename/content base64)
                     name = msg.get("name") or msg.get("filename") or "resume.txt"
@@ -1406,19 +1487,19 @@ async def handle_ui(ws):
                     else:
                         txt = msg.get("text") or msg.get("resume_text") or ""
                         raw = txt.encode("utf-8", errors="ignore")
-                    await ingest_resume(str(name), raw)
+                    await ingest_resume(str(name), raw, session_id=session_id)
                 elif mtype == "context" and msg.get("context_kind") == "company":
                     # Store company brief details so AI can use them for follow-ups
                     try:
                         formatted = format_company_brief(msg)
                         if not formatted:
-                            await broadcast({"type": "context_ack", "context_kind": "company", "success": False, "error": "No company details supplied"})
+                            await broadcast({"type": "context_ack", "context_kind": "company", "success": False, "error": "No company details supplied"}, session_id=session_id)
                         else:
                             await ingest_company_brief(formatted)
-                            await broadcast({"type": "context_ack", "context_kind": "company", "success": True})
+                            await broadcast({"type": "context_ack", "context_kind": "company", "success": True}, session_id=session_id)
                     except Exception as e:
                         logger.exception("Failed processing company context")
-                        await broadcast({"type": "context_ack", "context_kind": "company", "success": False, "error": str(e)})
+                        await broadcast({"type": "context_ack", "context_kind": "company", "success": False, "error": str(e)}, session_id=session_id)
                 elif mtype == "parse_resume":
                     # Handle the simpler resume parsing format for testing
                     try:
@@ -1426,12 +1507,12 @@ async def handle_ui(ws):
                         if resume_text:
                             # Process the resume text (simplified for testing)
                             chunks = [resume_text]
-                            await broadcast({"type": "resume_parsed", "success": True, "text": f"Processed {len(chunks)} resume chunks"})
+                            await broadcast({"type": "resume_parsed", "success": True, "text": f"Processed {len(chunks)} resume chunks"}, session_id=session_id)
                         else:
-                            await broadcast({"type": "resume_parsed", "success": False, "error": "No resume text provided"})
+                            await broadcast({"type": "resume_parsed", "success": False, "error": "No resume text provided"}, session_id=session_id)
                     except Exception as e:
                         logger.exception(f"Resume parsing error: {e}")
-                        await broadcast({"type": "resume_parsed", "success": False, "error": str(e)})
+                        await broadcast({"type": "resume_parsed", "success": False, "error": str(e)}, session_id=session_id)
                 elif mtype == "coach":
                     # Manual coach trigger optionally with provided question
                     q = msg.get("question") or ""
@@ -1550,7 +1631,7 @@ async def handle_ui(ws):
                             logger.exception(f"Error processing uploaded file: {e}")
                             file_context = f"\n\n[Error processing file: {str(e)}]"
                             # Send error notification to client
-                            await broadcast({"type": "error", "message": f"Failed to process file: {str(e)}"})
+                            await broadcast({"type": "error", "message": f"Failed to process file: {str(e)}"}, session_id=session_id)
 
                     use_capture_context = question_channel in ("capture", "ocr")
                     use_transcript_context = question_channel in ("transcription", "transcript", "speech")
@@ -1740,7 +1821,7 @@ async def handle_ui(ws):
                     
                     # Send status update to UI with source information
                     if file_context:
-                        await broadcast({"type": "status", "message": "Processing uploaded file and generating response..."})
+                        await broadcast({"type": "status", "message": "Processing uploaded file and generating response..."}, session_id=session_id)
                     
                     # Send context type information to UI for labeling
                     context_label = {
@@ -1773,7 +1854,7 @@ async def handle_ui(ws):
                     # Clear all captured OCR texts
                     captured_ocr_texts = []
                     logger.info("Cleared all captured OCR texts")
-                    await broadcast({"type": "captures_cleared"})
+                    await broadcast({"type": "captures_cleared"}, session_id=session_id)
                 elif mtype == "clear_conversation":
                     # Clear conversation history for specified mode or all modes
                     global conversation_history
@@ -1815,19 +1896,19 @@ async def handle_ui(ws):
                                 partial_text = partial_text[-800:]
                     except Exception:
                         pass
-                    await broadcast({"type": "status", "data": {"audio": "stopped"}})
+                    await broadcast({"type": "status", "data": {"audio": "stopped"}}, session_id=session_id)
                 elif mtype == "set_speaker":
                     # Update the current speaker
                     speaker = msg.get("speaker", "user1") 
                     current_speaker = speaker
-                    await broadcast({"type": "status", "data": {"speaker": speaker}})
+                    await broadcast({"type": "status", "data": {"speaker": speaker}}, session_id=session_id)
                 elif mtype == "listen_student":
                     # Toggle listening to student's utterances
                     enabled = bool(msg.get("enabled", False))
                     listen_student_enabled = enabled
                     logger.info(f"Listen student toggle: {listen_student_enabled}")
                     await asyncio.sleep(0)  # flush event loop
-                    await broadcast({"type": "status", "data": {"listen_student": listen_student_enabled}})
+                    await broadcast({"type": "status", "data": {"listen_student": listen_student_enabled}}, session_id=session_id)
                 elif mtype == "ai_status":
                     # Return AI provider status
                     await ensure_ai_initialized()
@@ -1860,7 +1941,12 @@ async def handle_ui(ws):
         logger.info(f"[Session] Cleaned up session: {session_id}")
 
 
-async def ingest_resume(name: str, raw: bytes):
+async def ingest_resume(name: str, raw: bytes, session_id: str = None):
+    """Ingest a resume file.
+    
+    Args:
+        session_id: WebSocket session ID for user isolation (if None, broadcasts to all)
+    """
     text = ""
     try:
         if name.lower().endswith(".pdf"):
@@ -1873,7 +1959,7 @@ async def ingest_resume(name: str, raw: bytes):
             text = raw.decode("utf-8", errors="ignore")
     except Exception as e:
         logger.exception("Resume parse error: %s", e)
-        await broadcast({"type": "resume", "text": f"[Resume parse error: {e}]"})
+        await broadcast({"type": "resume", "text": f"[Resume parse error: {e}]"}, session_id=session_id)
         return
 
     # Basic cleanup
@@ -1898,7 +1984,7 @@ async def ingest_resume(name: str, raw: bytes):
     if len(chunks) > 1500:
         chunks = chunks[:1500]
     if not chunks:
-        await broadcast({"type": "resume", "text": "[Resume contains no extractable text]"})
+        await broadcast({"type": "resume", "text": "[Resume contains no extractable text]"}, session_id=session_id)
         return
     global SentenceTransformer, embedder, index, emb_texts, emb_matrix
     try:
@@ -1921,12 +2007,12 @@ async def ingest_resume(name: str, raw: bytes):
                 emb_matrix = np.vstack([emb_matrix, vecs])
         emb_texts.extend(chunks)
         logger.info("Ingested %d resume chunks", len(chunks))
-        await broadcast({"type": "resume", "text": f"Ingested {len(chunks)} resume chunks"})
+        await broadcast({"type": "resume", "text": f"Ingested {len(chunks)} resume chunks"}, session_id=session_id)
     except Exception as e:
         # Fallback when embeddings are unavailable; still store text for minimal context
         logger.warning("Embedding unavailable, storing resume text only: %s", e)
         emb_texts.extend(chunks)
-        await broadcast({"type": "resume", "text": f"Ingested {len(chunks)} resume chunks (no embeddings)"})
+        await broadcast({"type": "resume", "text": f"Ingested {len(chunks)} resume chunks (no embeddings)"}, session_id=session_id)
 
 
 async def ingest_company_brief(text: str):
@@ -3010,7 +3096,7 @@ async def stream_llm(
             "reset": True,
             "contextType": context_type,
             "contextLabel": context_label
-        })
+        }, session_id=session_id)
         
         collected: List[str] = []
         truncated_by_length = False
@@ -3033,7 +3119,7 @@ async def stream_llm(
                     logger.info(f"🔥 Broadcasting token #{token_count}: '{token[:30]}'")
                 
                 # Broadcast immediately - CRITICAL for responsiveness
-                broadcast_sync({"type": out_type, "text": token})
+                broadcast_sync({"type": out_type, "text": token}, session_id=session_id)
                 
                 # Force event loop yield every token (not just every 5)
                 # This ensures WebSocket sends aren't blocked
@@ -3112,7 +3198,7 @@ async def stream_llm(
                     "confidence": confidence_value,
                     "confidence_label": confidence_label,
                     "question_type": question_type
-                })
+                }, session_id=session_id)
                 
                 # Auto-retry on very low confidence (if enabled)
                 if (confidence_label == "Low" and confidence_value < 0.3 and
@@ -3364,7 +3450,7 @@ async def stream_llm(
         # This ensures we never send duplicate completion signals
         if not completion_sent:
             logger.info(f"🏁 Sending completion signal for {out_type}")
-            broadcast_sync({"type": out_type, "text": "", "complete": True})
+            broadcast_sync({"type": out_type, "text": "", "complete": True}, session_id=session_id)
             completion_sent = True
         else:
             logger.info(f"⏭️ Skipping completion signal (already sent for {out_type})")
@@ -3411,7 +3497,7 @@ async def stream_llm(
                         {"role": "system", "content": "Continue the prior answer seamlessly. Only provide the missing remainder. Do NOT repeat previously sent content."},
                         {"role": "user", "content": f"Tail context to continue from (do not repeat):\n{continuation_user}\n\nContinue:"}
                     ]
-                    broadcast_sync({"type": out_type, "text": "", "reset": False, "continuation_pass": passes})
+                    broadcast_sync({"type": out_type, "text": "", "reset": False, "continuation_pass": passes}, session_id=session_id)
                     cont_gen = generate_ai_response_for(llm_id, cont_messages) if use_override else generate_ai_response(cont_messages)
                     cont_collected: List[str] = []
                     async for ctoken in cont_gen:
@@ -3420,18 +3506,18 @@ async def stream_llm(
                             continue
                         if ctoken:
                             cont_collected.append(ctoken)
-                            broadcast_sync({"type": out_type, "text": ctoken})
+                            broadcast_sync({"type": out_type, "text": ctoken}, session_id=session_id)
                     addition = "".join(cont_collected).strip()
                     aggregate_text += ("\n" if addition else "") + addition
                     truncated_by_length = False
-                    broadcast_sync({"type": out_type, "text": "", "complete": True, "continuation": True, "pass": passes})
+                    broadcast_sync({"type": out_type, "text": "", "complete": True, "continuation": True, "pass": passes}, session_id=session_id)
             except Exception as ce:
                 logger.warning(f"Auto-continue logic failed: {ce}")
 
         if not completion_sent:
             # Ensure non-strict flows still notify the UI that streaming completed
             logger.info(f"🏁 (non-strict) Sending completion signal for {out_type}")
-            broadcast_sync({"type": out_type, "text": "", "complete": True})
+            broadcast_sync({"type": out_type, "text": "", "complete": True}, session_id=session_id)
         
     except Exception as e:
         # Attempt to detect common rate-limit patterns
@@ -3456,26 +3542,26 @@ async def stream_llm(
             })
         else:
             logger.error(f"AI generation error: {e}")
-            broadcast_sync({"type": out_type, "text": f"[AI Error: {e}]", "complete": True})
+            broadcast_sync({"type": out_type, "text": f"[AI Error: {e}]", "complete": True}, session_id=session_id)
 
     return
 
 
-async def handle_audio_streaming(ws):
+async def handle_audio_streaming(ws, session_id=None):
     """
     Real-time streaming audio handler using Deepgram/AssemblyAI for <200ms latency.
     Streams audio directly to provider and forwards interim/final results to UI immediately.
     """
     global partial_text, current_speaker, listen_student_enabled, last_processed_student_utterance, last_student_time, streaming_engine
     
-    logger.info("[Streaming] Audio WebSocket connected - initializing streaming transcription")
+    logger.info(f"[Streaming] Audio WebSocket connected - session_id: {session_id}")
     
     # Initialize partial_text if it doesn't exist
     if 'partial_text' not in globals() or partial_text is None:
         partial_text = ""
     
     # Broadcast that audio websocket connected
-    await broadcast({"type": "status", "data": {"audio": "socket_open", "mode": "streaming"}})
+    await broadcast({"type": "status", "data": {"audio": "socket_open", "mode": "streaming"}}, session_id=session_id)
     
     # Initialize streaming transcription engine
     try:
@@ -3490,15 +3576,15 @@ async def handle_audio_streaming(ws):
         
         if not connected:
             logger.error("[Streaming] Failed to connect to streaming transcription provider")
-            await broadcast({"type": "error", "message": "Streaming transcription unavailable - check DEEPGRAM_API_KEY"})
+            await broadcast({"type": "error", "message": "Streaming transcription unavailable - check DEEPGRAM_API_KEY"}, session_id=session_id)
             return
         
         logger.info(f"[Streaming] Connected to {streaming_engine.provider_name} - ready for audio")
-        await broadcast({"type": "status", "data": {"audio": "streaming_ready", "provider": streaming_engine.provider_name}})
+        await broadcast({"type": "status", "data": {"audio": "streaming_ready", "provider": streaming_engine.provider_name}}, session_id=session_id)
         
     except Exception as e:
         logger.error(f"[Streaming] Engine initialization failed: {e}")
-        await broadcast({"type": "error", "message": f"Streaming initialization error: {e}"})
+        await broadcast({"type": "error", "message": f"Streaming initialization error: {e}"}, session_id=session_id)
         return
     
     # State for tracking transcription
@@ -3534,7 +3620,7 @@ async def handle_audio_streaming(ws):
             "speaker": current_speaker,
             "recording_mode": recording_mode,
             "confidence": result.confidence
-        }))
+        }, session_id=session_id))
     
     # Callback for final results (confirmed transcriptions)
     def on_final_result(result: TranscriptResult):
@@ -3574,7 +3660,7 @@ async def handle_audio_streaming(ws):
             "recording_mode": recording_mode,
             "confidence": result.confidence,
             "results_count": results_received
-        }))
+        }, session_id=session_id))
         
         # Auto-coach is DISABLED - user must click "Ask AI" button manually
         # No automatic AI triggering on transcription
@@ -3591,7 +3677,7 @@ async def handle_audio_streaming(ws):
                 pass
         except Exception as e:
             logger.error(f"[Streaming] Results loop error: {e}")
-            await broadcast({"type": "error", "message": "Transcription stream interrupted"})
+            await broadcast({"type": "error", "message": "Transcription stream interrupted"}, session_id=session_id)
     
     # Start results receiver in background
     results_task = asyncio.create_task(receive_results_loop())
@@ -3610,7 +3696,7 @@ async def handle_audio_streaming(ws):
                     # On first audio, announce receiving status to UI
                     if not announced_receiving:
                         announced_receiving = True
-                        asyncio.create_task(broadcast({"type": "status", "data": {"audio": "receiving"}}))
+                        asyncio.create_task(broadcast({"type": "status", "data": {"audio": "receiving"}}, session_id=session_id))
                     
                     # Periodic lightweight ack back to the audio WebSocket for diagnostics (every ~1s)
                     now = time.time()
@@ -3631,16 +3717,16 @@ async def handle_audio_streaming(ws):
                         
                 except ConnectionError as ce:
                     logger.warning(f"[Streaming] Connection lost: {ce}, attempting reconnect...")
-                    await broadcast({"type": "status", "data": {"audio": "reconnecting"}})
+                    await broadcast({"type": "status", "data": {"audio": "reconnecting"}}, session_id=session_id)
                     
                     # Try to reconnect
                     reconnected = await streaming_engine.connect()
                     if reconnected:
                         logger.info("[Streaming] Reconnected successfully")
-                        await broadcast({"type": "status", "data": {"audio": "streaming_ready"}})
+                        await broadcast({"type": "status", "data": {"audio": "streaming_ready"}}, session_id=session_id)
                     else:
                         logger.error("[Streaming] Reconnection failed")
-                        await broadcast({"type": "error", "message": "Transcription connection lost"})
+                        await broadcast({"type": "error", "message": "Transcription connection lost"}, session_id=session_id)
                         break
                         
     except (ConnectionClosed, ConnectionClosedError):
@@ -4044,11 +4130,19 @@ async def ws_router(websocket, path):
     # Treat empty or root path as UI for compatibility with renderer
     if path in ("/ui", "", "/"):
         await handle_ui(websocket)
-    elif path == "/audio":
+    elif path.startswith("/audio"):
         # Deepgram streaming only
         if _has_streaming:
-            logger.info("[Router] Using streaming transcription handler (Deepgram-only)")
-            await handle_audio_streaming(websocket)
+            # Extract session_id from query parameters
+            session_id = None
+            if '?' in path:
+                from urllib.parse import parse_qs
+                query_string = path.split('?', 1)[1]
+                query_params = parse_qs(query_string)
+                session_id = query_params.get('session_id', [None])[0]
+            
+            logger.info(f"[Router] Audio connection - session_id: {session_id}")
+            await handle_audio_streaming(websocket, session_id=session_id)
         else:
             logger.error("[Router] Streaming module missing. Please ensure streaming_transcription.py is present.")
             await websocket.close()

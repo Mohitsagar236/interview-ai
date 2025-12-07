@@ -2325,6 +2325,14 @@
           console.log("[Audio] Local mode - opening audio WebSocket to port", port, "...");
         }
         
+        // CRITICAL: Append session_id to URL for proper session isolation
+        if (state.sessionId) {
+          audioUrl += `?session_id=${encodeURIComponent(state.sessionId)}`;
+          console.log("[Audio] Session ID attached:", state.sessionId);
+        } else {
+          console.warn("[Audio] WARNING: No session_id available - audio may broadcast to all sessions!");
+        }
+        
         state.audioWs = new WebSocket(audioUrl);
         state.audioWs.binaryType = "arraybuffer";
         state.audioWs.onopen = () => {
