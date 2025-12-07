@@ -2,10 +2,10 @@
 # This file helps Koyeb understand how to deploy your backend
 
 app:
-  name: interview-ai-backend
+  name: interview-ai
   
 services:
-  - name: backend
+  - name: interview-ai
     # Buildpack deployment (no Docker required)
     build:
       type: buildpack
