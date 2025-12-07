@@ -35,12 +35,13 @@
     "target": [
       {
         "target": "nsis",
-        "arch": ["x64"]
+        "arch": ["x64", "ia32"]
       }
     ],
     "icon": "assets/icon.ico",
     "publisherName": "Interview AI",
-    "requestedExecutionLevel": "asInvoker"
+    "requestedExecutionLevel": "asInvoker",
+    "artifactName": "Interview-AI-Setup-${version}-${arch}.${ext}"
   },
   "nsis": {
     "oneClick": true,

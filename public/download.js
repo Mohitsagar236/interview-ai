@@ -11,7 +11,7 @@
         detectPlatform();
     });
 
-    // Download function - Uses proxy endpoint with direct GitHub fallback
+    // Download function - picks correct Windows arch and uses API endpoint
     window.downloadApp = function(platform) {
         if (!platform) {
             showToast('Download not available for this platform yet');
@@ -21,8 +21,23 @@
         // Show download toast
         showToast('Your download will begin shortly...');
 
-        // Use our API endpoint which redirects to GitHub release
-        const downloadUrl = `/api/download?platform=${platform}`;
+        // Detect Windows arch
+        let archParam = '';
+        if (platform === 'windows') {
+            const ua = navigator.userAgent.toLowerCase();
+            const isArm = ua.includes('arm64') || ua.includes('aarch64');
+            const is32 = ua.includes('wow64') || ua.includes('win64') === false && ua.includes('win32');
+            if (isArm) {
+                archParam = '&arch=arm64'; // future-proof (falls back server-side)
+            } else if (is32) {
+                archParam = '&arch=ia32';
+            } else {
+                archParam = '&arch=x64';
+            }
+        }
+
+        // Use our API endpoint which streams from release
+        const downloadUrl = `/api/download?platform=${platform}${archParam}`;
         
         // Create invisible link and trigger download
         const link = document.createElement('a');

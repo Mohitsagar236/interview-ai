@@ -926,6 +926,20 @@ function createMainWindow() {
   mainWindow.on('restore', () => {
     console.log('Window restored');
   });
+
+  // Re-register shortcuts when window gains focus to ensure they work
+  mainWindow.on('focus', () => {
+    console.log('[Window] Main window focused - ensuring shortcuts are registered');
+    // Small delay to avoid conflicts during window state transitions
+    setTimeout(() => {
+      registerGlobalShortcuts();
+    }, 100);
+  });
+
+  // Handle browser window focus events
+  mainWindow.on('blur', () => {
+    console.log('[Window] Main window lost focus');
+  });
 }
 
 // Heartbeat broadcast (UI can show server + app status)
@@ -2829,64 +2843,11 @@ ipcMain.handle('download-main-app', async (_event, options = {}) => {
   }
 });
 
-// Enhanced app event handlers
-app.whenReady().then(async () => {
-  // Initialize activation manager
-  activationManager = new DesktopActivationManager();
-  console.log('[Activation] Desktop activation manager initialized');
-  console.log('[Activation] ⚠️ SESSION-ONLY MODE: Activation required on every launch');
+// Function to register all global shortcuts
+function registerGlobalShortcuts() {
+  // Unregister any existing shortcuts first to avoid conflicts
+  globalShortcut.unregisterAll();
   
-  createMainWindow();
-  
-  // Check if we should skip activation (for cloud/testing mode)
-  const skipActivation = process.env.SKIP_ACTIVATION === 'true' || process.env.NODE_ENV === 'production';
-  
-  if (skipActivation) {
-    console.log('[Activation] ⚠️ Skipping activation (SKIP_ACTIVATION=true or NODE_ENV=production)');
-    console.log('[Activation] App will run in cloud mode without activation checks');
-  } else {
-    // ALWAYS show activation window on startup (no persistent activation)
-    console.log('[Activation] Showing activation dialog (required on every launch)');
-    setTimeout(() => {
-      showActivationWindow();
-    }, 1000);
-  }
-  
-  startHeartbeat();
-  // Unified permission handler: allow media + display-capture for system audio
-  try {
-    session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => {
-      try {
-        if (permission === 'media') {
-          console.log('[Perm] media request', { mediaTypes: details && details.mediaTypes });
-          // Always allow media (audio/video) for this app; upstream UI/logic will manage usage
-          callback(true);
-          return;
-        }
-        if (permission === 'display-capture') {
-          console.log('[Perm] display-capture request approved');
-          callback(true);
-          return;
-        }
-        console.log('[Perm] denying permission', permission);
-        callback(false);
-      } catch (perr) {
-        console.log('[Perm] handler error', perr.message);
-        try { callback(false); } catch {}
-      }
-    });
-  } catch (e) {
-    console.log('Permission handler not available:', e.message);
-  }
-  
-  // Create stealth overlays if enabled
-  if (forcedStealth) {
-    setTimeout(() => {
-      createStealthOverlay();
-    }, 2000); // Delay to let main window load first
-  }
-
-  // Global shortcuts
   console.log('[Shortcuts] Registering global keyboard shortcuts...');
   
   try {
@@ -3125,68 +3086,147 @@ app.whenReady().then(async () => {
     console.log('   If a shortcut doesn\'t work, it may be captured by Windows or another app');
     console.log('   Check the console for "[Shortcut]" logs when pressing keys\n');
 
-    // IPC handler to open toolbar devtools from renderer (e.g., F12 inside toolbar)
-    try {
-      ipcMain.handle('toolbar-open-devtools', () => {
-        try {
-          // Check activation and credits
-          if (!activationManager || !activationManager.isActivated()) {
-            return { ok: false, error: 'Not activated' };
-          }
-          
-          const creditsCheck = checkCreditsAvailable();
-          if (!creditsCheck.hasCredits) {
-            return { ok: false, error: 'No credits available' };
-          }
-          
-          if (!toolbarWindow || toolbarWindow.isDestroyed()) createToolbarWindow();
-          if (toolbarWindow && !toolbarWindow.webContents.isDevToolsOpened()) {
-            toolbarWindow.webContents.openDevTools({ mode: 'detach' });
-            return { ok: true, opened: true };
-          } else if (toolbarWindow) {
-            toolbarWindow.webContents.closeDevTools();
-            return { ok: true, opened: false };
-          }
-        } catch (e) {
-          return { ok: false, error: e.message };
-        }
-        return { ok: false, error: 'No toolbar window' };
-      });
-    } catch (e) {
-      console.error('Failed to register toolbar-open-devtools IPC:', e.message);
-    }
-    
-    // IPC handler to check registered shortcuts
-    try {
-      ipcMain.handle('check-shortcuts', () => {
-        try {
-          const shortcuts = [
-            'Alt+C',
-            'CommandOrControl+/',
-            'CommandOrControl+Q',
-            'CommandOrControl+Shift+S',
-            'CommandOrControl+M',
-            'CommandOrControl+Alt+I',
-            'CommandOrControl+Alt+D'
-          ];
-          
-          const registered = shortcuts.map(shortcut => ({
-            shortcut,
-            registered: globalShortcut.isRegistered(shortcut)
-          }));
-          
-          console.log('[Shortcuts] Status check:', registered);
-          return { ok: true, shortcuts: registered };
-        } catch (e) {
-          return { ok: false, error: e.message };
-        }
-      });
-    } catch (e) {
-      console.error('Failed to register check-shortcuts IPC:', e.message);
-    }
-    
   } catch (error) {
     console.error('Failed to register global shortcuts:', error);
+  }
+}
+
+// Enhanced app event handlers
+app.whenReady().then(async () => {
+  // Initialize activation manager
+  activationManager = new DesktopActivationManager();
+  console.log('[Activation] Desktop activation manager initialized');
+  console.log('[Activation] ⚠️ SESSION-ONLY MODE: Activation required on every launch');
+  
+  createMainWindow();
+  
+  // Check if we should skip activation (for cloud/testing mode)
+  const skipActivation = process.env.SKIP_ACTIVATION === 'true' || process.env.NODE_ENV === 'production';
+  
+  if (skipActivation) {
+    console.log('[Activation] ⚠️ Skipping activation (SKIP_ACTIVATION=true or NODE_ENV=production)');
+    console.log('[Activation] App will run in cloud mode without activation checks');
+  } else {
+    // ALWAYS show activation window on startup (no persistent activation)
+    console.log('[Activation] Showing activation dialog (required on every launch)');
+    setTimeout(() => {
+      showActivationWindow();
+    }, 1000);
+  }
+  
+  startHeartbeat();
+  // Unified permission handler: allow media + display-capture for system audio
+  try {
+    session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => {
+      try {
+        if (permission === 'media') {
+          console.log('[Perm] media request', { mediaTypes: details && details.mediaTypes });
+          // Always allow media (audio/video) for this app; upstream UI/logic will manage usage
+          callback(true);
+          return;
+        }
+        if (permission === 'display-capture') {
+          console.log('[Perm] display-capture request approved');
+          callback(true);
+          return;
+        }
+        console.log('[Perm] denying permission', permission);
+        callback(false);
+      } catch (perr) {
+        console.log('[Perm] handler error', perr.message);
+        try { callback(false); } catch {}
+      }
+    });
+  } catch (e) {
+    console.log('Permission handler not available:', e.message);
+  }
+  
+  // Create stealth overlays if enabled
+  if (forcedStealth) {
+    setTimeout(() => {
+      createStealthOverlay();
+    }, 2000); // Delay to let main window load first
+  }
+
+  // Register global shortcuts
+  registerGlobalShortcuts();
+
+  // App-level focus handlers to ensure shortcuts work when switching apps
+  app.on('browser-window-focus', () => {
+    console.log('[App] Browser window focused - verifying shortcuts');
+    // Verify shortcuts are still registered when any window gets focus
+    setTimeout(() => {
+      const shortcuts = ['Alt+C', 'CommandOrControl+/', 'CommandOrControl+Q'];
+      const anyUnregistered = shortcuts.some(s => !globalShortcut.isRegistered(s));
+      if (anyUnregistered) {
+        console.log('[App] Some shortcuts were unregistered, re-registering all...');
+        registerGlobalShortcuts();
+      }
+    }, 50);
+  });
+
+  app.on('browser-window-blur', () => {
+    console.log('[App] Browser window lost focus');
+  });
+
+  // IPC handler to open toolbar devtools from renderer (e.g., F12 inside toolbar)
+  try {
+    ipcMain.handle('toolbar-open-devtools', () => {
+      try {
+        // Check activation and credits
+        if (!activationManager || !activationManager.isActivated()) {
+          return { ok: false, error: 'Not activated' };
+        }
+        
+        const creditsCheck = checkCreditsAvailable();
+        if (!creditsCheck.hasCredits) {
+          return { ok: false, error: 'No credits available' };
+        }
+        
+        if (!toolbarWindow || toolbarWindow.isDestroyed()) createToolbarWindow();
+        if (toolbarWindow && !toolbarWindow.webContents.isDevToolsOpened()) {
+          toolbarWindow.webContents.openDevTools({ mode: 'detach' });
+          return { ok: true, opened: true };
+        } else if (toolbarWindow) {
+          toolbarWindow.webContents.closeDevTools();
+          return { ok: true, opened: false };
+        }
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+      return { ok: false, error: 'No toolbar window' };
+    });
+  } catch (e) {
+    console.error('Failed to register toolbar-open-devtools IPC:', e.message);
+  }
+  
+  // IPC handler to check registered shortcuts
+  try {
+    ipcMain.handle('check-shortcuts', () => {
+      try {
+        const shortcuts = [
+          'Alt+C',
+          'CommandOrControl+/',
+          'CommandOrControl+Q',
+          'CommandOrControl+Shift+S',
+          'CommandOrControl+M',
+          'CommandOrControl+Alt+I',
+          'CommandOrControl+Alt+D'
+        ];
+        
+        const registered = shortcuts.map(shortcut => ({
+          shortcut,
+          registered: globalShortcut.isRegistered(shortcut)
+        }));
+        
+        console.log('[Shortcuts] Status check:', registered);
+        return { ok: true, shortcuts: registered };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    });
+  } catch (e) {
+    console.error('Failed to register check-shortcuts IPC:', e.message);
   }
 
   // Handle display changes
@@ -3248,6 +3288,8 @@ app.on('activate', () => {
   if (mainWindow === null) {
     createMainWindow();
   }
+  // Re-register shortcuts to ensure they work after app activation
+  registerGlobalShortcuts();
 });
 
 app.on('before-quit', () => {
