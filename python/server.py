@@ -149,12 +149,19 @@ listen_student_enabled = False  # Whether to also listen to the student's speech
 last_processed_student_utterance = ""
 
 # Conversation history - stores recent Q&A pairs per session/mode
-conversation_history: Dict[str, List[Dict[str, str]]] = {
-    "coach": [],
-    "assistant": [],
-    "chat": []
-}
+# Now indexed by session_id first, then by mode
+conversation_history: Dict[str, Dict[str, List[Dict[str, str]]]] = {}
 MAX_HISTORY_TURNS = 10  # Keep last 10 exchanges (20 messages)
+
+def get_or_create_session_history(session_id: str) -> Dict[str, List[Dict[str, str]]]:
+    """Get or create conversation history for a session"""
+    if session_id not in conversation_history:
+        conversation_history[session_id] = {
+            "coach": [],
+            "assistant": [],
+            "chat": []
+        }
+    return conversation_history[session_id]
 
 def get_combined_ocr_text():
     """Get all captured OCR texts combined"""
@@ -208,8 +215,11 @@ ai_initialized = False
 
 # Global OCR processor instance
 _ocr_processor = None
-# UI connections list
-ui_clients: List[websockets.WebSocketServerProtocol] = []
+# UI connections list - maps session_id to WebSocket client
+ui_clients: Dict[str, websockets.WebSocketServerProtocol] = {}
+
+# Session tracking - maps WebSocket to user session ID
+client_sessions: Dict[websockets.WebSocketServerProtocol, str] = {}
 
 # Transcription state
 partial_text = ""
@@ -857,24 +867,36 @@ async def handle_auto_answer_after_capture(text: str, source: str):
         logger.warning(f"Auto-coach trigger from {source} failed: {e}")
 
 
-async def broadcast(msg: Dict):
-    """Send a message to all UI clients, pruning dead connections quietly.
-
+async def broadcast(msg: Dict, session_id: str = None):
+    """Send a message to UI clients in a specific session or all if no session specified.
+    
+    If session_id is provided, only sends to that user's session.
+    If session_id is None, broadcasts to all (legacy behavior).
     Avoids noisy stack traces for expected disconnects (timeouts / network).
-    Optimized with asyncio.gather for parallel sends.
     """
     if not ui_clients:
         logger.debug(f"[Broadcast] No UI clients connected, skipping message type={msg.get('type')}")
         return
+    
     if isinstance(msg, dict) and "text" in msg and "data" not in msg:
         msg = {**msg, "data": msg["text"]}
     data = json.dumps(msg)
     
+    # Determine target clients
+    if session_id and session_id in ui_clients:
+        target_clients = [ui_clients[session_id]]
+    elif session_id:
+        logger.warning(f"[Broadcast] Session {session_id} not found")
+        return
+    else:
+        # No session specified, send to all (legacy behavior)
+        target_clients = list(ui_clients.values())
+    
     # Log transcript broadcasts for debugging
     if msg.get('type') == 'transcript':
-        logger.info(f"[Broadcast] Sending transcript to {len(ui_clients)} client(s): '{msg.get('text', '')[:50]}'")
+        logger.info(f"[Broadcast] Sending transcript to session {session_id}: '{msg.get('text', '')[:50]}'")
     
-    # Send to all clients in parallel for better performance
+    # Send to target clients in parallel for better performance
     async def send_to_client(ws):
         try:
             await ws.send(data)
@@ -886,31 +908,52 @@ async def broadcast(msg: Dict):
             return ws  # Mark for removal
     
     # Parallel send with timeout
-    results = await asyncio.gather(*[send_to_client(ws) for ws in list(ui_clients)], return_exceptions=True)
+    results = await asyncio.gather(*[send_to_client(ws) for ws in target_clients], return_exceptions=True)
     
     # Remove stale connections
     stale = [r for r in results if r is not None and not isinstance(r, Exception)]
     if stale:
+        stale_sessions = []
         for ws in stale:
             try:
-                ui_clients.remove(ws)
+                # Find and remove session
+                for sid, swb in list(ui_clients.items()):
+                    if swb == ws:
+                        del ui_clients[sid]
+                        stale_sessions.append(sid)
             except ValueError:
                 pass
-        logger.info("Pruned %d stale UI websocket(s)", len(stale))
+        if stale_sessions:
+            logger.info("Pruned %d stale UI session(s): %s", len(stale_sessions), stale_sessions)
 
 
-def broadcast_sync(msg: Dict):
+def broadcast_sync(msg: Dict, session_id: str = None):
     """Synchronous version of broadcast for use in streaming loops.
+    
+    If session_id is provided, only sends to that user's session.
+    If session_id is None, broadcasts to all (legacy behavior).
     
     CRITICAL: This must create tasks without awaiting to avoid blocking
     the streaming loop. Tasks are fire-and-forget for maximum throughput.
     """
     if not ui_clients:
         return
+    
     # Ensure both 'text' and 'data' are provided for renderer compatibility
     if isinstance(msg, dict) and "text" in msg and "data" not in msg:
         msg = {**msg, "data": msg["text"]}
     data = json.dumps(msg)
+    
+    # Determine target sessions
+    if session_id:
+        if session_id not in ui_clients:
+            logger.warning(f"[Broadcast] Session {session_id} not found")
+            return
+        target_sessions = {session_id: ui_clients[session_id]}
+    else:
+        # No session specified, send to all (legacy behavior)
+        target_sessions = ui_clients
+    
     disconnected = []
     
     # Get the current event loop
@@ -920,29 +963,37 @@ def broadcast_sync(msg: Dict):
         logger.warning("No event loop available for broadcast_sync")
         return
     
-    for ws in list(ui_clients):
+    for session_id, ws in target_sessions.items():
         try:
             # Create task on the event loop - fire and forget
             # This ensures messages go out without blocking the generator
             loop.create_task(ws.send(data))
         except Exception as e:
             logger.debug("Broadcast error: %s", e)
-            disconnected.append(ws)
+            disconnected.append(session_id)
     
-    # Remove disconnected clients
-    for ws in disconnected:
+    # Remove disconnected sessions
+    for sid in disconnected:
         try:
-            ui_clients.remove(ws)
-        except ValueError:
+            del ui_clients[sid]
+        except KeyError:
             pass
 
 
 async def handle_ui(ws):
     global listen_student_enabled, current_speaker, captured_ocr_texts, partial_text
-    ui_clients.append(ws)
+    
+    # Generate unique session ID for this connection
+    import uuid
+    session_id = str(uuid.uuid4())
+    ui_clients[session_id] = ws
+    client_sessions[ws] = session_id
+    
+    logger.info(f"[Session] New UI connection: {session_id}")
+    
     try:
-        # On new UI connection, broadcast current listen_student state
-        await broadcast({"type": "status", "data": {"listen_student": listen_student_enabled}})
+        # On new UI connection, send current listen_student state to this session only
+        await broadcast({"type": "status", "data": {"listen_student": listen_student_enabled}}, session_id=session_id)
         async for message in ws:
             try:
                 if not message:
@@ -1697,7 +1748,7 @@ async def handle_ui(ws):
                         "reset": True,
                         "contextType": question_source,
                         "contextLabel": context_label
-                    })
+                    }, session_id=session_id)
                     # Pass the actual question directly, not prefixed with "Last question:"
                     extra_company_ctx = [company_context_text] if company_context_text else None
                     await stream_llm(
@@ -1708,6 +1759,7 @@ async def handle_ui(ws):
                         strict=strict,
                         context_type=question_source,
                         extra_ctx=extra_company_ctx,
+                        session_id=session_id,
                     )
                 elif mtype == "clear_captures":
                     # Clear all captured OCR texts
@@ -1718,15 +1770,16 @@ async def handle_ui(ws):
                     # Clear conversation history for specified mode or all modes
                     global conversation_history
                     mode_to_clear = msg.get("mode", "all")
+                    session_hist = get_or_create_session_history(session_id)
                     if mode_to_clear == "all":
-                        for mode in conversation_history:
-                            conversation_history[mode] = []
-                        logger.info("Cleared all conversation history")
-                        await broadcast({"type": "conversation_cleared", "mode": "all"})
-                    elif mode_to_clear in conversation_history:
-                        conversation_history[mode_to_clear] = []
-                        logger.info(f"Cleared conversation history for mode: {mode_to_clear}")
-                        await broadcast({"type": "conversation_cleared", "mode": mode_to_clear})
+                        for mode in session_hist:
+                            session_hist[mode] = []
+                        logger.info(f"[Session {session_id}] Cleared all conversation history")
+                        await broadcast({"type": "conversation_cleared", "mode": "all"}, session_id=session_id)
+                    elif mode_to_clear in session_hist:
+                        session_hist[mode_to_clear] = []
+                        logger.info(f"[Session {session_id}] Cleared conversation history for mode: {mode_to_clear}")
+                        await broadcast({"type": "conversation_cleared", "mode": mode_to_clear}, session_id=session_id)
                 elif mtype == "start_audio":
                     # Get speaker information and recording mode if provided
                     speaker = msg.get("speaker", "user1")
@@ -1783,16 +1836,20 @@ async def handle_ui(ws):
             except Exception as e:
                 logger.exception(f"Error processing message: {e}")
                 try:
-                    await broadcast({"type": "error", "text": f"[Message processing error: {e}]"})
+                    await broadcast({"type": "error", "text": f"[Message processing error: {e}]"}, session_id=session_id)
                 except:
                     pass  # Ignore errors when broadcasting error messages
     except (ConnectionClosed, ConnectionClosedError):
-        logger.info("UI client disconnected")
+        logger.info(f"[Session] UI client disconnected: {session_id}")
     except Exception as e:
         logger.error(f"UI connection error: {e}")
     finally:
-        if ws in ui_clients:
-            ui_clients.remove(ws)
+        # Clean up session data
+        if session_id in ui_clients:
+            del ui_clients[session_id]
+        if ws in client_sessions:
+            del client_sessions[ws]
+        logger.info(f"[Session] Cleaned up session: {session_id}")
 
 
 async def ingest_resume(name: str, raw: bytes):
@@ -2635,8 +2692,13 @@ async def stream_llm(
     strict: bool = False,
     context_type: str = "general",
     extra_ctx: Optional[List[str]] = None,
+    session_id: str = None,
 ):
-    """Stream LLM response using open source AI providers"""
+    """Stream LLM response using open source AI providers
+    
+    Args:
+        session_id: WebSocket session ID for user isolation (if None, broadcasts to all)
+    """
     
     # ============================================================================
     # 🎯 DUPLICATE QUESTION DETECTION
@@ -2653,18 +2715,18 @@ async def stream_llm(
                     "type": out_type,
                     "text": "",
                     "reset": True
-                })
+                }, session_id=session_id)
                 broadcast_sync({
                     "type": out_type,
                     "text": duplicate_message
-                })
+                }, session_id=session_id)
                 broadcast_sync({
                     "type": "duplicate_detected",
                     "data": {
                         "message": duplicate_message,
                         "previous_hash": prev_answer_hash
                     }
-                })
+                }, session_id=session_id)
                 return  # Skip processing
         except Exception as e:
             logger.warning(f"⚠️  Duplicate detection failed: {e}")
@@ -2673,7 +2735,7 @@ async def stream_llm(
     await ensure_ai_initialized()
     
     if not ai_initialized:
-        broadcast_sync({"type": out_type, "text": "[AI system not initialized]"})
+        broadcast_sync({"type": out_type, "text": "[AI system not initialized]"}, session_id=session_id)
         return
 
     # ============================================================================
@@ -2804,21 +2866,25 @@ async def stream_llm(
     # Different contexts get their own history to prevent mixing transcription and capture questions
     history_key = f"{mode}_{context_type}"
     
+    # Get session-specific history
+    session_hist = get_or_create_session_history(session_id) if session_id else conversation_history.get(session_id or "global", {})
+    if not session_hist:
+        session_hist = {"coach": [], "assistant": [], "chat": []}
+    
     # Prepare messages for AI providers with conversation history
     messages = [
         {"role": "system", "content": system}
     ]
     
     # Add conversation history for context (only recent turns from the same context type)
-    global conversation_history
-    if history_key not in conversation_history:
-        conversation_history[history_key] = []
+    if history_key not in session_hist:
+        session_hist[history_key] = []
     
     isolate = os.getenv("ISOLATE_CURRENT_QUESTION", "1").lower() in ("1", "true", "yes", "on")
     # Default to disabling history for coach mode to avoid drift; can be enabled via env
     disable_history = (mode == "coach" and os.getenv("DISABLE_HISTORY_FOR_COACH", "1").lower() in ("1", "true", "yes", "on")) or isolate
-    if conversation_history[history_key] and not disable_history:
-        raw_recent = [m for m in conversation_history[history_key][-MAX_HISTORY_TURNS*2:] if m["role"] != "system"]
+    if session_hist[history_key] and not disable_history:
+        raw_recent = [m for m in session_hist[history_key][-MAX_HISTORY_TURNS*2:] if m["role"] != "system"]
 
         # Context-specific history handling for transcription and capture
         def smart_filter_history(raw_recent, facts, min_sim):
@@ -3214,11 +3280,11 @@ async def stream_llm(
                     stream_llm._retry_count = retry_count + 1
                     
                     # Clear current response and retry with enhanced prompt
-                    broadcast_sync({"type": out_type, "text": "", "reset": True})
+                    broadcast_sync({"type": out_type, "text": "", "reset": True}, session_id=session_id)
                     enhanced_user = user + "\n\n🚨 CRITICAL: Provide a complete, specific, helpful answer. Avoid generic responses or deflections."
                     
                     # Recursive call with enhanced prompt
-                    await stream_llm(llm_id, facts, out_type, mode, strict, context_type, extra_ctx)
+                    await stream_llm(llm_id, facts, out_type, mode, strict, context_type, extra_ctx, session_id=session_id)
                     return
                 else:
                     logger.warning(f"⚠️ Max retries reached, proceeding with current response")
@@ -3232,20 +3298,20 @@ async def stream_llm(
         
         logger.info(f"📝 Full response collected: {len(full_text)} chars, first 100: '{full_text[:100]}'")
         
-        # Save conversation history for follow-up questions
+        # Save conversation history for follow-up questions (session-specific)
         try:
-            if history_key not in conversation_history:
-                conversation_history[history_key] = []
+            if history_key not in session_hist:
+                session_hist[history_key] = []
             
             # Add user message and assistant response to history
-            conversation_history[history_key].append({"role": "user", "content": user})
-            conversation_history[history_key].append({"role": "assistant", "content": full_text})
+            session_hist[history_key].append({"role": "user", "content": user})
+            session_hist[history_key].append({"role": "assistant", "content": full_text})
             
             # Trim history to max turns (keep only recent exchanges)
-            if len(conversation_history[history_key]) > MAX_HISTORY_TURNS * 2:
-                conversation_history[history_key] = conversation_history[history_key][-MAX_HISTORY_TURNS * 2:]
+            if len(session_hist[history_key]) > MAX_HISTORY_TURNS * 2:
+                session_hist[history_key] = session_hist[history_key][-MAX_HISTORY_TURNS * 2:]
             
-            logger.info(f"💾 Saved to conversation history ({len(conversation_history[history_key])} messages total, context: {context_type})")
+            logger.info(f"💾 Saved to session {session_id} conversation history ({len(session_hist[history_key])} messages total, context: {context_type})")
         except Exception as hist_err:
             logger.warning(f"Failed to save conversation history: {hist_err}")
         
