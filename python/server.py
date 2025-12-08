@@ -72,13 +72,16 @@ except ImportError:
     logger.warning("ocr_utils module not found, using legacy OCR processing")
     _has_ocr_utils = False
 
-# Import PaddleOCR engine (superior OCR accuracy)
+# Import PaddleOCR engine (superior OCR accuracy) - LAZY LOADING
 try:
-    from paddleocr_engine import process_ocr_paddleocr, get_paddle_ocr_engine
-    _has_paddleocr = True
-    logger.info("✅ PaddleOCR available - using superior OCR engine")
+    from paddleocr_engine import process_ocr_paddleocr, get_paddle_ocr_engine, check_paddleocr_available
+    _has_paddleocr = check_paddleocr_available()
+    if _has_paddleocr:
+        logger.info("✅ PaddleOCR available - using superior OCR engine")
+    else:
+        logger.warning("PaddleOCR not available - install with: pip install paddleocr")
 except ImportError as e:
-    logger.warning("PaddleOCR not available - install with: pip install paddleocr")
+    logger.warning(f"PaddleOCR module not found: {e}")
     _has_paddleocr = False
 
 # Import our new AI providers system
@@ -337,7 +340,8 @@ def process_ocr_image(image_bytes: bytes) -> str:
     """Process OCR in a thread-safe manner with multi-pass preprocessing."""
     
     # Try PaddleOCR first (best accuracy, especially for screenshots/code)
-    if _has_paddleocr and os.getenv("USE_PADDLEOCR", "1").lower() in ("1", "true", "yes", "on"):
+    # DISABLED BY DEFAULT - only enable if USE_PADDLEOCR=1 is explicitly set
+    if _has_paddleocr and os.getenv("USE_PADDLEOCR", "0").lower() in ("1", "true", "yes", "on"):
         try:
             logger.info("Using PaddleOCR engine (superior accuracy)")
             text = process_ocr_paddleocr(image_bytes)

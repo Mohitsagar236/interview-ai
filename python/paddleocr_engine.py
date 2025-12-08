@@ -11,35 +11,50 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Try to import PaddleOCR
-try:
-    from paddleocr import PaddleOCR
-    _has_paddleocr = True
-except ImportError:
-    _has_paddleocr = False
-    logger.warning("PaddleOCR not available. Install with: pip install paddleocr")
+# Global variable for lazy loading
+_paddle_ocr_instance = None
+_has_paddleocr = None
+
+
+def check_paddleocr_available():
+    """Check if PaddleOCR is available without importing it"""
+    global _has_paddleocr
+    if _has_paddleocr is not None:
+        return _has_paddleocr
+    
+    try:
+        import paddleocr
+        _has_paddleocr = True
+        logger.info("✅ PaddleOCR is available")
+    except ImportError:
+        _has_paddleocr = False
+        logger.warning("PaddleOCR not available. Install with: pip install paddleocr")
+    
+    return _has_paddleocr
 
 
 class PaddleOCREngine:
     """PaddleOCR wrapper for superior text detection"""
     
     def __init__(self):
-        if not _has_paddleocr:
+        # Lazy import PaddleOCR only when needed
+        try:
+            from paddleocr import PaddleOCR
+        except ImportError:
             raise ImportError("PaddleOCR not installed. Run: pip install paddleocr")
         
-        # Initialize PaddleOCR
+        # Initialize PaddleOCR with minimal, compatible settings
         # use_angle_cls=True enables text rotation detection
         # lang='en' for English (supports 80+ languages)
-        # show_log=False to reduce verbosity
-        self.ocr = PaddleOCR(
-            use_angle_cls=True,
-            lang='en',
-            show_log=False,
-            use_gpu=False,  # CPU mode for compatibility (set True if GPU available)
-            enable_mkldnn=True,  # CPU acceleration
-            cpu_threads=4,  # Parallel processing
-        )
-        logger.info("PaddleOCR initialized successfully")
+        try:
+            self.ocr = PaddleOCR(
+                use_angle_cls=True,
+                lang='en'
+            )
+            logger.info("PaddleOCR initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize PaddleOCR: {e}")
+            raise
     
     def extract_text(self, image_bytes: bytes) -> str:
         """
@@ -62,8 +77,13 @@ class PaddleOCREngine:
             # Convert to numpy array for PaddleOCR
             img_array = np.array(img)
             
-            # Run OCR
-            result = self.ocr.ocr(img_array, cls=True)
+            # Run OCR (without cls parameter - not supported in newer versions)
+            result = self.ocr.ocr(img_array)
+            
+            # Debug: log the raw result structure
+            logger.info(f"PaddleOCR raw result type: {type(result)}, length: {len(result) if result else 0}")
+            if result and len(result) > 0:
+                logger.info(f"First element type: {type(result[0])}, content: {result[0]}")
             
             # Extract text from results
             if not result or not result[0]:
@@ -151,10 +171,11 @@ _paddle_ocr_engine = None
 
 
 def get_paddle_ocr_engine() -> Optional[PaddleOCREngine]:
-    """Get or create PaddleOCR engine instance"""
+    """Get or create PaddleOCR engine instance (lazy loading)"""
     global _paddle_ocr_engine
     
-    if not _has_paddleocr:
+    # Check if PaddleOCR is available first
+    if not check_paddleocr_available():
         return None
     
     if _paddle_ocr_engine is None:
