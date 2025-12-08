@@ -25,6 +25,10 @@ Pillow>=10.0.0
 # OCR (requires tesseract installed on server)
 pytesseract>=0.3.10
 
+# PaddleOCR for superior OCR accuracy
+paddleocr==3.3.2
+paddlepaddle==3.2.2
+
 # Vector embeddings and search
 sentence-transformers>=2.2.0
 chromadb>=0.4.0
