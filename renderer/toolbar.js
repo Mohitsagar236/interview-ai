@@ -1993,6 +1993,13 @@
     try {
       const msg = JSON.parse(ev.data);
 
+      // CRITICAL: Receive session_id from server for session isolation
+      if (msg.type === 'session_init' && msg.session_id) {
+        state.sessionId = msg.session_id;
+        log.info('[Session] Received session ID:', state.sessionId);
+        return;
+      }
+
       // Handle pong for health monitoring
       if (msg.type === "pong") {
         connectionHealth.receivedPong();

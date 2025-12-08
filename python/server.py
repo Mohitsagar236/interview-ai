@@ -72,6 +72,15 @@ except ImportError:
     logger.warning("ocr_utils module not found, using legacy OCR processing")
     _has_ocr_utils = False
 
+# Import PaddleOCR engine (superior OCR accuracy)
+try:
+    from paddleocr_engine import process_ocr_paddleocr, get_paddle_ocr_engine
+    _has_paddleocr = True
+    logger.info("✅ PaddleOCR available - using superior OCR engine")
+except ImportError as e:
+    logger.warning("PaddleOCR not available - install with: pip install paddleocr")
+    _has_paddleocr = False
+
 # Import our new AI providers system
 from ai_providers import initialize_ai, generate_ai_response, get_ai_status, generate_ai_response_for
 
@@ -327,7 +336,20 @@ def _is_blank_image_from_bytes(image_bytes: bytes) -> bool:
 def process_ocr_image(image_bytes: bytes) -> str:
     """Process OCR in a thread-safe manner with multi-pass preprocessing."""
     
-    # Try to use improved OCR processor first
+    # Try PaddleOCR first (best accuracy, especially for screenshots/code)
+    if _has_paddleocr and os.getenv("USE_PADDLEOCR", "1").lower() in ("1", "true", "yes", "on"):
+        try:
+            logger.info("Using PaddleOCR engine (superior accuracy)")
+            text = process_ocr_paddleocr(image_bytes)
+            if text and text.strip():
+                logger.info(f"✅ PaddleOCR successful: {len(text)} characters")
+                return text
+            else:
+                logger.warning("PaddleOCR returned empty, falling back to Tesseract")
+        except Exception as e:
+            logger.warning(f"PaddleOCR failed: {e}, falling back to Tesseract")
+    
+    # Try to use improved OCR processor (Tesseract with preprocessing)
     processor = get_ocr_processor()
     if processor:
         try:
@@ -1027,6 +1049,9 @@ async def handle_ui(ws):
     logger.info(f"[Session] New UI connection: {session_id}")
     
     try:
+        # CRITICAL: Send session_id to client immediately so they can use it for audio WebSocket
+        await ws.send(json.dumps({"type": "session_init", "session_id": session_id}))
+        
         # On new UI connection, send current listen_student state to this session only
         await broadcast({"type": "status", "data": {"listen_student": listen_student_enabled}}, session_id=session_id)
         async for message in ws:
@@ -1341,38 +1366,13 @@ async def handle_ui(ws):
                         await broadcast(ocr_response, session_id=session_id)
                         logger.info(f"[OCR] Sent result to session {session_id}: {len(text or '')} chars")
 
-                        # Auto-trigger AI response after capture
+                        # Auto-trigger AI response after capture (only if text was successfully detected)
                         # Enable by default - AI will automatically analyze captured content
                         auto_coach_on_capture = os.getenv("AUTO_COACH_ON_CAPTURE", "1").lower() in ("1", "true", "yes", "on")
                         
-                        if auto_coach_on_capture:
-                            if send_troubleshooting_response:
-                                # When no text detected, provide helpful troubleshooting guidance via AI
-                                logger.info("[OCR] No text detected - triggering AI troubleshooting response")
-                                broadcast_sync({"type": "coach", "text": "", "reset": True}, session_id=session_id)
-                                
-                                troubleshooting_prompt = """The screen capture OCR detected no text. Please provide a helpful response addressing this issue with the following talking points:
-
-• Increase Capture Area: Ensure that the capture area is sufficiently large to encompass the entire text. A larger area can help improve OCR accuracy.
-
-• Avoid Small Selections: Make sure that the selection is not too small. The longest side of the capture should be greater than approximately 1200 pixels after any upscaling.
-
-• Check Color Contrast: If using a dark mode IDE, switch to a light theme or zoom in to improve contrast. High contrast between text and background can aid in better text detection.
-
-• Disable Fast Mode: Set OCR_FAST_MODE=0 in the environment configuration file (.env) and restart the application for a deeper scan.
-
-• Verify Tesseract Installation: Confirm that Tesseract is properly installed on the system. You can check this by running 'tesseract' in the command prompt.
-
-• Set TESSERACT_CMD: If Tesseract is installed but not recognized, ensure that the TESSERACT_CMD variable is set correctly in the environment.
-
-• Enable Debugging: Turn on debugging by setting OCR_DEBUG=1 to see the preprocessing status, which can provide insights into what might be going wrong.
-
-Please provide specific, actionable steps to resolve the OCR text detection issue."""
-                                
-                                await stream_llm(DEFAULT_LLM, troubleshooting_prompt, out_type="coach", mode="coach", strict=False, context_type="capture", session_id=session_id)
-                            elif text and text.strip():
-                                # Normal case: text was detected, analyze it
-                                await handle_auto_answer_after_capture(text, "ocr", session_id=session_id)
+                        if auto_coach_on_capture and text and text.strip() and not send_troubleshooting_response:
+                            # Only trigger AI if we have actual text (not troubleshooting tips)
+                            await handle_auto_answer_after_capture(text, "ocr", session_id=session_id)
                     except Exception as e:
                         logger.exception("OCR error")
                         error_msg = str(e)
@@ -2312,24 +2312,49 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
             "📖 BEHAVIORAL: For behavioral questions: 1 specific situation + outcome.\n"
             "⚡ IMMEDIACY: Never output instructions or meta text—only the direct answer.\n"
             "🎓 COMPLETENESS: Ensure your answer fully addresses the question asked.\n"
-            "📐 MATH: Use proper LaTeX formatting for any mathematical expressions."
+            "📐 MATH: Use proper LaTeX formatting for any mathematical expressions.\n"
+            "✨ FORMATTING: Use proper markdown with headings, bullets, and clear structure."
         )
     else:
         core_guidelines = (
-            "\n\nENHANCED RESPONSE GUIDELINES:\n"
-            "🎯 DIRECT RESPONSE: Always respond directly to the user's question with a clear, polished, and complete answer.\n"
-            "🚫 NO META: Do not repeat or explain how you are structuring the answer.\n"
-            "🔄 ADAPTIVE STYLE: Adapt your response style to the type of question:\n"
-            "   • Definition/explanation → concise definition, then practical examples\n"
-            "   • Math/logic → step-by-step reasoning with LaTeX formatting, then final answer\n"
-            "   • Coding → clean working code first, then brief explanation if needed\n"
-            "   • Resume/interview → turn notes into a fluent, professional response\n"
-            "   • Open-ended/essay → structured content with clear headings/bullets\n"
-            "📝 FORMATTING: Use headings, bullets, or LaTeX math notation when helpful for clarity.\n"
-            "🔍 ACCURACY: Ensure technical accuracy and provide working, tested solutions.\n"
-            "⚡ EFFICIENCY: Be concise but comprehensive - no unnecessary verbosity.\n"
-            "🎨 POLISH: Provide production-ready answers that demonstrate expertise.\n"
-            "Never output instructions (like 'start with…'). Only give the final answer."
+            "\n\n✨ PROFESSIONAL FORMATTING REQUIREMENTS (MANDATORY):\n"
+            "📝 STRUCTURE: Always use proper markdown formatting:\n"
+            "   • **Bold** for headings, key terms, and important concepts\n"
+            "   • Bullet points (•) for lists and key points\n"
+            "   • Numbered lists (1., 2., 3.) for sequential steps\n"
+            "   • Code blocks with language tags: ```python, ```cpp, ```java, etc.\n"
+            "   • Empty lines between sections for readability\n"
+            "   • Inline code for variables/functions: `variable_name`\n"
+            "\n📐 MATHEMATICS: ALWAYS use LaTeX for all mathematical content:\n"
+            "   • Inline: $O(n)$, $x^2$, $\\log(n)$, $\\theta$\n"
+            "   • Display: $$f(x) = \\frac{a}{b}$$\n"
+            "   • Complexity: Time: $O(n \\log n)$, Space: $O(1)$\n"
+            "   • Coordinates: $(i, j)$ or \\((i, j)\\) for points\n"
+            "\n🎯 RESPONSE STYLE - ADAPT TO QUESTION TYPE:\n"
+            "   • **Problem Restatement**: Clearly state what the question asks\n"
+            "   • **High-Level Approach**: Explain the strategy in 2-3 sentences\n"
+            "   • **Key Points / Edge Cases**: List important considerations\n"
+            "   • **Detailed Solution**: Provide complete implementation or explanation\n"
+            "   • **Complexity Analysis**: Always include Time and Space complexity\n"
+            "   • **Example (if helpful)**: Show concrete example with input/output\n"
+            "\n🎨 ANSWER QUALITY STANDARDS:\n"
+            "   • **Completeness**: Cover all aspects of the question in ONE response\n"
+            "   • **Clarity**: Use headings to organize sections clearly\n"
+            "   • **Accuracy**: Ensure technical correctness and working solutions\n"
+            "   • **Polish**: Production-ready code with proper syntax and best practices\n"
+            "   • **Professionalism**: Write as an expert demonstrating deep knowledge\n"
+            "\n🚫 NEVER DO:\n"
+            "   • Don't say 'Let me structure this' or explain your formatting\n"
+            "   • Don't split into multiple responses (provide everything NOW)\n"
+            "   • Don't use plain text for math/complexity (ALWAYS use LaTeX)\n"
+            "   • Don't skip formatting - use markdown properly\n"
+            "   • Don't be verbose - be concise yet comprehensive\n"
+            "\n✅ ALWAYS DO:\n"
+            "   • Start directly with the answer (no meta-commentary)\n"
+            "   • Use **bold headings** to organize your response\n"
+            "   • Format code properly with syntax highlighting\n"
+            "   • Include time/space complexity for algorithms\n"
+            "   • Make answers interview-ready and professional"
         )
     
     # Determine what context to include based on context_type
