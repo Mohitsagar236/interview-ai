@@ -603,6 +603,7 @@ function startPythonServer() {
       if (!env.STREAMING_PROVIDER) env.STREAMING_PROVIDER = 'deepgram';
       if (!env.AUTO_COACH_ENABLED) env.AUTO_COACH_ENABLED = 'false';
       if (!env.AI_TEMPERATURE) env.AI_TEMPERATURE = '0.7';
+      if (!env.USE_PADDLEOCR) env.USE_PADDLEOCR = '1';  // Enable PaddleOCR for superior OCR accuracy
       
       // Override with settings from UI if available (takes precedence)
       try {
@@ -741,6 +742,7 @@ function startPythonServer() {
     if (!env.STREAMING_PROVIDER) env.STREAMING_PROVIDER = 'deepgram';
     if (!env.AUTO_COACH_ENABLED) env.AUTO_COACH_ENABLED = 'false';
     if (!env.AI_TEMPERATURE) env.AI_TEMPERATURE = '0.7';
+    if (!env.USE_PADDLEOCR) env.USE_PADDLEOCR = '1';  // Enable PaddleOCR for superior OCR accuracy
     
     // Override with settings from UI if available (takes precedence over .env)
     try {
