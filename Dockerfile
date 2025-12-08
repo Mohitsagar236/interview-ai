@@ -12,9 +12,14 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-eng \
     libgomp1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgl1-mesa-glx \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install Python dependencies (includes PaddleOCR from requirements-cloud.txt)
 RUN pip install --no-cache-dir -r requirements-cloud.txt
 
 # Copy the entire python directory
