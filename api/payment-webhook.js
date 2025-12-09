@@ -249,7 +249,7 @@ function verifyPaytmChecksum(params, checksum, key) {
 // Helper: Generate download URL
 function getDownloadUrl(productType, token) {
     const DOWNLOAD_URLS = {
-        windows: '/downloads/Interview AI Assistant Setup 0.1.0.exe',
+        windows: 'https://iylx1o61xprr6qlb.public.blob.vercel-storage.com/Interview-AI-Setup-LATEST-20251208-2117-x64.exe',
         mac: '/downloads/Interview AI Assistant-0.1.0.dmg'
     };
     const baseUrl = DOWNLOAD_URLS[productType];

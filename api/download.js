@@ -8,19 +8,15 @@ const https = require('https');
 export default function handler(req, res) {
     const { platform, arch } = req.query;
 
-    const version = '0.1.0';
-
-    // Latest PaddleOCR-enabled build (public blob). Use x64 for all Windows arches for now.
-    const blobX64 = `https://iylx1o61xprr6qlb.public.blob.vercel-storage.com/Interview-AI-Setup-${version}-x64.exe`;
-
+    // Latest PaddleOCR-enabled builds (uploaded via scripts/upload-latest.js)
     const downloadUrls = {
         windows: {
-            x64: blobX64,
-            ia32: blobX64,   // fallback to x64 build
-            arm64: blobX64   // fallback to x64 build
+            x64: 'https://iylx1o61xprr6qlb.public.blob.vercel-storage.com/Interview-AI-Setup-LATEST-20251208-2117-x64.exe',
+            ia32: 'https://iylx1o61xprr6qlb.public.blob.vercel-storage.com/Interview-AI-Setup-LATEST-20251208-2117-ia32.exe',
+            arm64: 'https://iylx1o61xprr6qlb.public.blob.vercel-storage.com/Interview-AI-Setup-LATEST-20251208-2117-x64.exe'
         },
-        mac: blobX64,   // placeholders until mac build is ready
-        linux: blobX64  // placeholders until linux build is ready
+        mac: `https://github.com/Mohitsagar236/interview-ai/releases/download/v${version}/Interview-AI-${version}.dmg`,
+        linux: `https://github.com/Mohitsagar236/interview-ai/releases/download/v${version}/interview-ai-${version}.AppImage`
     };
 
     const filenames = {
