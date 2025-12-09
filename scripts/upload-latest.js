@@ -33,6 +33,7 @@ async function uploadLatestBuilds() {
     const blob = await put(fileName, fileBuffer, {
       access: 'public',
       token: token,
+      addRandomSuffix: false,
     });
 
     console.log(`✅ Uploaded: ${blob.url}\n`);

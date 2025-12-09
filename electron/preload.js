@@ -188,7 +188,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   error: (message, error) => {
     console.error(`[Renderer Error] ${message}`, error);
   },
-  listDesktopSources: (types) => ipcRenderer.invoke('desktop-sources', { types })
+  listDesktopSources: (types) => ipcRenderer.invoke('desktop-sources', { types }),
+  
+  // Application control
+  quitApp: () => ipcRenderer.invoke('quit-app')
 });
 
 // Enhanced error handling and logging

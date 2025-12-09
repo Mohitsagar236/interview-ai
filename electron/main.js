@@ -1776,6 +1776,17 @@ ipcMain.handle('toolbar-resize-dimensions', (_event, dims) => {
 });
 
 // Misc helpers for renderer actions
+ipcMain.handle('quit-app', () => {
+  try {
+    console.log('Quit app requested from renderer');
+    app.quit();
+    return true;
+  } catch (e) {
+    console.error('Failed to quit app:', e.message);
+    return false;
+  }
+});
+
 ipcMain.handle('open-external', (_event, url) => {
   try {
     if (typeof url === 'string' && /^https?:\/\//i.test(url)) {

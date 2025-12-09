@@ -317,6 +317,7 @@
   const copyBtn = $("copyAnswer");
   const compactBtn = $("compact");
   const askAiBtn = document.getElementById("askAI");
+  const closeAppBtn = document.getElementById("closeApp");
   const barEl = document.querySelector(".bar");
   const speakerUser1 = $("speakerUser1");
   const speakerUser2 = $("speakerUser2");
@@ -3647,6 +3648,21 @@
       }
       // reset so same file can be re-selected
       e.target.value = "";
+    });
+  }
+
+  // Close Application Button
+  if (closeAppBtn) {
+    closeAppBtn.addEventListener("click", () => {
+      if (window.electronAPI && window.electronAPI.quitApp) {
+        window.electronAPI.quitApp();
+      }
+    });
+    closeAppBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        closeAppBtn.click();
+      }
     });
   }
 

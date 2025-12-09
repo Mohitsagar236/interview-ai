@@ -367,7 +367,7 @@ app.post('/api/validate-coupon', (req, res) => {
             'FIRSTBUY': { discount: 15, type: 'percentage' },
             'FLAT100': { discount: 100, type: 'fixed' },
             'FLAT200': { discount: 200, type: 'fixed' },
-            'FREEDOM': { discount: 100, type: 'percentage', restrictTo: ['credits', 'basic', 'plus', 'advanced'] }
+            'IITH': { discount: 100, type: 'percentage', restrictTo: ['credits', 'basic', 'plus', 'advanced'] }
         };
         
         const coupon = coupons[couponCode.toUpperCase()];

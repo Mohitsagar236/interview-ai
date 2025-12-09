@@ -51,7 +51,7 @@ module.exports = async (req, res) => {
         const { email, name, phone, productType, couponCode } = req.body;
         
         // Verify the coupon is valid for free credits
-        if (couponCode !== 'FREEDOM') {
+        if (couponCode !== 'IITH') {
             return res.status(400).json({ 
                 success: false,
                 error: 'Invalid coupon for free credits' 
