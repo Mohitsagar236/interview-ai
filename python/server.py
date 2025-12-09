@@ -4242,11 +4242,12 @@ async def main():
         # If ALLOWED_ORIGINS is None, the websockets library accepts all origins
         # If it's a list, only those origins are allowed
         if CLOUD_MODE:
-            if ALLOWED_ORIGINS is None:
-                logger.info("Setting allowed WebSocket origins: all origins (*)")
-            else:
-                logger.info("Setting allowed WebSocket origins: %s", ALLOWED_ORIGINS)
-                kwargs['origins'] = ALLOWED_ORIGINS
+            # In cloud mode, we must be permissive with origins to allow connections from
+            # various clients (Electron app, web dashboard, etc.)
+            # Setting origins=None in websockets library means "don't check origin"
+            logger.info("Setting allowed WebSocket origins: all origins (check disabled)")
+            kwargs['origins'] = None
+
 
         # Add process_request handler for HTTP health checks
         kwargs['process_request'] = process_request
