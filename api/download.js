@@ -15,8 +15,8 @@ export default function handler(req, res) {
             ia32: 'https://iylx1o61xprr6qlb.public.blob.vercel-storage.com/Interview-AI-Setup-LATEST-20251208-2117-ia32.exe',
             arm64: 'https://iylx1o61xprr6qlb.public.blob.vercel-storage.com/Interview-AI-Setup-LATEST-20251208-2117-x64.exe'
         },
-        mac: `https://github.com/Mohitsagar236/interview-ai/releases/download/v${version}/Interview-AI-${version}.dmg`,
-        linux: `https://github.com/Mohitsagar236/interview-ai/releases/download/v${version}/interview-ai-${version}.AppImage`
+        mac: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/Interview-AI-0.1.0.dmg',
+        linux: 'https://github.com/Mohitsagar236/interview-ai/releases/download/v0.1.0/interview-ai-0.1.0.AppImage'
     };
 
     const filenames = {
