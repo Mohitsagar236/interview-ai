@@ -7,8 +7,10 @@ WORKDIR /app
 # Copy requirements first (for better caching)
 COPY python/requirements-cloud.txt .
 
-# Install system dependencies for PaddleOCR and Tesseract
+# Install system dependencies for PaddleOCR, Tesseract, and build tools
 RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3-dev \
     tesseract-ocr \
     tesseract-ocr-eng \
     libgomp1 \
