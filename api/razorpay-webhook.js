@@ -91,12 +91,13 @@ module.exports = async (req, res) => {
 async function sendDownloadEmail({ email, name, productType, paymentId, amount }) {
     try {
         // Product download URLs
+        const latestWindows = 'https://iylx1o61xprr6qlb.public.blob.vercel-storage.com/Interview-AI-Setup-0.1.0-x64.exe';
         const downloadUrls = {
-            basic: 'https://yourdomain.com/downloads/Interview AI Assistant Setup 0.1.0.exe',
-            plus: 'https://yourdomain.com/downloads/Interview AI Assistant Setup 0.1.0.exe',
-            advanced: 'https://yourdomain.com/downloads/Interview AI Assistant Setup 0.1.0.exe',
-            windows: 'https://yourdomain.com/downloads/Interview AI Assistant Setup 0.1.0.exe',
-            mac: 'https://yourdomain.com/downloads/Interview AI Assistant-0.1.0.dmg'
+            basic: latestWindows,
+            plus: latestWindows,
+            advanced: latestWindows,
+            windows: latestWindows,
+            mac: latestWindows // placeholder until mac build is available
         };
 
         const downloadUrl = downloadUrls[productType] || downloadUrls.windows;
