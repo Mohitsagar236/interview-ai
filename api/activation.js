@@ -8,7 +8,7 @@ const {
     updateCreditsByCodeEndpoint,
     deactivateCodeEndpoint,
     syncSubscriptionFromActivationCode
-} = require('./activation-codes');
+} = require('./_lib/activation-codes');
 
 module.exports = async (req, res) => {
     // Set CORS headers
