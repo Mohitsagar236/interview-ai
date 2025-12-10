@@ -2,28 +2,56 @@
 
 Privacy-first interview coach with real-time streaming transcription via Deepgram, multi-LLM streaming (OpenAI, Anthropic, Groq), resume embeddings, OCR for coding problems, and stealth overlay.
 
-## 🚀 Quick Start for Desktop App
+## 📚 Documentation
 
-The packaged desktop app now **includes the `.env` file** so it works immediately after installation:
-1. Build the app: `npm run build`
-2. Install: Run the installer from `dist/`
-3. Launch the app - **it just works!** ✅
+**All documentation has been consolidated into the [`docs/`](./docs/) folder:**
 
-Your API keys from `.env` are bundled with the app for zero-configuration deployment.
+| Section | Description |
+|---------|-------------|
+| **[Quick Start](./docs/getting-started/quick-start.md)** | Get running in 10 minutes |
+| **[Environment Setup](./docs/getting-started/environment-configuration.md)** | Configure API keys |
+| **[Cloud Deployment](./docs/deployment/cloud-deployment.md)** | Deploy to Koyeb, Render, etc. |
+| **[Credits System](./docs/features/credits-system.md)** | How credits work |
+| **[Payment Integration](./docs/features/payment-integration.md)** | Razorpay setup |
+| **[Troubleshooting](./docs/troubleshooting/common-issues.md)** | Common issues & solutions |
+| **[Architecture](./docs/architecture/system-architecture.md)** | System design overview |
 
-> **Note:** For public distribution, see [ENV_BUNDLING_UPDATE.md](ENV_BUNDLING_UPDATE.md) for alternative approaches.
+## 🚀 Quick Start
+
+### Option 1: Pre-built Desktop App
+1. Download installer from releases
+2. Run installer
+3. Enter your activation code
+4. Start interviewing!
+
+### Option 2: Build from Source
+```bash
+git clone https://github.com/Mohitsagar236/interview-ai.git
+cd interview-ai
+npm install
+cp .env.example .env  # Edit with your API keys
+npm run build
+```
+
+### Option 3: Development Mode
+```bash
+npm install
+pip install -r python/requirements.txt
+npm run dev
+```
+
+> **See [Quick Start Guide](./docs/getting-started/quick-start.md) for detailed instructions.**
 
 ## Features
 
-### 🎯 ChatGPT-Style Response Quality (NEW)
-The AI assistant now follows ChatGPT's response principles for all interactions:
+### 🎯 ChatGPT-Style Response Quality
+The AI assistant follows ChatGPT's response principles:
 - **No instruction repetition** - Gets straight to the point
 - **Context-aware responses** - Considers your resume and interview context
 - **Proper formatting** - Uses headings, bullets, and structured answers
 - **Complete coverage** - Never skips parts of your questions
-- **Professional tone** - Clear, conversational, and easy to understand
 
-See [CHATGPT_RESPONSE_GUIDELINES.md](CHATGPT_RESPONSE_GUIDELINES.md) and [GUIDELINES_QUICK_START.md](GUIDELINES_QUICK_START.md) for details.
+See [AI Quality docs](./docs/features/ai-quality.md) for details.
 
 ### Automatic Illustrative Image Generation (Experimental)
 When the assistant detects that a user question or captured screen context explicitly asks for a visual (e.g. includes terms like "diagram", "architecture", "flowchart", "timeline", "graph", "wireframe"), it will attempt to generate a minimal illustrative image automatically.
