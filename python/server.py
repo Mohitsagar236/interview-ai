@@ -248,10 +248,9 @@ auto_coach_enabled = os.getenv("AUTO_COACH", "0").lower() in ("1", "true", "yes"
 coach_in_progress = False
 last_coach_question: Optional[str] = None
 
-# Embedding stores for resume/context personalization
-index = None  # faiss index when available
-emb_texts: List[str] = []
-emb_matrix = None  # numpy matrix fallback
+# Embedding stores for resume/context personalization (PER SESSION)
+# Structure: session_id -> {"index": faiss_index, "emb_texts": List[str], "emb_matrix": np.ndarray, "embedder": model}
+session_resume_data: Dict[str, Dict] = {}
 
 # Lazy image provider handle (may be used for diagram generation)
 image_provider = None
@@ -1499,7 +1498,7 @@ async def handle_ui(ws):
                         if not formatted:
                             await broadcast({"type": "context_ack", "context_kind": "company", "success": False, "error": "No company details supplied"}, session_id=session_id)
                         else:
-                            await ingest_company_brief(formatted)
+                            await ingest_company_brief(formatted, session_id=session_id)
                             await broadcast({"type": "context_ack", "context_kind": "company", "success": True}, session_id=session_id)
                     except Exception as e:
                         logger.exception("Failed processing company context")
@@ -1942,6 +1941,17 @@ async def handle_ui(ws):
             del ui_clients[session_id]
         if ws in client_sessions:
             del client_sessions[ws]
+        
+        # Clean up session-specific resume data for privacy
+        if session_id in session_resume_data:
+            del session_resume_data[session_id]
+            logger.info(f"[Session] Cleared resume data for session: {session_id}")
+        
+        # Clean up session conversation history
+        if session_id in conversation_history:
+            del conversation_history[session_id]
+            logger.info(f"[Session] Cleared conversation history for session: {session_id}")
+        
         logger.info(f"[Session] Cleaned up session: {session_id}")
 
 
@@ -1949,8 +1959,12 @@ async def ingest_resume(name: str, raw: bytes, session_id: str = None):
     """Ingest a resume file.
     
     Args:
-        session_id: WebSocket session ID for user isolation (if None, broadcasts to all)
+        session_id: WebSocket session ID for user isolation (REQUIRED for privacy)
     """
+    if not session_id:
+        logger.error("⚠️ Resume ingestion without session_id - rejecting for privacy")
+        return
+    
     text = ""
     try:
         if name.lower().endswith(".pdf"):
@@ -1990,67 +2004,104 @@ async def ingest_resume(name: str, raw: bytes, session_id: str = None):
     if not chunks:
         await broadcast({"type": "resume", "text": "[Resume contains no extractable text]"}, session_id=session_id)
         return
-    global SentenceTransformer, embedder, index, emb_texts, emb_matrix
+    
+    # Initialize session data if not exists
+    global SentenceTransformer, session_resume_data
+    if session_id not in session_resume_data:
+        session_resume_data[session_id] = {
+            "index": None,
+            "emb_texts": [],
+            "emb_matrix": None,
+            "embedder": None
+        }
+    
+    session_data = session_resume_data[session_id]
+    
     try:
         if SentenceTransformer is None:
             from sentence_transformers import SentenceTransformer as ST  # lazy import
             SentenceTransformer = ST
-        if embedder is None:
-            embedder = SentenceTransformer("all-MiniLM-L6-v2")
-        vectors = embedder.encode(chunks, normalize_embeddings=True)
+        if session_data["embedder"] is None:
+            session_data["embedder"] = SentenceTransformer("all-MiniLM-L6-v2")
+        
+        vectors = session_data["embedder"].encode(chunks, normalize_embeddings=True)
+        
         if _has_faiss:
-            if index is None:
-                index = faiss.IndexFlatIP(vectors.shape[1])  # type: ignore
-            index.add(np.asarray(vectors, dtype='float32'))
+            if session_data["index"] is None:
+                session_data["index"] = faiss.IndexFlatIP(vectors.shape[1])  # type: ignore
+            session_data["index"].add(np.asarray(vectors, dtype='float32'))
         else:
             # Simple numpy-based store
             vecs = np.asarray(vectors, dtype='float32')
-            if emb_matrix is None:
-                emb_matrix = vecs
+            if session_data["emb_matrix"] is None:
+                session_data["emb_matrix"] = vecs
             else:
-                emb_matrix = np.vstack([emb_matrix, vecs])
-        emb_texts.extend(chunks)
-        logger.info("Ingested %d resume chunks", len(chunks))
-        await broadcast({"type": "resume", "text": f"Ingested {len(chunks)} resume chunks"}, session_id=session_id)
+                session_data["emb_matrix"] = np.vstack([session_data["emb_matrix"], vecs])
+        
+        session_data["emb_texts"].extend(chunks)
+        logger.info("✅ Ingested %d resume chunks for session %s", len(chunks), session_id)
+        await broadcast({"type": "resume", "text": f"✅ Ingested {len(chunks)} resume chunks"}, session_id=session_id)
     except Exception as e:
         # Fallback when embeddings are unavailable; still store text for minimal context
         logger.warning("Embedding unavailable, storing resume text only: %s", e)
-        emb_texts.extend(chunks)
+        session_data["emb_texts"].extend(chunks)
         await broadcast({"type": "resume", "text": f"Ingested {len(chunks)} resume chunks (no embeddings)"}, session_id=session_id)
 
 
-async def ingest_company_brief(text: str):
-    """Persist company brief text into embedding store for personalization."""
-    global SentenceTransformer, embedder, index, emb_texts, emb_matrix, company_brief_chunks
+async def ingest_company_brief(text: str, session_id: str = None):
+    """Persist company brief text into embedding store for personalization.
+    
+    Args:
+        session_id: WebSocket session ID for user isolation (REQUIRED for privacy)
+    """
+    if not session_id:
+        logger.error("⚠️ Company brief ingestion without session_id - rejecting for privacy")
+        return
+    
+    global SentenceTransformer, company_brief_chunks, session_resume_data
     clean = text.strip()
     if not clean:
         return
     company_brief_chunks.append(clean)
     if len(company_brief_chunks) > 50:
         del company_brief_chunks[:-50]
+    
+    # Initialize session data if not exists
+    if session_id not in session_resume_data:
+        session_resume_data[session_id] = {
+            "index": None,
+            "emb_texts": [],
+            "emb_matrix": None,
+            "embedder": None
+        }
+    
+    session_data = session_resume_data[session_id]
+    
     # Reuse existing embedding pipeline for consistency
     try:
         if SentenceTransformer is None:
             from sentence_transformers import SentenceTransformer as ST  # lazy import
             SentenceTransformer = ST
-        if embedder is None:
-            embedder = SentenceTransformer("all-MiniLM-L6-v2")
-        vectors = embedder.encode([clean], normalize_embeddings=True)
-        emb_texts.extend([clean])
+        if session_data["embedder"] is None:
+            session_data["embedder"] = SentenceTransformer("all-MiniLM-L6-v2")
+        
+        vectors = session_data["embedder"].encode([clean], normalize_embeddings=True)
+        session_data["emb_texts"].extend([clean])
+        
         if _has_faiss:
-            if index is None:
-                index = faiss.IndexFlatIP(vectors.shape[1])  # type: ignore
-            index.add(np.asarray(vectors, dtype='float32'))
+            if session_data["index"] is None:
+                session_data["index"] = faiss.IndexFlatIP(vectors.shape[1])  # type: ignore
+            session_data["index"].add(np.asarray(vectors, dtype='float32'))
         else:
             vecs = np.asarray(vectors, dtype='float32')
-            if emb_matrix is None:
-                emb_matrix = vecs
+            if session_data["emb_matrix"] is None:
+                session_data["emb_matrix"] = vecs
             else:
-                emb_matrix = np.vstack([emb_matrix, vecs])
-        logger.info("Company brief ingested")
+                session_data["emb_matrix"] = np.vstack([session_data["emb_matrix"], vecs])
+        logger.info("✅ Company brief ingested for session %s", session_id)
     except Exception as e:
         logger.warning("Embedding unavailable for company brief: %s", e)
-        emb_texts.extend([clean])
+        session_data["emb_texts"].extend([clean])
 
 
 def enhance_response_formatting(text: str) -> str:
@@ -2918,6 +2969,14 @@ async def stream_llm(
     # 🎯 ENHANCEMENT 2: ENHANCED RAG WITH RERANKING & QUERY EXPANSION
     # ============================================================================
     ctx: List[str] = []
+    
+    # Get session-specific resume data
+    session_data = session_resume_data.get(session_id, {}) if session_id else {}
+    embedder = session_data.get("embedder")
+    index = session_data.get("index")
+    emb_matrix = session_data.get("emb_matrix")
+    emb_texts = session_data.get("emb_texts", [])
+    
     if embedder is not None and (index is not None or emb_matrix is not None):
         query_text = (partial_text or "").strip() or (facts or "").strip() or (get_combined_ocr_text() or "").strip()
         
@@ -2940,7 +2999,7 @@ async def stream_llm(
                 if resume_chunks:
                     avg_score = sum(c.relevance_score for c in resume_chunks) / len(resume_chunks)
                     logger.info(
-                        f"📚 Retrieved {len(resume_chunks)} resume chunks "
+                        f"📚 Retrieved {len(resume_chunks)} resume chunks for session {session_id} "
                         f"(avg relevance: {avg_score:.3f}, "
                         f"sections: {set(c.section for c in resume_chunks)})"
                     )
