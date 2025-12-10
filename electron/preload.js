@@ -144,6 +144,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       callback(credits);
     });
   },
+  onInterviewSessionEnded: (callback) => {
+    ipcRenderer.on('interview-session-ended', (event, data) => {
+      callback(data);
+    });
+  },
   onNavigateSection: (callback) => {
     ipcRenderer.on('navigate-section', (_event, section) => {
       try { callback(section); } catch (e) { console.error('onNavigateSection handler error', e); }

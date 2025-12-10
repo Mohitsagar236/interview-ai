@@ -2178,8 +2178,9 @@ ipcMain.handle('dashboard-stats', () => {
 });
 
 // ---------------- Interview Live Session (simple timer) -----------------
-let activeInterviewSession = null; // { id, startedAt, elapsedSec }
+let activeInterviewSession = null; // { id, startedAt, elapsedSec, creditsCheckInterval }
 let interviewTickInterval = null;
+let creditMonitorInterval = null; // NEW: Monitor credits during session
 
 ipcMain.handle('interview-start-session', async (_event, id) => {
   try {
@@ -2188,7 +2189,9 @@ ipcMain.handle('interview-start-session', async (_event, id) => {
     if (!it) return { ok:false, error:'Not found' };
     if (activeInterviewSession && activeInterviewSession.id !== id) {
       // Auto-stop previous
-      clearInterval(interviewTickInterval); interviewTickInterval = null; activeInterviewSession = null;
+      clearInterval(interviewTickInterval); interviewTickInterval = null;
+      clearInterval(creditMonitorInterval); creditMonitorInterval = null;
+      activeInterviewSession = null;
     }
     if (it.status === 'completed') return { ok:false, error:'Already completed' };
     
@@ -2224,12 +2227,86 @@ ipcMain.handle('interview-start-session', async (_event, id) => {
     }
     
     activeInterviewSession = { id, startedAt: Date.now(), elapsedSec:0 };
+    
+    // Tick interval - updates UI every second
     if (interviewTickInterval) { clearInterval(interviewTickInterval); }
     interviewTickInterval = setInterval(() => {
       if (!activeInterviewSession) return;
       activeInterviewSession.elapsedSec = Math.floor((Date.now() - activeInterviewSession.startedAt)/1000);
       try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('interview-session-tick', { id, elapsedSec: activeInterviewSession.elapsedSec }); } catch {}
     }, 1000);
+    
+    // NEW: Credit monitoring interval - checks every hour (3600 seconds)
+    if (creditMonitorInterval) { clearInterval(creditMonitorInterval); }
+    creditMonitorInterval = setInterval(async () => {
+      if (!activeInterviewSession || !creditsManager) return;
+      
+      const elapsedHours = activeInterviewSession.elapsedSec / 3600;
+      console.log(`[CreditMonitor] Checking credits at ${elapsedHours.toFixed(2)} hours elapsed`);
+      
+      // Get current credits
+      const creditsInfo = creditsManager.getCreditsInfo();
+      const hoursRemaining = creditsInfo.remaining;
+      
+      console.log(`[CreditMonitor] Credits remaining: ${hoursRemaining.toFixed(2)} hours`);
+      
+      // If no credits remaining, auto-stop the session
+      if (hoursRemaining <= 0) {
+        console.log('[CreditMonitor] ⚠️ Credits depleted during session - auto-stopping interview');
+        
+        // End the session automatically
+        const sessionId = activeInterviewSession.id;
+        const durationSec = activeInterviewSession.elapsedSec;
+        
+        // Clear intervals
+        clearInterval(interviewTickInterval); interviewTickInterval = null;
+        clearInterval(creditMonitorInterval); creditMonitorInterval = null;
+        
+        // End session in interview data
+        const data = readInterviews();
+        const interview = data.interviews.find(i => i.id === sessionId);
+        if (interview) {
+          interview.status = 'completed';
+          interview.completedAt = new Date().toISOString();
+          interview.actualDurationSec = durationSec;
+          interview.notes = (interview.notes || '') + '\\n[Auto-stopped: Credits depleted]';
+          writeInterviews(data);
+        }
+        
+        // End credits session
+        const creditsResult = creditsManager.endSession(sessionId, durationSec);
+        
+        // Sync to server
+        if (activationManager && activationManager.isActivated() && creditsResult.success) {
+          try {
+            await creditsManager.updateViaActivation(activationManager, creditsInfo.used);
+          } catch (err) {
+            console.error('[CreditMonitor] Error syncing credits:', err);
+          }
+        }
+        
+        // Clear active session
+        activeInterviewSession = null;
+        
+        // Notify UI that session ended due to no credits
+        try {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('interview-session-ended', { 
+              id: sessionId, 
+              reason: 'credits-depleted',
+              durationSec 
+            });
+          }
+        } catch (err) {
+          console.error('[CreditMonitor] Error notifying UI:', err);
+        }
+        
+        // Show no credits window
+        showNoCreditsWindow();
+        
+        console.log('[CreditMonitor] ✅ Session auto-stopped successfully');
+      }
+    }, 3600000); // Check every hour (3600000ms = 1 hour)
     
     // Start credits session
     if (creditsManager) {
@@ -2244,7 +2321,11 @@ ipcMain.handle('interview-start-session', async (_event, id) => {
 ipcMain.handle('interview-end-session', async (_event, id, options) => {
   try {
     if (!activeInterviewSession || activeInterviewSession.id !== id) return { ok:false, error:'No active session' };
+    
+    // Clear all intervals
     clearInterval(interviewTickInterval); interviewTickInterval = null;
+    clearInterval(creditMonitorInterval); creditMonitorInterval = null; // NEW: Clear credit monitor
+    
     const durationSec = activeInterviewSession.elapsedSec;
     activeInterviewSession = null;
     const data = readInterviews();
