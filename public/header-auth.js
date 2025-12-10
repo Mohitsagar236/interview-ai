@@ -1,3 +1,18 @@
+/**
+ * Initialize Vercel Speed Insights for performance monitoring
+ * Must run on client side only
+ */
+(function initSpeedInsights() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+        return;
+    }
+    try {
+        import('@vercel/speed-insights').then(({ injectSpeedInsights }) => {
+            injectSpeedInsights({ debug: false });
+        }).catch(() => {});
+    } catch (e) {}
+})();
+
 // Header authentication state management
 (function initHeaderAuth() {
     if (window.__headerAuthLoaded) {

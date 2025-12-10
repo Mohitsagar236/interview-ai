@@ -1,3 +1,46 @@
+/**
+ * Initialize Vercel Speed Insights to track performance metrics
+ * This must be called before other code to capture all metrics.
+ * 
+ * Speed Insights automatically collects Core Web Vitals and other performance data.
+ * Must run on client side only (not in Node.js/SSR context).
+ */
+(function initializeSpeedInsights() {
+    // Verify we're running in a browser context, not server-side
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+        console.debug('Speed Insights: Skipped (not in browser context)');
+        return;
+    }
+
+    try {
+        // Dynamically import and initialize injectSpeedInsights from @vercel/speed-insights
+        // This import is safe because this code only runs in browser context
+        import('@vercel/speed-insights').then(({ injectSpeedInsights }) => {
+            // Call injectSpeedInsights with default configuration
+            // This injects the Speed Insights tracking script and starts collecting metrics
+            const speedInsights = injectSpeedInsights({
+                // Enable debug logging in development mode
+                debug: false,
+                // Optional: configure before send middleware for custom event processing
+                // beforeSend: (event) => {
+                //     // Modify event before sending to Vercel
+                //     return event;
+                // }
+            });
+
+            if (speedInsights) {
+                console.debug('Vercel Speed Insights: Successfully initialized via injectSpeedInsights()');
+            } else {
+                console.debug('Vercel Speed Insights: Script injection returned null (may indicate issues)');
+            }
+        }).catch((error) => {
+            console.debug('Speed Insights: Failed to import @vercel/speed-insights:', error);
+        });
+    } catch (error) {
+        console.debug('Speed Insights: Error during initialization:', error);
+    }
+})();
+
 // Wait for DOM to be ready before initializing
 document.addEventListener('DOMContentLoaded', () => {
     // Header scroll effect

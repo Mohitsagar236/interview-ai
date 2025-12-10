@@ -3,7 +3,12 @@
  * Handles payment verification and sends download links
  */
 
+const { setupSpeedInsights } = require('./speed-insights');
+
 module.exports = async (req, res) => {
+    // Setup Speed Insights performance monitoring
+    setupSpeedInsights(req, res);
+    
     // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');

@@ -1,3 +1,18 @@
+/**
+ * Initialize Vercel Speed Insights for performance monitoring
+ * Must run on client side only
+ */
+(function initSpeedInsights() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+        return;
+    }
+    try {
+        import('@vercel/speed-insights').then(({ injectSpeedInsights }) => {
+            injectSpeedInsights({ debug: false });
+        }).catch(() => {});
+    } catch (e) {}
+})();
+
 // UPI Payment System for Interview AI
 // No Stripe - Direct UPI/Bank Transfer
 
