@@ -316,7 +316,8 @@ async function handleSignup(event) {
             email,
             password,
             options: {
-                data: { name, phone: normalizedPhone }
+                data: { name, phone: normalizedPhone },
+                emailRedirectTo: window.location.origin + '/index.html'
             }
         });
 
