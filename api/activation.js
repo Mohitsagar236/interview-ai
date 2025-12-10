@@ -1,6 +1,7 @@
 // Consolidated serverless function for all activation code operations
 // Handles: generate, activate, credits, deactivate, sync-subscription
 const { createClient } = require('@supabase/supabase-js');
+const { setupSpeedInsights } = require('./speed-insights');
 const {
     generateActivationCodeEndpoint,
     activateDesktopEndpoint,
@@ -11,6 +12,9 @@ const {
 } = require('./activation-codes');
 
 module.exports = async (req, res) => {
+    // Setup Speed Insights performance monitoring
+    setupSpeedInsights(req, res);
+    
     // Set CORS headers
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');

@@ -1,3 +1,33 @@
+/**
+ * Initialize Vercel Speed Insights for performance monitoring
+ * Must run on client side only (not in Node.js/SSR context)
+ */
+(function initializeSpeedInsights() {
+    // Verify we're running in a browser context, not server-side
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+        console.debug('Speed Insights: Skipped (not in browser context)');
+        return;
+    }
+
+    try {
+        // Dynamically import and initialize injectSpeedInsights from @vercel/speed-insights
+        import('@vercel/speed-insights').then(({ injectSpeedInsights }) => {
+            // Call injectSpeedInsights to start tracking performance metrics
+            const speedInsights = injectSpeedInsights({
+                debug: false,
+            });
+
+            if (speedInsights) {
+                console.debug('Vercel Speed Insights: Successfully initialized');
+            }
+        }).catch((error) => {
+            console.debug('Speed Insights: Failed to import:', error);
+        });
+    } catch (error) {
+        console.debug('Speed Insights: Error during initialization:', error);
+    }
+})();
+
 // Authentication Logic with Supabase
 // Handles Login, Sign Up, and redirects to payment
 

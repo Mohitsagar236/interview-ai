@@ -3,6 +3,9 @@
  * Supports platform + arch selection
  */
 
+// Note: Speed Insights for this endpoint is handled via Vercel's built-in monitoring
+// as this is a redirect-only endpoint. Speed Insights automatically tracks all requests.
+
 export default function handler(req, res) {
     const { platform, arch } = req.query;
 
