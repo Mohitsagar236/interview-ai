@@ -228,7 +228,7 @@ app.post('/api/grant-free-credits', async (req, res) => {
         const { email, name, phone, productType, couponCode } = req.body;
         
         // Verify the coupon is valid for free credits
-        if (couponCode !== 'FREEDOM') {
+        if (couponCode !== 'IITH') {
             return res.status(400).json({ 
                 success: false,
                 error: 'Invalid coupon for free credits' 
@@ -236,7 +236,8 @@ app.post('/api/grant-free-credits', async (req, res) => {
         }
         
         // Get credits amount for the product
-        const creditsAmount = getCreditsForProduct(productType);
+        // IITH coupon gives only 1 credit for marketing purposes
+        const creditsAmount = couponCode === 'IITH' ? 1 : getCreditsForProduct(productType);
         
         // Find user by email in Supabase Auth
         const { data: users, error: userError } = await supabase.auth.admin.listUsers();
