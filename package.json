@@ -88,6 +88,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.79.0",
+    "@vercel/analytics": "^1.6.1",
     "@vercel/blob": "^2.0.0",
     "dotenv": "^16.4.5",
     "electron-store": "^8.1.0",
