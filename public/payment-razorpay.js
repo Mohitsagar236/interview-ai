@@ -22,7 +22,7 @@ const PAYMENT_CONFIG = {
         'FIRSTBUY': { discount: 15, type: 'percentage' },    // 15% off
         'FLAT100': { discount: 100, type: 'fixed' },         // ₹100 off
         'FLAT200': { discount: 200, type: 'fixed' },         // ₹200 off
-        'IIT': { discount: 100, type: 'percentage', restrictTo: ['credits', 'basic', 'plus', 'advanced'] }  // 100% off on credits only
+        'STUDENT': { discount: 100, type: 'percentage', restrictTo: ['credits', 'basic', 'plus', 'advanced'] }  // 100% off on credits only (STUDENT coupon)
     }
 };
 

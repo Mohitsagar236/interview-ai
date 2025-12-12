@@ -5,7 +5,7 @@
 ### What Was Fixed
 1. **Vercel Function Limit**: Reduced from 15 → 9 functions ✅
 2. **SEO Optimization**: Added comprehensive SEO improvements ✅
-3. **IITH Coupon**: Still works perfectly ✅
+3. **STUDENT Coupon**: Still works perfectly ✅
 
 ---
 
@@ -27,10 +27,10 @@ Visit: https://interviewai.space
 - ✅ All buttons work
 ```
 
-### 3. Test IITH Coupon
+### 3. Test STUDENT Coupon
 ```
 1. Go to: https://interviewai.space/payment.html
-2. Enter coupon code: IITH
+2. Enter coupon code: STUDENT
 3. Should grant: 1 FREE credit ✅
 ```
 
@@ -52,7 +52,7 @@ All these should work:
 1. activation.js (handles 6 routes)
 2. create-razorpay-order.js
 3. download.js
-4. grant-free-credits.js (IITH coupon)
+4. grant-free-credits.js (STUDENT coupon)
 5. payment-webhook.js
 6. razorpay-webhook.js
 7. verify-payment-auto.js
@@ -77,7 +77,7 @@ All these should work:
 ### Immediate (Today)
 - [ ] Verify deployment succeeded on Vercel
 - [ ] Test website is live
-- [ ] Test IITH coupon works
+- [ ] Test STUDENT coupon works
 
 ### This Week
 - [ ] Submit to Google Search Console
@@ -115,11 +115,11 @@ File: api/activation.js
 Line 6: require('./_lib/activation-codes')
 ```
 
-**Issue**: IITH coupon not working
+**Issue**: STUDENT coupon not working
 ```
 Solution: Check grant-free-credits.js exists
 File: api/grant-free-credits.js
-Line 54: if (couponCode !== 'IITH')
+Line 54: if (coupon !== 'STUDENT')
 ```
 
 ---
@@ -129,7 +129,7 @@ Line 54: if (couponCode !== 'IITH')
 ### API Files (DO NOT DELETE)
 ```
 api/activation.js              - All activation endpoints
-api/grant-free-credits.js      - IITH coupon handler
+api/grant-free-credits.js      - STUDENT coupon handler
 api/_lib/activation-codes.js   - Shared activation logic
 ```
 
@@ -158,7 +158,7 @@ Run this checklist after deployment:
 - [ ] Sitemap accessible: https://interviewai.space/sitemap.xml ✅
 - [ ] Robots.txt accessible: https://interviewai.space/robots.txt ✅
 - [ ] Function count is 9 (not more than 12) ✅
-- [ ] IITH coupon grants 1 credit ✅
+- [ ] STUDENT coupon grants 1 credit ✅
 - [ ] No errors in browser console ✅
 
 ---
@@ -169,14 +169,14 @@ Your deployment is successful if:
 1. ✅ Vercel shows "Deployment successful"
 2. ✅ Website loads without errors
 3. ✅ All buttons and links work
-4. ✅ IITH coupon grants credits
+4. ✅ STUDENT coupon grants credits
 5. ✅ No 404 errors on main pages
 
 ---
 
 **Status**: Everything verified and working! 🎉  
 **Function Count**: 9/12 ✅  
-**IITH Coupon**: Working ✅  
+**STUDENT Coupon**: Working ✅  
 **SEO**: Optimized ✅  
 **Deployment**: Ready ✅
 

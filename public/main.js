@@ -293,15 +293,15 @@ window.addEventListener('scroll', updateActiveNavLink);
 window.addEventListener('load', updateActiveNavLink);
 
 // ===================================
-// IIT Promo Banner Modal Logic
+// STUDENT Promo Banner Modal Logic
 // ===================================
 (function() {
-    const modal = document.getElementById('iit-promo-modal');
+    const modal = document.getElementById('student-promo-modal');
     const closeBtn = document.querySelector('.promo-modal-close');
     const modalContent = document.querySelector('.promo-modal-content');
     
     // Check if modal should be shown (once per session)
-    const hasSeenPromo = sessionStorage.getItem('iit-promo-seen');
+    const hasSeenPromo = sessionStorage.getItem('student-promo-seen');
     
     if (!hasSeenPromo && modal) {
         // Show modal after 1 second delay
@@ -315,7 +315,7 @@ window.addEventListener('load', updateActiveNavLink);
     function closeModal() {
         modal.classList.remove('show');
         document.body.style.overflow = ''; // Re-enable scrolling
-        sessionStorage.setItem('iit-promo-seen', 'true');
+        sessionStorage.setItem('student-promo-seen', 'true');
     }
     
     // Close on X button click

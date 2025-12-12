@@ -49,9 +49,10 @@ module.exports = async (req, res) => {
         console.log('📥 Received free credits request:', req.body);
         
         const { email, name, phone, productType, couponCode } = req.body;
+        const coupon = (couponCode || '').toUpperCase();
         
         // Verify the coupon is valid for free credits
-        if (couponCode !== 'IITH') {
+        if (coupon !== 'STUDENT') {
             return res.status(400).json({ 
                 success: false,
                 error: 'Invalid coupon for free credits' 
@@ -59,8 +60,8 @@ module.exports = async (req, res) => {
         }
         
         // Get credits amount for the product
-        // IIT coupon gives only 1 credit for marketing purposes
-        const creditsAmount = couponCode === 'IIT' ? 1 : getCreditsForProduct(productType);
+        // STUDENT coupon gives 1 credit (15 minutes) for trial purposes
+        const creditsAmount = coupon === 'STUDENT' ? 1 : getCreditsForProduct(productType);
         
         // Find user by email in Supabase Auth
         const { data: users, error: userError } = await supabase.auth.admin.listUsers();

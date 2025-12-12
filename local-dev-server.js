@@ -228,7 +228,8 @@ app.post('/api/grant-free-credits', async (req, res) => {
         const { email, name, phone, productType, couponCode } = req.body;
         
         // Verify the coupon is valid for free credits
-        if (couponCode !== 'IIT') {
+        const coupon = (couponCode || '').toUpperCase();
+        if (coupon !== 'STUDENT') {
             return res.status(400).json({ 
                 success: false,
                 error: 'Invalid coupon for free credits' 
@@ -236,8 +237,8 @@ app.post('/api/grant-free-credits', async (req, res) => {
         }
         
         // Get credits amount for the product
-        // IIT coupon gives only 1 credit for marketing purposes
-        const creditsAmount = couponCode === 'IIT' ? 1 : getCreditsForProduct(productType);
+        // STUDENT coupon gives only 1 credit (15 minutes) for trial purposes
+        const creditsAmount = coupon === 'STUDENT' ? 1 : getCreditsForProduct(productType);
         
         // Find user by email in Supabase Auth
         const { data: users, error: userError } = await supabase.auth.admin.listUsers();
@@ -368,7 +369,7 @@ app.post('/api/validate-coupon', (req, res) => {
             'FIRSTBUY': { discount: 15, type: 'percentage' },
             'FLAT100': { discount: 100, type: 'fixed' },
             'FLAT200': { discount: 200, type: 'fixed' },
-            'IIT': { discount: 100, type: 'percentage', restrictTo: ['credits', 'basic', 'plus', 'advanced'] }
+            'STUDENT': { discount: 100, type: 'percentage', restrictTo: ['credits', 'basic', 'plus', 'advanced'] }
         };
         
         const coupon = coupons[couponCode.toUpperCase()];

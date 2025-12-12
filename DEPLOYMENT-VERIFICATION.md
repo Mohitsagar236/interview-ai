@@ -14,7 +14,7 @@
 1. ✅ `api/activation.js` - Consolidated activation endpoints
 2. ✅ `api/create-razorpay-order.js` - Payment order creation
 3. ✅ `api/download.js` - Download tracking
-4. ✅ `api/grant-free-credits.js` - **IITH coupon handler** 🎁
+4. ✅ `api/grant-free-credits.js` - **STUDENT coupon handler** 🎁
 5. ✅ `api/payment-webhook.js` - Payment webhooks
 6. ✅ `api/razorpay-webhook.js` - Razorpay webhooks
 7. ✅ `api/verify-payment-auto.js` - Auto payment verification
@@ -38,10 +38,10 @@ All activation-related endpoints properly route to `api/activation.js`:
 - ✅ `/api/update-credits-by-code`
 - ✅ `/api/deactivate-code`
 
-## 🎁 IITH Coupon Status
+## 🎁 STUDENT Coupon Status
 - ✅ **Working**: Code found in `grant-free-credits.js`
 - ✅ **Credits**: 1 credit granted per use
-- ✅ **Validation**: Checks for "IITH" code specifically
+- ✅ **Validation**: Checks for "STUDENT" code specifically
 
 ## 🌐 SEO Enhancements Verified
 
@@ -94,7 +94,7 @@ interview-ai/
 │   ├── activation.js            ✅ Function 1
 │   ├── create-razorpay-order.js ✅ Function 2
 │   ├── download.js              ✅ Function 3
-│   ├── grant-free-credits.js    ✅ Function 4 (IITH)
+│   ├── grant-free-credits.js    ✅ Function 4 (STUDENT)
 │   ├── payment-webhook.js       ✅ Function 5
 │   ├── razorpay-webhook.js      ✅ Function 6
 │   ├── verify-payment-auto.js   ✅ Function 7
@@ -117,7 +117,7 @@ interview-ai/
 
 - [x] Function count under 12 limit (9/12)
 - [x] All imports correctly updated to `_lib/`
-- [x] IITH coupon functionality preserved
+- [x] STUDENT coupon functionality preserved
 - [x] No syntax errors in any files
 - [x] Vercel.json properly configured
 - [x] Route mappings correct
@@ -143,7 +143,7 @@ interview-ai/
 ### Functionality
 - ✅ Activation codes work
 - ✅ Payment processing works
-- ✅ IITH coupon grants 1 free credit
+- ✅ STUDENT coupon grants 1 free credit
 - ✅ All webhooks functional
 
 ### SEO
