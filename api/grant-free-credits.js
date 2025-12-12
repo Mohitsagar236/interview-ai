@@ -59,8 +59,8 @@ module.exports = async (req, res) => {
         }
         
         // Get credits amount for the product
-        // IITH coupon gives only 1 credit for marketing purposes
-        const creditsAmount = couponCode === 'IITH' ? 1 : getCreditsForProduct(productType);
+        // IIT coupon gives only 1 credit for marketing purposes
+        const creditsAmount = couponCode === 'IIT' ? 1 : getCreditsForProduct(productType);
         
         // Find user by email in Supabase Auth
         const { data: users, error: userError } = await supabase.auth.admin.listUsers();

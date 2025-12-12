@@ -291,3 +291,58 @@ function updateActiveNavLink() {
 
 window.addEventListener('scroll', updateActiveNavLink);
 window.addEventListener('load', updateActiveNavLink);
+
+// ===================================
+// IIT Promo Banner Modal Logic
+// ===================================
+(function() {
+    const modal = document.getElementById('iit-promo-modal');
+    const closeBtn = document.querySelector('.promo-modal-close');
+    const modalContent = document.querySelector('.promo-modal-content');
+    
+    // Check if modal should be shown (once per session)
+    const hasSeenPromo = sessionStorage.getItem('iit-promo-seen');
+    
+    if (!hasSeenPromo && modal) {
+        // Show modal after 1 second delay
+        setTimeout(() => {
+            modal.classList.add('show');
+            document.body.style.overflow = 'hidden'; // Prevent scrolling
+        }, 1000);
+    }
+    
+    // Close modal function
+    function closeModal() {
+        modal.classList.remove('show');
+        document.body.style.overflow = ''; // Re-enable scrolling
+        sessionStorage.setItem('iit-promo-seen', 'true');
+    }
+    
+    // Close on X button click
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeModal);
+    }
+    
+    // Close on outside click
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+    }
+    
+    // Prevent closing when clicking inside modal content
+    if (modalContent) {
+        modalContent.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+    }
+    
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('show')) {
+            closeModal();
+        }
+    });
+})();

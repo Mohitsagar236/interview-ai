@@ -2120,7 +2120,7 @@ ipcMain.handle('interviews-create', (_event, payload) => {
       role: payload.role || 'Untitled Role',
       company: payload.company || 'Company',
       scheduledAt: payload.scheduledAt || new Date().toISOString(),
-      durationMin: payload.durationMin || 60,
+      durationMin: payload.durationMin || 15,
       status: 'upcoming',
       notes: '',
       createdAt: new Date().toISOString()
