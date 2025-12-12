@@ -60,7 +60,7 @@ module.exports = async (req, res) => {
         }
         
         // Get credits amount for the product
-        // STUDENT coupon gives 1 credit (15 minutes) for trial purposes
+        // STUDENT coupon gives 1 credit (1 hour) for trial purposes
         const creditsAmount = coupon === 'STUDENT' ? 1 : getCreditsForProduct(productType);
         
         // Find user by email in Supabase Auth
@@ -83,6 +83,26 @@ module.exports = async (req, res) => {
                 error: 'Please create an account first before purchasing credits. Go to Login/Sign Up page.',
                 requiresAuth: true
             });
+        }
+        
+        // Ensure coupon is single-use per user
+        try {
+            const { data: alreadyUsed, error: alreadyUsedError } = await supabase
+                .from('activity_log')
+                .select('id')
+                .eq('user_id', userId)
+                .contains('metadata', { couponCode: coupon })
+                .limit(1);
+
+            if (alreadyUsed && alreadyUsed.length > 0) {
+                console.log('⚠️  Coupon already used for user:', email);
+                return res.status(400).json({
+                    success: false,
+                    error: 'This coupon has already been used by this account.'
+                });
+            }
+        } catch (err) {
+            console.warn('⚠️  Could not verify coupon usage:', err.message);
         }
         
         // Check if user already has a subscription

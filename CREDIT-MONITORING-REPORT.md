@@ -8,7 +8,7 @@ Implemented comprehensive credit monitoring system to ensure proper credit utili
 ## 🎯 How Credits Work
 
 ### Credit System
-- **1 Credit = 15 Minutes** of interview time
+- **1 Credit = 1 Hour** of interview time
 - Credits are deducted based on actual session duration
 - System monitors credits continuously during sessions
 
@@ -16,7 +16,7 @@ Implemented comprehensive credit monitoring system to ensure proper credit utili
 - **Basic**: 3 credits (3 hours)
 - **Plus**: 8 credits (8 hours)
 - **Advanced**: 15 credits (15 hours)
-- **STUDENT Coupon**: 1 credit (15 minutes) 🎁
+- **STUDENT Coupon**: 1 credit (1 hour) 🎁
 
 ---
 
