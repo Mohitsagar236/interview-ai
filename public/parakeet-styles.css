@@ -843,7 +843,12 @@
 
 /* Dark Mode */
 html.dark .key-features {
-    background: #0f172a;
+    background: #0f172a !important;
+}
+
+html.dark #privacy-features,
+html.dark #platforms {
+    background: #0f172a !important;
 }
 
 html.dark .feature-item {

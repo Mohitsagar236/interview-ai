@@ -32,6 +32,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
+    <!-- Dark Mode Init Script - Must run before body renders -->
+    <script>
+        // Apply saved theme immediately to prevent flash (default to dark)
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        if (savedTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+    
     <style>
         .blog-hero {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);

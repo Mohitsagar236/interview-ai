@@ -766,9 +766,9 @@
             });
         }
 
-        // Apply saved theme
+        // Apply saved theme (default to dark)
         const savedTheme = localStorage.getItem('theme');
-        if (savedTheme === 'dark') {
+        if (savedTheme !== 'light') {
             document.documentElement.classList.add('dark');
         }
     }

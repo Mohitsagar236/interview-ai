@@ -213,13 +213,13 @@ function initializeTheme() {
     const savedTheme = localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     
-    // Default to light mode unless user has explicitly chosen dark mode
-    if (savedTheme === 'dark') {
-        document.documentElement.classList.add('dark');
-        updateThemeIcons(true);
-    } else {
+    // Default to dark mode unless user has explicitly chosen light mode
+    if (savedTheme === 'light') {
         document.documentElement.classList.remove('dark');
         updateThemeIcons(false);
+    } else {
+        document.documentElement.classList.add('dark');
+        updateThemeIcons(true);
     }
 }
 
