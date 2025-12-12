@@ -7,8 +7,7 @@ export default function handler(req, res) {
     const { platform, arch } = req.query;
 
     // Latest builds from Cloudflare R2 (unlimited bandwidth, no egress fees!)
-    // TODO: Replace YOUR_R2_PUBLIC_URL after running: npm run upload:r2
-    const R2_BASE_URL = process.env.R2_PUBLIC_URL || 'YOUR_R2_PUBLIC_URL';
+    const R2_BASE_URL = process.env.R2_PUBLIC_URL || 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev';
     const downloadUrls = {
         windows: {
             x64: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,

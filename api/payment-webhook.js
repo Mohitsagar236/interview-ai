@@ -248,7 +248,7 @@ function verifyPaytmChecksum(params, checksum, key) {
 
 // Helper: Generate download URL
 function getDownloadUrl(productType, token) {
-    const R2_BASE_URL = process.env.R2_PUBLIC_URL || 'YOUR_R2_PUBLIC_URL';
+    const R2_BASE_URL = process.env.R2_PUBLIC_URL || 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev';
     const DOWNLOAD_URLS = {
         windows: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,
         mac: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-0.1.0.dmg`

@@ -91,7 +91,7 @@ module.exports = async (req, res) => {
 async function sendDownloadEmail({ email, name, productType, paymentId, amount }) {
     try {
         // Product download URLs from Cloudflare R2 (unlimited bandwidth, no egress fees!)
-        const R2_BASE_URL = process.env.R2_PUBLIC_URL || 'YOUR_R2_PUBLIC_URL';
+        const R2_BASE_URL = process.env.R2_PUBLIC_URL || 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev';
         const downloadUrls = {
             basic: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,
             plus: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,
