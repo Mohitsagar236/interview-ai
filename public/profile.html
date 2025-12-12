@@ -12,6 +12,14 @@
     <link rel="stylesheet" href="responsive.css">
     <link rel="stylesheet" href="responsive-enhanced.css">
     
+    <!-- Dark Mode Init Script - Must run before body renders -->
+    <script>
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        if (savedTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+    
     <!-- Supabase Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
