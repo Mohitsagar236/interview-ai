@@ -35,7 +35,10 @@
     "build:compact-bar": "cd compact-bar-app && npm install && npm run build",
     "pack": "electron-builder --dir",
     "lint": "echo 'No linter configured'",
-    "vercel:deploy": "vercel --prod"
+    "vercel:deploy": "vercel --prod",
+    "upload:r2": "node scripts/upload-to-r2.js",
+    "upload:github": "node scripts/upload-to-github.js",
+    "release": "npm run build && npm run upload:r2"
   },
   "vercel": {
     "builds": [

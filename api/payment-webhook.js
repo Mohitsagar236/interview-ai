@@ -248,9 +248,10 @@ function verifyPaytmChecksum(params, checksum, key) {
 
 // Helper: Generate download URL
 function getDownloadUrl(productType, token) {
+    const R2_BASE_URL = process.env.R2_PUBLIC_URL || 'YOUR_R2_PUBLIC_URL';
     const DOWNLOAD_URLS = {
-        windows: 'https://iylx1o61xprr6qlb.public.blob.vercel-storage.com/Interview-AI-Setup-LATEST-20251208-2117-x64.exe',
-        mac: '/downloads/Interview AI Assistant-0.1.0.dmg'
+        windows: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,
+        mac: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-0.1.0.dmg`
     };
     const baseUrl = DOWNLOAD_URLS[productType];
     if (!baseUrl) return null;

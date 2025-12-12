@@ -69,14 +69,14 @@ const products = {
         description: '100% Private and Undetectable Desktop Application',
         price: PAYMENT_CONFIG.prices.windows,
         icon: 'fa-windows',
-        downloadUrl: 'https://iylx1o61xprr6qlb.public.blob.vercel-storage.com/Interview-AI-Setup-LATEST-20251208-2117-x64.exe'
+        downloadUrl: 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe'
     },
     mac: {
         name: 'Interview AI Assistant - macOS',
         description: '100% Private and Undetectable Desktop Application',
         price: PAYMENT_CONFIG.prices.mac,
         icon: 'fa-apple',
-        downloadUrl: 'downloads/Interview AI Assistant-0.1.0.dmg'
+        downloadUrl: 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev/releases/v0.1.0/Interview-AI-0.1.0.dmg'
     },
     subscription: {
         name: 'Interview AI Pro - Monthly',

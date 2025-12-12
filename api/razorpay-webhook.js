@@ -90,13 +90,14 @@ module.exports = async (req, res) => {
  */
 async function sendDownloadEmail({ email, name, productType, paymentId, amount }) {
     try {
-        // Product download URLs
+        // Product download URLs from Cloudflare R2 (unlimited bandwidth, no egress fees!)
+        const R2_BASE_URL = process.env.R2_PUBLIC_URL || 'YOUR_R2_PUBLIC_URL';
         const downloadUrls = {
-            basic: 'https://iylx1o61xprr6qlb.public.blob.vercel-storage.com/Interview-AI-Setup-LATEST-20251208-2117-x64.exe',
-            plus: 'https://iylx1o61xprr6qlb.public.blob.vercel-storage.com/Interview-AI-Setup-LATEST-20251208-2117-x64.exe',
-            advanced: 'https://iylx1o61xprr6qlb.public.blob.vercel-storage.com/Interview-AI-Setup-LATEST-20251208-2117-x64.exe',
-            windows: 'https://iylx1o61xprr6qlb.public.blob.vercel-storage.com/Interview-AI-Setup-LATEST-20251208-2117-x64.exe',
-            mac: 'https://yourdomain.com/downloads/Interview AI Assistant-0.1.0.dmg'
+            basic: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,
+            plus: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,
+            advanced: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,
+            windows: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,
+            mac: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-0.1.0.dmg`
         };
 
         const downloadUrl = downloadUrls[productType] || downloadUrls.windows;
