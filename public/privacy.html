@@ -7,6 +7,13 @@
     <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Dark Mode Init Script - Must run before body renders -->
+    <script>
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        if (savedTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
     <style>
         :root {
             --bg-primary: #f9fafb;
@@ -287,7 +294,7 @@
             <ul>
                 <li><strong>OpenAI:</strong> For AI-powered response generation</li>
                 <li><strong>Deepgram:</strong> For real-time audio transcription</li>
-                <li><strong>PhonePe:</strong> For secure payment processing</li>
+                <li><strong>Razorpay:</strong> For secure payment processing</li>
                 <li><strong>Supabase:</strong> For user authentication and data storage</li>
                 <li><strong>Cloud Hosting:</strong> For application infrastructure</li>
             </ul>
@@ -333,7 +340,7 @@
             <p>You can update your account information at any time through the profile settings.</p>
 
             <h3>Deletion</h3>
-            <p>You can request deletion of your account and associated data by contacting us at <a href="mailto:interviewai.space@gmail.com">interviewai.space@gmail.com</a></p>
+            <p>You can request deletion of your account and associated data by contacting us at <a href="mailto:privacy@interview-ai.app">privacy@interview-ai.app</a></p>
 
             <h3>Marketing Communications</h3>
             <p>You can opt out of promotional emails by clicking the unsubscribe link in any marketing email.</p>
@@ -378,7 +385,7 @@
                 If you have any questions about this Privacy Policy or our data practices, please contact us:
             </p>
             <p>
-                Email: <a href="mailto:interviewai.space@gmail.com">interviewai.space@gmail.com</a><br>
+                Email: <a href="mailto:privacy@interview-ai.app">privacy@interview-ai.app</a><br>
                 Address: Interview AI Technologies, Innovation Hub, Bangalore, Karnataka 560001, India
             </p>
         </div>
@@ -390,8 +397,8 @@
         const html = document.documentElement;
         const themeIcon = themeToggle.querySelector('i');
         
-        // Check for saved theme preference or default to light mode
-        const currentTheme = localStorage.getItem('theme') || 'light';
+        // Check for saved theme preference or default to dark mode
+        const currentTheme = localStorage.getItem('theme') || 'dark';
         html.setAttribute('data-theme', currentTheme);
         updateThemeIcon(currentTheme);
         

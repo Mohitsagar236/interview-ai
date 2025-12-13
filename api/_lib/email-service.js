@@ -7,8 +7,8 @@
 class EmailService {
     constructor() {
         this.provider = process.env.EMAIL_PROVIDER || 'sendgrid';
-        this.fromEmail = process.env.FROM_EMAIL || 'interviewai.space@gmail.com';
-        this.replyTo = process.env.REPLY_TO_EMAIL || 'interviewai.space@gmail.com';
+        this.fromEmail = process.env.FROM_EMAIL || 'downloads@interview-ai.app';
+        this.replyTo = process.env.REPLY_TO_EMAIL || 'support@interview-ai.app';
         
         // Initialize based on provider
         this.initProvider();

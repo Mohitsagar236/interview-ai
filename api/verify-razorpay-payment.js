@@ -1,6 +1,6 @@
 /**
- * PhonePe Payment Verification API
- * Verifies payment status and processes the order
+ * Razorpay Payment Verification API
+ * Verifies payment signature and processes the order
  */
 
 const crypto = require('crypto');
@@ -8,7 +8,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 // Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 // Credit mapping for each plan
@@ -16,16 +16,6 @@ const PLAN_CREDITS = {
     basic: 3,        // Basic plan: 3 credits (3 hours)
     plus: 8,         // Plus plan: 6 + 2 free = 8 credits (8 hours)
     advanced: 15     // Advanced plan: 9 + 6 free = 15 credits (15 hours)
-};
-
-// PhonePe Configuration
-const PHONEPE_CONFIG = {
-    prod: {
-        baseUrl: 'https://api.phonepe.com/apis/hermes'
-    },
-    sandbox: {
-        baseUrl: 'https://api-preprod.phonepe.com/apis/pg-sandbox'
-    }
 };
 
 module.exports = async (req, res) => {
@@ -45,72 +35,43 @@ module.exports = async (req, res) => {
 
     try {
         const { 
-            transactionId,
+            razorpay_order_id, 
+            razorpay_payment_id, 
+            razorpay_signature,
             email,
             name,
             productType 
         } = req.body;
 
         // Validate input
-        if (!transactionId) {
+        if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
             return res.status(400).json({ 
                 success: false,
-                error: 'Missing transaction ID' 
+                error: 'Missing payment verification data' 
             });
         }
 
-        // Get PhonePe credentials
-        const merchantId = process.env.PHONEPE_MERCHANT_ID;
-        const saltKey = process.env.PHONEPE_SALT_KEY;
-        const saltIndex = process.env.PHONEPE_SALT_INDEX || '1';
-        const isProduction = process.env.PHONEPE_ENV === 'production';
+        // Verify signature
+        const body = razorpay_order_id + "|" + razorpay_payment_id;
+        const expectedSignature = crypto
+            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+            .update(body.toString())
+            .digest('hex');
 
-        if (!merchantId || !saltKey) {
-            return res.status(500).json({
-                success: false,
-                error: 'PhonePe credentials not configured'
-            });
-        }
+        const isAuthentic = expectedSignature === razorpay_signature;
 
-        // Select endpoint based on environment
-        const config = isProduction ? PHONEPE_CONFIG.prod : PHONEPE_CONFIG.sandbox;
-
-        // Check payment status with PhonePe
-        const statusEndpoint = `/pg/v1/status/${merchantId}/${transactionId}`;
-        const checksum = generateChecksum(statusEndpoint, saltKey, saltIndex);
-
-        const statusUrl = `${config.baseUrl}${statusEndpoint}`;
-
-        const response = await fetch(statusUrl, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-VERIFY': checksum,
-                'X-MERCHANT-ID': merchantId
-            }
-        });
-
-        const data = await response.json();
-
-        console.log('PhonePe verification response:', data);
-
-        if (!data.success || data.code !== 'PAYMENT_SUCCESS') {
+        if (!isAuthentic) {
             return res.status(400).json({
                 success: false,
-                error: 'Payment not successful',
-                message: data.message || 'Payment verification failed',
-                code: data.code
+                error: 'Payment verification failed',
+                message: 'Invalid signature'
             });
         }
 
         // Payment is verified successfully
-        const paymentData = data.data;
-        const amountInRupees = (paymentData.amount || 0) / 100;
-
         console.log('Payment verified successfully:', {
-            transactionId,
-            phonepeTransactionId: paymentData.transactionId,
-            amount: amountInRupees,
+            orderId: razorpay_order_id,
+            paymentId: razorpay_payment_id,
             email,
             productType
         });
@@ -143,9 +104,9 @@ module.exports = async (req, res) => {
                                 plan_type: productType,
                                 status: 'active',
                                 credits_total: (existingSub.credits_total || 0) + creditsToAdd,
-                                payment_id: paymentData.transactionId,
-                                order_id: transactionId,
-                                amount: amountInRupees * 100,
+                                payment_id: razorpay_payment_id,
+                                order_id: razorpay_order_id,
+                                amount: PLAN_CREDITS[productType] * 100, // Example amount
                                 updated_at: new Date().toISOString()
                             })
                             .eq('user_id', userId);
@@ -165,9 +126,9 @@ module.exports = async (req, res) => {
                                 status: 'active',
                                 credits_total: creditsToAdd,
                                 credits_used: 0,
-                                payment_id: paymentData.transactionId,
-                                order_id: transactionId,
-                                amount: amountInRupees * 100,
+                                payment_id: razorpay_payment_id,
+                                order_id: razorpay_order_id,
+                                amount: PLAN_CREDITS[productType] * 100,
                                 description: `${productType.charAt(0).toUpperCase() + productType.slice(1)} Plan - ${creditsToAdd} credits`
                             });
                         
@@ -181,29 +142,6 @@ module.exports = async (req, res) => {
             } catch (creditsError) {
                 console.error('Error adding credits:', creditsError);
                 // Don't fail the payment, just log the error
-            }
-        }
-
-        // Record payment in database
-        if (supabase) {
-            try {
-                await supabase
-                    .from('payments')
-                    .upsert({
-                        transaction_id: transactionId,
-                        phonepe_transaction_id: paymentData.transactionId,
-                        email: email,
-                        name: name,
-                        product_type: productType,
-                        amount: amountInRupees,
-                        status: 'success',
-                        payment_method: paymentData.paymentInstrument?.type || 'PHONEPE',
-                        verified_at: new Date().toISOString()
-                    }, {
-                        onConflict: 'transaction_id'
-                    });
-            } catch (dbError) {
-                console.error('Error recording payment:', dbError);
             }
         }
 
@@ -223,7 +161,7 @@ module.exports = async (req, res) => {
             email,
             name,
             productType,
-            paymentId: paymentData.transactionId || transactionId,
+            paymentId: razorpay_payment_id,
             downloadUrl
         });
 
@@ -231,8 +169,7 @@ module.exports = async (req, res) => {
             success: true,
             message: 'Payment verified successfully',
             downloadUrl: downloadUrl,
-            paymentId: paymentData.transactionId || transactionId,
-            amount: amountInRupees
+            paymentId: razorpay_payment_id
         });
 
     } catch (error) {
@@ -244,15 +181,6 @@ module.exports = async (req, res) => {
         });
     }
 };
-
-/**
- * Generate PhonePe checksum for status check
- */
-function generateChecksum(endpoint, saltKey, saltIndex) {
-    const string = endpoint + saltKey;
-    const sha256Hash = crypto.createHash('sha256').update(string).digest('hex');
-    return sha256Hash + '###' + saltIndex;
-}
 
 /**
  * Send success email with download link
@@ -283,7 +211,7 @@ async function sendSuccessEmail({ email, name, productType, paymentId, downloadU
         </div>
         <div class="content">
             <p>Hi ${name || 'there'},</p>
-            <p>Thank you for your purchase! Your payment has been confirmed and processed successfully via PhonePe.</p>
+            <p>Thank you for your purchase! Your payment has been confirmed and processed successfully.</p>
             
             <h3>📦 Order Details:</h3>
             <ul>
@@ -316,7 +244,7 @@ async function sendSuccessEmail({ email, name, productType, paymentId, downloadU
             </ol>
 
             <p><strong>Need Help?</strong> We're here for you!</p>
-            <p>📧 Email: interviewai.space@gmail.com<br>
+            <p>📧 Email: support@interview-ai.app<br>
             💬 Visit our help center for guides and tutorials</p>
 
             <p style="margin-top: 30px; padding: 15px; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px;">

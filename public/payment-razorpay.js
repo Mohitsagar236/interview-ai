@@ -1,5 +1,5 @@
-// PhonePe Payment Integration for Interview AI
-// Automated payment processing with PhonePe gateway
+// Razorpay Payment Integration for Interview AI
+// Automated payment processing - No manual verification needed
 
 // Configuration
 const PAYMENT_CONFIG = {
@@ -91,25 +91,11 @@ const currentProduct = products[productType] || products.credits;
 
 // Initialize page
 document.addEventListener('DOMContentLoaded', function() {
-    checkUrlParams();
     checkAuthentication();
     updateProductInfo();
     setupEventListeners();
     prefillUserData();
 });
-
-// Check URL parameters for payment status
-function checkUrlParams() {
-    const status = urlParams.get('status');
-    const error = urlParams.get('error');
-    const transactionId = urlParams.get('transactionId');
-
-    if (status === 'failed' && error) {
-        showMessage(`Payment failed: ${decodeURIComponent(error)}`, 'error');
-    } else if (status === 'pending' && transactionId) {
-        showMessage('Payment is pending. Please wait or try again.', 'warning');
-    }
-}
 
 // Update UI with product info
 function updateProductInfo() {
@@ -302,7 +288,7 @@ async function handlePayment(e) {
     
     // Validate phone format
     const phoneRegex = /^[+]?[0-9]{10,13}$/;
-    if (!phoneRegex.test(phone.replace(/\s/g, ''))) {
+    if (!phoneRegex.test(phone)) {
         showMessage('Please enter a valid phone number', 'error');
         return;
     }
@@ -352,22 +338,8 @@ async function handlePayment(e) {
             return;
         }
         
-        // Store user data for verification after redirect
-        localStorage.setItem('phonepe_pending_payment', JSON.stringify({
-            email,
-            name,
-            phone,
-            productType,
-            amount: finalPrice,
-            couponCode: appliedCoupon,
-            discount: discountAmount,
-            timestamp: Date.now()
-        }));
-        
-        // Create PhonePe order
-        buttonText.textContent = 'Redirecting to PhonePe...';
-        
-        const orderData = await createPhonePeOrder({
+        // Create Razorpay order for paid transactions
+        const orderData = await createRazorpayOrder({
             amount: finalPrice,
             currency: 'INR',
             productType: productType,
@@ -382,12 +354,8 @@ async function handlePayment(e) {
             throw new Error(orderData.error || 'Failed to create order');
         }
         
-        // Redirect to PhonePe payment page
-        if (orderData.paymentUrl) {
-            window.location.href = orderData.paymentUrl;
-        } else {
-            throw new Error('Payment URL not received');
-        }
+        // Open Razorpay checkout
+        openRazorpayCheckout(orderData, { email, name, phone });
         
     } catch (error) {
         console.error('Payment error:', error);
@@ -400,10 +368,10 @@ async function handlePayment(e) {
     }
 }
 
-// Create PhonePe order
-async function createPhonePeOrder(orderData) {
+// Create Razorpay order
+async function createRazorpayOrder(orderData) {
     try {
-        const response = await fetch(`${PAYMENT_CONFIG.apiBaseUrl}/create-phonepe-order`, {
+        const response = await fetch(`${PAYMENT_CONFIG.apiBaseUrl}/create-razorpay-order`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -425,7 +393,7 @@ async function createPhonePeOrder(orderData) {
     }
 }
 
-// Grant free credits (for 100% discount coupons like STUDENT)
+// Grant free credits (for 100% discount coupons like FREEDOM)
 async function grantFreeCredits(userData) {
     try {
         const response = await fetch(`${PAYMENT_CONFIG.apiBaseUrl}/grant-free-credits`, {
@@ -450,6 +418,86 @@ async function grantFreeCredits(userData) {
     }
 }
 
+// Open Razorpay checkout
+function openRazorpayCheckout(orderData, userDetails) {
+    const options = {
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: 'Interview AI',
+        description: currentProduct.name,
+        // image removed to avoid CORS issues with local development
+        order_id: orderData.orderId,
+        prefill: {
+            name: userDetails.name,
+            email: userDetails.email,
+            contact: userDetails.phone
+        },
+        theme: {
+            color: '#10b981'
+        },
+        handler: function(response) {
+            // Payment successful - pass order data to handler
+            handlePaymentSuccess(response, userDetails, orderData);
+        },
+        modal: {
+            ondismiss: function() {
+                // Payment cancelled
+                handlePaymentCancelled();
+            }
+        }
+    };
+    
+    const razorpay = new Razorpay(options);
+    razorpay.open();
+}
+
+// Handle payment success
+async function handlePaymentSuccess(response, userDetails, orderData) {
+    const submitButton = document.getElementById('submit-button');
+    const spinner = document.getElementById('spinner');
+    const buttonText = document.getElementById('button-text');
+    
+    buttonText.textContent = 'Verifying Payment...';
+    
+    try {
+        // Verify payment on server
+        const verificationResponse = await fetch(`${PAYMENT_CONFIG.apiBaseUrl}/verify-razorpay-payment`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                email: userDetails.email,
+                name: userDetails.name,
+                productType: productType,
+                amount: orderData.amount // Pass amount for credit grant
+            })
+        });
+        
+        const verificationData = await verificationResponse.json();
+        
+        if (verificationData.success) {
+            // Payment verified successfully
+            showSuccessModal(userDetails.email, verificationData.downloadUrl);
+        } else {
+            throw new Error(verificationData.error || 'Payment verification failed');
+        }
+        
+    } catch (error) {
+        console.error('Verification error:', error);
+        showMessage('Payment successful but verification failed. Please contact support with payment ID: ' + response.razorpay_payment_id, 'warning');
+    } finally {
+        // Re-enable button
+        submitButton.disabled = false;
+        spinner.classList.add('hidden');
+        buttonText.textContent = 'Proceed to Payment';
+    }
+}
+
 // Handle payment cancelled
 function handlePaymentCancelled() {
     const submitButton = document.getElementById('submit-button');
@@ -461,7 +509,7 @@ function handlePaymentCancelled() {
     spinner.classList.add('hidden');
     buttonText.textContent = 'Proceed to Payment';
     
-    showMessage('Payment cancelled. Please try again when ready.', 'warning');
+    showMessage('Payment cancelled. You can try again when ready.', 'info');
 }
 
 // Show success modal
@@ -469,58 +517,165 @@ function showSuccessModal(email, downloadUrl) {
     const modal = document.getElementById('success-modal');
     const userEmailSpan = document.getElementById('user-email');
     const downloadButton = document.getElementById('download-now');
+    const closeButton = document.getElementById('close-modal');
     
     userEmailSpan.textContent = email;
+    
+    // Show modal
     modal.classList.remove('hidden');
     
-    // Setup download button
-    downloadButton.addEventListener('click', () => {
+    // Download button handler
+    downloadButton.onclick = function() {
+        window.location.href = downloadUrl;
+        setTimeout(() => {
+            window.location.href = 'index.html';
+        }, 2000);
+    };
+    
+    // Close button handler
+    closeButton.onclick = function() {
+        modal.classList.add('hidden');
+        window.location.href = 'index.html';
+    };
+    
+    // Auto-download after 2 seconds
+    setTimeout(() => {
         if (downloadUrl) {
             window.location.href = downloadUrl;
-        } else {
-            // For credit purchases, redirect to profile
-            window.location.href = 'profile.html';
         }
-    });
-    
-    // Setup close button
-    document.getElementById('close-modal').addEventListener('click', () => {
-        modal.classList.add('hidden');
-        // Redirect to profile or home
-        window.location.href = downloadUrl ? 'index.html' : 'profile.html';
-    });
-    
-    // Auto-start download for software products
-    if (downloadUrl && currentProduct.downloadUrl) {
-        setTimeout(() => {
-            window.location.href = downloadUrl;
-        }, 1500);
-    }
+    }, 2000);
 }
 
 // Show message
-function showMessage(text, type = 'info') {
+function showMessage(message, type = 'info') {
     const messageDiv = document.getElementById('payment-message');
-    
-    messageDiv.className = `message ${type}`;
-    messageDiv.innerHTML = `
-        <i class="fas ${type === 'error' ? 'fa-exclamation-circle' : type === 'success' ? 'fa-check-circle' : type === 'warning' ? 'fa-exclamation-triangle' : 'fa-info-circle'}"></i>
-        <span>${text}</span>
-    `;
+    messageDiv.textContent = message;
+    messageDiv.className = `payment-message ${type}`;
     messageDiv.classList.remove('hidden');
     
-    // Auto-hide after 5 seconds for non-error messages
-    if (type !== 'error') {
-        setTimeout(() => {
-            messageDiv.classList.add('hidden');
-        }, 5000);
-    }
-    
-    // Scroll to message
-    messageDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+        messageDiv.classList.add('hidden');
+    }, 5000);
 }
 
-// Format currency
-function formatCurrency(amount) {
-    return `₹${amount.toLocaleString('en-IN')}`;
-}
+// Add styles for payment message
+const style = document.createElement('style');
+style.textContent = `
+    .payment-message {
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 20px;
+        font-weight: 500;
+    }
+    
+    .payment-message.error {
+        background-color: #fee;
+        color: #c33;
+        border: 1px solid #fcc;
+    }
+    
+    .payment-message.success {
+        background-color: #efe;
+        color: #3c3;
+        border: 1px solid #cfc;
+    }
+    
+    .payment-message.warning {
+        background-color: #ffc;
+        color: #c93;
+        border: 1px solid #fc9;
+    }
+    
+    .payment-message.info {
+        background-color: #def;
+        color: #369;
+        border: 1px solid #bcf;
+    }
+    
+    .payment-methods-info {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 12px;
+        margin: 20px 0;
+        text-align: center;
+    }
+    
+    .payment-methods-info h3 {
+        margin: 0 0 15px 0;
+        font-size: 16px;
+        color: #333;
+    }
+    
+    .payment-method-icons {
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        gap: 15px;
+        margin: 15px 0;
+    }
+    
+    .method-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .method-item i {
+        font-size: 32px;
+        color: #10b981;
+    }
+    
+    .method-item span {
+        font-size: 12px;
+        font-weight: 500;
+        color: #666;
+    }
+    
+    .payment-apps-text {
+        margin: 10px 0 0 0;
+        color: #666;
+    }
+    
+    .razorpay-badge {
+        text-align: center;
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid #eee;
+    }
+    
+    .razorpay-badge small {
+        display: block;
+        color: #999;
+        font-size: 11px;
+        margin-bottom: 4px;
+    }
+    
+    .razorpay-badge strong {
+        color: #10b981;
+        font-size: 14px;
+        letter-spacing: 1px;
+    }
+    
+    .hidden {
+        display: none !important;
+    }
+    
+    .spinner {
+        border: 2px solid #f3f3f3;
+        border-top: 2px solid #10b981;
+        border-radius: 50%;
+        width: 16px;
+        height: 16px;
+        animation: spin 1s linear infinite;
+        display: inline-block;
+        margin-left: 10px;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+`;
+document.head.appendChild(style);

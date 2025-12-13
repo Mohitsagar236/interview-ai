@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
-    <!-- PhonePe Payment Gateway -->
-    <!-- PhonePe uses redirect-based payment flow, no external script needed -->
+    <!-- Razorpay Checkout -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     
     <!-- Dark Mode Init Script - Must run before body renders -->
     <script>
@@ -114,7 +114,7 @@
             <div class="payment-right">
                 <div class="payment-form-container">
                     <h2>Complete Your Purchase</h2>
-                    <p class="payment-instruction">Secure checkout powered by PhonePe</p>
+                    <p class="payment-instruction">Secure checkout powered by Razorpay</p>
                     
                     <form id="payment-form">
                         <div class="form-group">
@@ -193,13 +193,13 @@
                             <i class="fas fa-shield-alt"></i>
                             <div>
                                 <strong>100% Secure Payment</strong>
-                                <p>Your payment information is encrypted and secure. Powered by PhonePe.</p>
+                                <p>Your payment information is encrypted and secure. Powered by Razorpay.</p>
                             </div>
                         </div>
 
-                        <div class="phonepe-badge" style="background: linear-gradient(135deg, #5f259f 0%, #7b3baf 100%); color: white; padding: 12px 20px; border-radius: 8px; display: inline-flex; align-items: center; gap: 8px; margin-top: 16px;">
+                        <div class="razorpay-badge">
                             <small>Secured by</small>
-                            <strong>PhonePe</strong>
+                            <strong>RAZORPAY</strong>
                         </div>
                     </form>
 
@@ -225,7 +225,7 @@
         </div>
     </div>
 
-    <script src="payment-phonepe.js"></script>
+    <script src="payment-razorpay.js"></script>
     <script>
         // Dark mode toggle functionality
         const themeToggle = document.getElementById('themeToggle');
