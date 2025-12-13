@@ -211,6 +211,7 @@ COMMENT ON COLUMN api_keys.last_used_at IS 'Last time this API key was used to m
 -- ============================================================
 
 -- Create activation_codes table for desktop app access
+-- ONE-TIME USE: Each code locks to the first device that activates it
 CREATE TABLE IF NOT EXISTS activation_codes (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -225,6 +226,9 @@ CREATE TABLE IF NOT EXISTS activation_codes (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     expires_at TIMESTAMP WITH TIME ZONE, -- Optional expiry
     device_info JSONB, -- Store device details when activated
+    activated_at TIMESTAMP WITH TIME ZONE, -- When code was first activated (locks device)
+    device_id TEXT, -- Device identifier that first activated this code (prevents sharing)
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     CONSTRAINT unique_active_code_per_user UNIQUE (user_id, is_active)
 );
 
@@ -232,6 +236,7 @@ CREATE TABLE IF NOT EXISTS activation_codes (
 CREATE INDEX IF NOT EXISTS idx_activation_codes_user_id ON activation_codes(user_id);
 CREATE INDEX IF NOT EXISTS idx_activation_codes_code ON activation_codes(code);
 CREATE INDEX IF NOT EXISTS idx_activation_codes_active ON activation_codes(is_active) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_activation_codes_device_id ON activation_codes(device_id);
 
 -- Enable Row Level Security
 ALTER TABLE activation_codes ENABLE ROW LEVEL SECURITY;

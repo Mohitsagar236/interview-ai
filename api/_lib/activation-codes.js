@@ -275,6 +275,9 @@ async function generateActivationCodeEndpoint(req, res, supabase) {
  * Validate and activate desktop app with code
  * POST /api/activate-desktop
  * Body: { code: 'XXXX-XXXX-XXXX-XXXX', deviceInfo: {...} }
+ * 
+ * ONE-TIME USE: Once a code is activated on a device, it becomes locked to that device.
+ * The code cannot be used on any other device, preventing sharing.
  */
 async function activateDesktopEndpoint(req, res, supabase) {
     try {
@@ -310,10 +313,46 @@ async function activateDesktopEndpoint(req, res, supabase) {
             });
         }
 
-        // Update last_used_at and device info
+        // Generate device identifier from deviceInfo
+        const deviceId = deviceInfo ? 
+            `${deviceInfo.platform || 'unknown'}-${deviceInfo.hostname || 'unknown'}` : 
+            'unknown-device';
+
+        console.log('[Activation] Device ID:', deviceId);
+        console.log('[Activation] Code already activated:', !!codeData.activated_at);
+        console.log('[Activation] Stored device ID:', codeData.device_id);
+
+        // ONE-TIME USE CHECK: If code was already activated, verify it's the same device
+        if (codeData.activated_at && codeData.device_id) {
+            if (codeData.device_id !== deviceId) {
+                console.log('[Activation] BLOCKED - Code already used on different device');
+                console.log('[Activation] Stored device:', codeData.device_id);
+                console.log('[Activation] Current device:', deviceId);
+                
+                return res.status(403).json({ 
+                    error: 'Activation code already in use',
+                    details: 'This activation code has already been activated on another device. Each code can only be used on one device to prevent sharing. Please generate a new code from your profile if you need to activate a different device.',
+                    alreadyActivated: true
+                });
+            }
+            // Same device - allow reactivation (e.g., after app restart)
+            console.log('[Activation] Same device reactivation - allowed');
+        } else {
+            // First time activation - lock the code to this device
+            console.log('[Activation] First activation - locking code to device:', deviceId);
+        }
+
+        // Update activation record
         const updateData = {
-            last_used_at: new Date().toISOString()
+            last_used_at: new Date().toISOString(),
+            device_id: deviceId
         };
+
+        // Set activated_at only on first activation
+        if (!codeData.activated_at) {
+            updateData.activated_at = new Date().toISOString();
+            console.log('[Activation] Recording first activation timestamp');
+        }
 
         if (deviceInfo) {
             updateData.device_info = deviceInfo;
@@ -327,7 +366,9 @@ async function activateDesktopEndpoint(req, res, supabase) {
         // Return user and credit information
         res.json({
             success: true,
-            message: 'Desktop app activated successfully',
+            message: codeData.activated_at ? 
+                'Desktop app reactivated successfully' : 
+                'Desktop app activated successfully - code is now locked to this device',
             user: {
                 id: codeData.user_id,
                 email: codeData.user_email,
@@ -339,7 +380,9 @@ async function activateDesktopEndpoint(req, res, supabase) {
                 remaining: codeData.credits_total - codeData.credits_used
             },
             planType: codeData.plan_type,
-            activationCode: normalizedCode // Return for storage in desktop app
+            activationCode: normalizedCode, // Return for storage in desktop app
+            isFirstActivation: !codeData.activated_at,
+            deviceLocked: true
         });
 
     } catch (error) {

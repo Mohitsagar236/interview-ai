@@ -2,6 +2,7 @@
 -- Run this in Supabase SQL Editor if the table doesn't exist
 
 -- Create activation_codes table
+-- ONE-TIME USE: Each activation code locks to the first device that activates it
 CREATE TABLE IF NOT EXISTS public.activation_codes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -16,13 +17,15 @@ CREATE TABLE IF NOT EXISTS public.activation_codes (
     last_used_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
-    activated_at TIMESTAMPTZ
+    activated_at TIMESTAMPTZ, -- Timestamp when code was first used (locks device)
+    device_id TEXT -- Device identifier that activated this code (prevents sharing)
 );
 
 -- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_activation_codes_user_id ON public.activation_codes(user_id);
 CREATE INDEX IF NOT EXISTS idx_activation_codes_code ON public.activation_codes(code);
 CREATE INDEX IF NOT EXISTS idx_activation_codes_is_active ON public.activation_codes(is_active);
+CREATE INDEX IF NOT EXISTS idx_activation_codes_device_id ON public.activation_codes(device_id);
 
 -- Enable Row Level Security
 ALTER TABLE public.activation_codes ENABLE ROW LEVEL SECURITY;
