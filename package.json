@@ -38,6 +38,7 @@
     "vercel:deploy": "vercel --prod",
     "upload:r2": "node scripts/upload-to-r2.js",
     "upload:github": "node scripts/upload-to-github.js",
+    "verify:coupons": "node ./scripts/verify-coupons.js",
     "release": "npm run build && npm run upload:r2"
   },
   "vercel": {
