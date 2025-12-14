@@ -72,7 +72,7 @@ class EasyOCREngine:
         """
         global Image, np
         if Image is None:
-            from PIL import Image
+            from PIL import Image, ImageEnhance, ImageOps
             import numpy as np
 
         try:
@@ -83,12 +83,25 @@ class EasyOCREngine:
             if img.mode != 'RGB':
                 img = img.convert('RGB')
             
+            # IMPROVED: Preprocess image for better OCR
+            img = self._preprocess_image(img)
+            
             # Convert to numpy array for EasyOCR
             img_array = np.array(img)
             
-            # Run OCR with detailed output
-            # Returns list of ([bbox], text, confidence)
-            result = self.reader.readtext(img_array, detail=1, paragraph=False)
+            # Run OCR with optimized settings
+            # detail=1: return bbox, text, and confidence
+            # paragraph=False: line by line for better control
+            # text_threshold=0.5: lower text detection threshold
+            # low_text=0.3: detect low-confidence text regions
+            result = self.reader.readtext(
+                img_array, 
+                detail=1, 
+                paragraph=False,
+                text_threshold=0.5,
+                low_text=0.3,
+                link_threshold=0.3
+            )
             
             logger.info(f"EasyOCR detected {len(result)} text regions")
             
@@ -98,8 +111,8 @@ class EasyOCREngine:
                 return ""
             
             # Combine all detected text with confidence filtering
-            # Lower threshold for better extraction (0.2 = 20%)
-            min_confidence = float(os.getenv("EASYOCR_MIN_CONFIDENCE", "0.2"))
+            # Very low threshold for maximum extraction (0.1 = 10%)
+            min_confidence = float(os.getenv("EASYOCR_MIN_CONFIDENCE", "0.1"))
             
             texts = []
             for detection in result:
@@ -114,6 +127,9 @@ class EasyOCREngine:
             
             # Intelligently combine text with proper spacing
             combined_text = self._combine_text_intelligently(result, min_confidence)
+            
+            # Post-process text for better quality
+            combined_text = self._post_process_text(combined_text)
             
             logger.info(f"EasyOCR extracted {len(combined_text)} characters from {len(texts)} lines")
             
@@ -187,7 +203,68 @@ class EasyOCREngine:
         for line_items in lines:
             line_text = ' '.join(item['text'] for item in line_items)
             result_lines.append(line_text)
+        _preprocess_image(self, img):
+        """Enhanced image preprocessing for better OCR accuracy"""
+        from PIL import ImageEnhance, ImageOps, ImageFilter
+        import numpy as np
         
+        # Get image dimensions
+        width, height = img.size
+        
+        # 1. Upscale small images (improves OCR on low-res screenshots)
+        min_size = int(os.getenv("OCR_MIN_SIZE", "1800"))
+        if width < min_size or height < min_size:
+            scale = min_size / min(width, height)
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            img = img.resize((new_width, new_height), Image.LANCZOS)
+            logger.debug(f"Upscaled image: {width}x{height} -> {new_width}x{new_height}")
+        
+        # 2. Enhance contrast (makes text more readable)
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(1.5)  # Boost contrast by 50%
+        
+        # 3. Enhance sharpness (makes edges clearer)
+        enhancer = ImageEnhance.Sharpness(img)
+        img = enhancer.enhance(2.0)  # Double sharpness
+        
+        # 4. Slight denoising (remove artifacts)
+        img = img.filter(ImageFilter.MedianFilter(size=3))
+        
+        return img
+    
+    def _post_process_text(self, text: str) -> str:
+        """Clean up and improve OCR output"""
+        if not text:
+            return text
+        
+        import re
+        
+        # Remove extra whitespace
+        lines = text.splitlines()
+        cleaned_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            # Replace multiple spaces with single space
+            line = re.sub(r' {2,}', ' ', line)
+            if line:
+                cleaned_lines.append(line)
+        
+        result = '\n'.join(cleaned_lines)
+        
+        # Fix common OCR errors
+        # Fix spacing around punctuation
+        result = re.sub(r'\s+([.,;:!?])', r'\1', result)  # Remove space before punctuation
+        result = re.sub(r'([.,;:!?])([A-Za-z])', r'\1 \2', result)  # Add space after punctuation
+        
+        # Fix common character substitutions
+        result = re.sub(r'(\d)O(\d)', r'\g<1>0\g<2>', result)  # O -> 0 in numbers
+        result = re.sub(r'(\d)l(\d)', r'\g<1>1\g<2>', result)  # l -> 1 in numbers
+        
+        return result.strip()
+    
+    def 
         return '\n'.join(result_lines)
     
     def extract_text_with_layout(self, image_bytes: bytes) -> dict:
