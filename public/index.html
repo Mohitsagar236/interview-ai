@@ -204,6 +204,10 @@
                 <a href="#pricing" class="nav-link">Pricing</a>
                 <a href="#download" class="nav-link">Download</a>
                 <a href="user-guide.html" class="nav-link">User Guide</a>
+                <button class="shortcuts-btn nav-link" id="shortcutsBtn" aria-label="Keyboard Shortcuts" title="Keyboard Shortcuts">
+                    <i class="fas fa-keyboard"></i>
+                    <span>Shortcuts</span>
+                </button>
                 <button class="theme-toggle" aria-label="Toggle theme">
                     <i class="fas fa-moon"></i>
                     <i class="fas fa-sun"></i>
@@ -891,6 +895,90 @@
             </div>
         </section>
     </main>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div id="shortcutsModal" class="shortcuts-modal" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
+        <div class="shortcuts-modal-content">
+            <div class="shortcuts-header">
+                <h2 id="shortcutsTitle"><i class="fas fa-keyboard"></i> Keyboard Shortcuts</h2>
+                <button class="shortcuts-close" id="shortcutsClose" aria-label="Close shortcuts">&times;</button>
+            </div>
+            <div class="shortcuts-body">
+                <div class="shortcuts-section">
+                    <div class="shortcuts-category">
+                        <h3><i class="fas fa-microphone"></i> Recording Controls</h3>
+                        <div class="shortcut-list">
+                            <div class="shortcut-item">
+                                <div class="shortcut-keys">
+                                    <kbd>Ctrl</kbd> + <kbd>R</kbd>
+                                </div>
+                                <div class="shortcut-description">Start/Stop Recording Interviewer</div>
+                            </div>
+                            <div class="shortcut-item">
+                                <div class="shortcut-keys">
+                                    <kbd>Ctrl</kbd> + <kbd>L</kbd>
+                                </div>
+                                <div class="shortcut-description">Toggle Student Listen Mode</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="shortcuts-category">
+                        <h3><i class="fas fa-camera"></i> Capture & AI</h3>
+                        <div class="shortcut-list">
+                            <div class="shortcut-item">
+                                <div class="shortcut-keys">
+                                    <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd>
+                                </div>
+                                <div class="shortcut-description">Capture & Analyze Screen</div>
+                            </div>
+                            <div class="shortcut-item">
+                                <div class="shortcut-keys">
+                                    <kbd>Ctrl</kbd> + <kbd>A</kbd>
+                                </div>
+                                <div class="shortcut-description">Ask AI Assistant</div>
+                            </div>
+                            <div class="shortcut-item">
+                                <div class="shortcut-keys">
+                                    <kbd>Ctrl</kbd> + <kbd>/</kbd>
+                                </div>
+                                <div class="shortcut-description">Toggle Chat Panel</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="shortcuts-category">
+                        <h3><i class="fas fa-compass"></i> Navigation</h3>
+                        <div class="shortcut-list">
+                            <div class="shortcut-item">
+                                <div class="shortcut-keys">
+                                    <kbd>Esc</kbd>
+                                </div>
+                                <div class="shortcut-description">Close Modals/Overlays</div>
+                            </div>
+                            <div class="shortcut-item">
+                                <div class="shortcut-keys">
+                                    <kbd>?</kbd>
+                                </div>
+                                <div class="shortcut-description">Show Keyboard Shortcuts</div>
+                            </div>
+                            <div class="shortcut-item">
+                                <div class="shortcut-keys">
+                                    <kbd>Ctrl</kbd> + <kbd>Q</kbd>
+                                </div>
+                                <div class="shortcut-description">Quit Application</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="shortcuts-footer">
+                    <p><i class="fas fa-info-circle"></i> These shortcuts work in the desktop application</p>
+                    <a href="#download" class="shortcuts-download-btn">Download Desktop App</a>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <footer>
         <div class="footer-content">

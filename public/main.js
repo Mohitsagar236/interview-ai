@@ -346,3 +346,65 @@ window.addEventListener('load', updateActiveNavLink);
         }
     });
 })();
+
+// ===================================
+// Keyboard Shortcuts Modal Logic
+// ===================================
+(function() {
+    const shortcutsBtn = document.getElementById('shortcutsBtn');
+    const shortcutsModal = document.getElementById('shortcutsModal');
+    const shortcutsClose = document.getElementById('shortcutsClose');
+    
+    // Open shortcuts modal
+    function openShortcutsModal() {
+        if (shortcutsModal) {
+            shortcutsModal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+    }
+    
+    // Close shortcuts modal
+    function closeShortcutsModal() {
+        if (shortcutsModal) {
+            shortcutsModal.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+    }
+    
+    // Open on button click
+    if (shortcutsBtn) {
+        shortcutsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            openShortcutsModal();
+        });
+    }
+    
+    // Close on X button click
+    if (shortcutsClose) {
+        shortcutsClose.addEventListener('click', closeShortcutsModal);
+    }
+    
+    // Close on outside click
+    if (shortcutsModal) {
+        shortcutsModal.addEventListener('click', (e) => {
+            if (e.target === shortcutsModal) {
+                closeShortcutsModal();
+            }
+        });
+    }
+    
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && shortcutsModal?.classList.contains('active')) {
+            closeShortcutsModal();
+        }
+    });
+    
+    // Open shortcuts modal on '?' key press
+    document.addEventListener('keydown', (e) => {
+        if (e.key === '?' && !shortcutsModal?.classList.contains('active')) {
+            e.preventDefault();
+            openShortcutsModal();
+        }
+    });
+})();
