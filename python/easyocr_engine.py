@@ -203,7 +203,10 @@ class EasyOCREngine:
         for line_items in lines:
             line_text = ' '.join(item['text'] for item in line_items)
             result_lines.append(line_text)
-        _preprocess_image(self, img):
+        
+        return '\n'.join(result_lines)
+    
+    def _preprocess_image(self, img):
         """Enhanced image preprocessing for better OCR accuracy"""
         from PIL import ImageEnhance, ImageOps, ImageFilter
         import numpy as np
