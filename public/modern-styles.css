@@ -879,7 +879,7 @@ footer {
 
 /* Enhanced Header Styles */
 header {
-    background: rgba(2, 6, 23, 0.95);
+    background: #ffffff;
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     position: fixed;
