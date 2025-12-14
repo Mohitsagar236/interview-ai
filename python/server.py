@@ -340,13 +340,13 @@ def _is_blank_image_from_bytes(image_bytes: bytes) -> bool:
 def process_ocr_image(image_bytes: bytes) -> str:
     """Process OCR with the best engine (EasyOCR or PaddleOCR)."""
     
-    # Choose OCR engine: easyocr (default), paddleocr, or tesseract
-    ocr_engine = os.getenv("OCR_ENGINE", "easyocr").lower()
+    # Choose OCR engine: easyocr, paddleocr (default), or tesseract
+    ocr_engine = os.getenv("OCR_ENGINE", "paddleocr").lower()
     
-    # Enable fallback if primary engine fails (default: disabled for performance)
-    enable_fallback = os.getenv("OCR_FALLBACK", "0").lower() in ("1", "true", "yes", "on")
+    # Enable fallback if primary engine fails (default: enabled)
+    enable_fallback = os.getenv("OCR_FALLBACK", "1").lower() in ("1", "true", "yes", "on")
     
-    # Try EasyOCR (best for screenshots - PRIMARY ENGINE)
+    # Try EasyOCR first if available and requested (optional - heavy dependencies)
     if ocr_engine == "easyocr" and _has_easyocr:
         try:
             logger.info("Using EasyOCR engine (optimized for screenshots)")
@@ -363,7 +363,7 @@ def process_ocr_image(image_bytes: bytes) -> str:
             if not enable_fallback:
                 return ""
     
-    # Try PaddleOCR (good for documents - SECONDARY ENGINE)
+    # Try PaddleOCR (PRIMARY ENGINE - lighter, faster, good accuracy)
     if (ocr_engine == "paddleocr" or enable_fallback) and _has_paddleocr:
         try:
             logger.info("Using PaddleOCR engine")
