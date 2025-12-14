@@ -12,6 +12,7 @@ sentence-transformers==3.0.1
 faiss-cpu==1.8.0.post1
 pillow==10.4.0
 pytesseract==0.3.13
+easyocr==1.7.2
 paddleocr==3.3.2
 paddlepaddle==3.2.2
 mss==9.0.1

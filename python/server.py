@@ -69,6 +69,14 @@ except ImportError:
     logger.warning("ocr_utils module not found, using legacy OCR processing")
     _has_ocr_utils = False
 
+# Import EasyOCR engine (excellent for screenshots) - LAZY LOADING
+try:
+    from easyocr_engine import process_ocr_easyocr, get_easyocr_engine, check_easyocr_available
+    _has_easyocr = None
+except ImportError as e:
+    logger.warning(f"EasyOCR module not found: {e}")
+    _has_easyocr = False
+
 # Import PaddleOCR engine (superior OCR accuracy) - LAZY LOADING
 try:
     from paddleocr_engine import process_ocr_paddleocr, get_paddle_ocr_engine, check_paddleocr_available
@@ -330,23 +338,47 @@ def _is_blank_image_from_bytes(image_bytes: bytes) -> bool:
 
 
 def process_ocr_image(image_bytes: bytes) -> str:
-    """Process OCR in a thread-safe manner with multi-pass preprocessing."""
+    """Process OCR with the best engine (EasyOCR or PaddleOCR)."""
     
-    # Try PaddleOCR first (best accuracy, especially for screenshots/code)
-    # ENABLED BY DEFAULT if available, unless explicitly disabled
-    use_paddle = os.getenv("USE_PADDLEOCR", "1").lower() not in ("0", "false", "no", "off")
+    # Choose OCR engine: easyocr (default), paddleocr, or tesseract
+    ocr_engine = os.getenv("OCR_ENGINE", "easyocr").lower()
     
-    if _has_paddleocr and use_paddle:
+    # Enable fallback if primary engine fails (default: disabled for performance)
+    enable_fallback = os.getenv("OCR_FALLBACK", "0").lower() in ("1", "true", "yes", "on")
+    
+    # Try EasyOCR (best for screenshots - PRIMARY ENGINE)
+    if ocr_engine == "easyocr" and _has_easyocr:
         try:
-            logger.info("Using PaddleOCR engine (superior accuracy)")
-            text = process_ocr_paddleocr(image_bytes)
-            if text and text.strip():
-                logger.info(f"✅ PaddleOCR successful: {len(text)} characters")
+            logger.info("Using EasyOCR engine (optimized for screenshots)")
+            text = process_ocr_easyocr(image_bytes)
+            if text and len(text.strip()) > 10:
+                logger.info(f"✅ EasyOCR: {len(text)} characters extracted")
                 return text
             else:
-                logger.warning("PaddleOCR returned empty, falling back to Tesseract")
+                logger.warning(f"EasyOCR returned insufficient text ({len(text)} chars)")
+                if not enable_fallback:
+                    return text  # Return what we got, no fallback
         except Exception as e:
-            logger.warning(f"PaddleOCR failed: {e}, falling back to Tesseract")
+            logger.warning(f"EasyOCR failed: {e}")
+            if not enable_fallback:
+                return ""
+    
+    # Try PaddleOCR (good for documents - SECONDARY ENGINE)
+    if (ocr_engine == "paddleocr" or enable_fallback) and _has_paddleocr:
+        try:
+            logger.info("Using PaddleOCR engine")
+            text = process_ocr_paddleocr(image_bytes)
+            if text and len(text.strip()) > 10:
+                logger.info(f"✅ PaddleOCR: {len(text)} characters extracted")
+                return text
+            else:
+                logger.warning(f"PaddleOCR returned insufficient text")
+                if not enable_fallback:
+                    return text
+        except Exception as e:
+            logger.warning(f"PaddleOCR failed: {e}")
+            if not enable_fallback:
+                return ""
     
     # Try to use improved OCR processor (Tesseract with preprocessing)
     processor = get_ocr_processor()
