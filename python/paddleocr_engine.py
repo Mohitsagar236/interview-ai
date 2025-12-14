@@ -45,15 +45,20 @@ class PaddleOCREngine:
         except ImportError:
             raise ImportError("PaddleOCR not installed. Run: pip install paddleocr")
         
-        # Initialize PaddleOCR with minimal, compatible settings
+        # Initialize PaddleOCR with optimized settings for better accuracy
         # use_angle_cls=True enables text rotation detection
         # lang='en' for English (supports 80+ languages)
+        # det_db_thresh=0.3 - lower detection threshold for better text finding
+        # det_db_box_thresh=0.5 - box threshold
         try:
             self.ocr = PaddleOCR(
                 use_angle_cls=True,
-                lang='en'
+                lang='en',
+                det_db_thresh=0.3,  # Lower threshold to detect more text (default 0.5)
+                det_db_box_thresh=0.5,
+                show_log=False  # Reduce noise in logs
             )
-            logger.info("PaddleOCR initialized successfully")
+            logger.info("PaddleOCR initialized with optimized settings (det_db_thresh=0.3)")
         except Exception as e:
             logger.error(f"Failed to initialize PaddleOCR: {e}")
             raise
@@ -94,8 +99,10 @@ class PaddleOCREngine:
             
             # Extract text from results
             if not result or not result[0]:
-                logger.warning("PaddleOCR detected no text")
+                logger.warning("PaddleOCR detected no text boxes in image")
                 return ""
+            
+            logger.info(f"PaddleOCR detected {len(result[0])} text boxes")
             
             # Combine all detected text
             # result[0] is list of [bbox, (text, confidence)]
@@ -107,9 +114,13 @@ class PaddleOCREngine:
                         text = text_info[0]
                         confidence = text_info[1] if len(text_info) > 1 else 0
                         
-                        # Only include text with reasonable confidence (>0.5)
-                        if confidence > 0.5:
+                        # Lower confidence threshold for better text extraction (was 0.5)
+                        # Accept text with confidence > 0.3 (30%)
+                        if confidence > 0.3:
                             texts.append(text)
+                            logger.debug(f"PaddleOCR line: '{text}' (confidence: {confidence:.2f})")
+                        else:
+                            logger.debug(f"PaddleOCR skipped low confidence: '{text}' ({confidence:.2f})")
             
             combined_text = '\n'.join(texts)
             logger.info(f"PaddleOCR extracted {len(combined_text)} characters from {len(texts)} lines")
@@ -150,7 +161,7 @@ class PaddleOCREngine:
                         text = text_info[0]
                         confidence = text_info[1] if len(text_info) > 1 else 0
                         
-                        if confidence > 0.5:
+                        if confidence > 0.3:  # Lower threshold for better extraction
                             all_text.append(text)
                             lines.append({
                                 'text': text,
