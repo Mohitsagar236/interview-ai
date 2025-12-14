@@ -9,6 +9,15 @@ if (!(Test-Path "dist")) {
     New-Item -ItemType Directory -Path "dist" -Force | Out-Null
 }
 
+# Step 1.5: Build Python Backend (Ensure latest code is used)
+Write-Host "🐍 Building Python backend..." -ForegroundColor Yellow
+node ./scripts/build-python-standalone.js
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ Python build failed!" -ForegroundColor Red
+    exit 1
+}
+
 # Step 2: Build the application
 Write-Host "📦 Building Windows installer..." -ForegroundColor Yellow
 npm run build:prod

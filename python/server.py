@@ -333,8 +333,10 @@ def process_ocr_image(image_bytes: bytes) -> str:
     """Process OCR in a thread-safe manner with multi-pass preprocessing."""
     
     # Try PaddleOCR first (best accuracy, especially for screenshots/code)
-    # DISABLED BY DEFAULT - only enable if USE_PADDLEOCR=1 is explicitly set
-    if _has_paddleocr and os.getenv("USE_PADDLEOCR", "0").lower() in ("1", "true", "yes", "on"):
+    # ENABLED BY DEFAULT if available, unless explicitly disabled
+    use_paddle = os.getenv("USE_PADDLEOCR", "1").lower() not in ("0", "false", "no", "off")
+    
+    if _has_paddleocr and use_paddle:
         try:
             logger.info("Using PaddleOCR engine (superior accuracy)")
             text = process_ocr_paddleocr(image_bytes)

@@ -38,6 +38,8 @@ class OCRConfig:
         self.tesseract_lang = os.getenv("OCR_LANG", "eng")
         # NEW: Character whitelist for specific use cases (empty = no restriction)
         self.char_whitelist = os.getenv("OCR_CHAR_WHITELIST", "")
+        # NEW: PaddleOCR support (default to enabled)
+        self.use_paddle = os.getenv("USE_PADDLEOCR", "1").lower() not in ("0", "false", "no", "off")
         
     @staticmethod
     def _safe_int(value, default):
@@ -455,6 +457,27 @@ class OCRProcessor:
         start_time = time.perf_counter()
         
         try:
+            # Try PaddleOCR first if enabled (Superior accuracy)
+            if self.config.use_paddle:
+                try:
+                    # Lazy import to avoid circular dependencies
+                    import sys
+                    if '.' not in sys.path: sys.path.append('.')
+                    try:
+                        from paddleocr_engine import process_ocr_paddleocr, check_paddleocr_available
+                    except ImportError:
+                        # Try relative import if running as package
+                        from .paddleocr_engine import process_ocr_paddleocr, check_paddleocr_available
+
+                    if check_paddleocr_available():
+                        paddle_text = process_ocr_paddleocr(image_bytes)
+                        if paddle_text and len(paddle_text.strip()) > 5:
+                            elapsed = time.perf_counter() - start_time
+                            logger.info(f"PaddleOCR successful: {len(paddle_text)} chars in {elapsed:.2f}s")
+                            return self._post_process_text(paddle_text)
+                except Exception as e:
+                    logger.warning(f"PaddleOCR attempt failed: {e}")
+
             # Prepare image
             img_gray, meta = ImagePreprocessor.prepare_image(image_bytes, self.config)
             
