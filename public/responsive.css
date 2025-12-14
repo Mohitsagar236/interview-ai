@@ -29,8 +29,53 @@ img, video, iframe {
    HEADER & NAVIGATION - RESPONSIVE
    ======================================== */
 
-/* Mobile: <= 768px */
-@media (max-width: 768px) {
+/* Extra Small Mobile: <= 480px */
+@media (max-width: 480px) {
+    /* Header adjustments for very small screens */
+    header {
+        padding: 0 !important;
+    }
+
+    nav {
+        height: 56px !important;
+        padding: 0 0.75rem !important;
+    }
+
+    /* Logo size reduction for small screens */
+    .logo {
+        font-size: 1rem !important;
+        gap: 0.4rem !important;
+    }
+
+    .logo-img {
+        height: 28px !important;
+        width: 28px !important;
+    }
+
+    .logo-text {
+        font-size: 1rem !important;
+    }
+
+    /* Hide desktop navigation */
+    .nav-links {
+        display: none !important;
+    }
+
+    /* Show mobile menu button */
+    .mobile-menu-button {
+        display: flex !important;
+        z-index: 1002;
+        width: 36px;
+        height: 36px;
+    }
+    
+    .hamburger-line {
+        width: 20px !important;
+    }
+}
+
+/* Mobile: 481px - 768px */
+@media (min-width: 481px) and (max-width: 768px) {
     /* Header adjustments */
     header {
         padding: 0 !important;
@@ -41,7 +86,7 @@ img, video, iframe {
         padding: 0 1rem !important;
     }
 
-    /* Logo size reduction */
+    /* Logo size */
     .logo {
         font-size: 1.1rem !important;
         gap: 0.5rem !important;
@@ -103,25 +148,56 @@ img, video, iframe {
 @media (min-width: 769px) and (max-width: 1024px) {
     nav {
         padding: 0 1.5rem !important;
+        height: 4.5rem !important;
     }
 
     .nav-links {
-        gap: 1rem !important;
+        gap: 0.5rem !important;
+        flex-wrap: nowrap;
     }
 
     .nav-link {
-        font-size: 0.9rem !important;
-        padding: 0.4rem 0.75rem !important;
+        font-size: 0.875rem !important;
+        padding: 0.5rem 0.75rem !important;
+        white-space: nowrap;
+    }
+
+    .logo {
+        font-size: 1.3rem !important;
     }
 
     .logo-img {
         height: 36px !important;
         width: 36px !important;
     }
+    
+    /* Make auth section more compact on tablets */
+    .btn-login {
+        padding: 0.5rem 1rem !important;
+        font-size: 0.875rem !important;
+    }
+    
+    .theme-toggle {
+        width: 36px !important;
+        height: 36px !important;
+    }
 }
 
-/* Desktop: > 1024px */
-@media (min-width: 1025px) {
+/* Small Desktop / Large Tablet: 1025px - 1280px */
+@media (min-width: 1025px) and (max-width: 1280px) {
+    nav {
+        padding: 0 2rem !important;
+    }
+    
+    .nav-links {
+        gap: 0.25rem !important;
+    }
+    
+    .nav-link {
+        font-size: 0.9rem !important;
+        padding: 0.5rem 0.8rem !important;
+    }
+    
     .mobile-menu-button {
         display: none !important;
     }
@@ -131,14 +207,35 @@ img, video, iframe {
     }
 }
 
+/* Desktop: > 1280px */
+@media (min-width: 1281px) {
+    .mobile-menu-button {
+        display: none !important;
+    }
+
+    .mobile-menu-overlay {
+        display: none !important;
+    }
+    
+    nav {
+        max-width: 1400px;
+    }
+}
+
 /* ========================================
    AUTH SECTION - RESPONSIVE
    ======================================== */
 
+/* All Mobile Sizes - Hide auth in header, show in mobile menu */
 @media (max-width: 768px) {
     /* Auth section hidden on mobile - shown in mobile menu instead */
     .auth-section {
         display: none !important;
+    }
+    
+    /* Adjust main content to account for fixed header on mobile */
+    main {
+        padding-top: 64px;
     }
 
     /* Mobile auth links in mobile menu */
@@ -890,6 +987,30 @@ img, video, iframe {
    ======================================== */
 
 @media (max-height: 500px) and (orientation: landscape) {
+    header {
+        height: 56px !important;
+    }
+    
+    nav {
+        height: 56px !important;
+        padding: 0 1rem !important;
+    }
+    
+    .logo {
+        font-size: 0.9rem !important;
+        gap: 0.4rem !important;
+    }
+    
+    .logo-img {
+        height: 26px !important;
+        width: 26px !important;
+    }
+    
+    .mobile-menu-button {
+        width: 32px !important;
+        height: 32px !important;
+    }
+
     .hero {
         padding: 2rem 1rem !important;
     }
@@ -899,16 +1020,14 @@ img, video, iframe {
     }
 
     .mobile-menu-content {
-        padding: 1rem;
+        padding: 0.75rem;
+        max-height: 100vh;
+        overflow-y: auto;
     }
 
     .mobile-nav-link {
-        padding: 0.5rem 1rem;
-        font-size: 1rem;
-    }
-
-    nav {
-        height: 56px !important;
+        padding: 0.4rem 0.8rem;
+        font-size: 0.95rem;
     }
 
     main {
@@ -921,7 +1040,7 @@ img, video, iframe {
    ======================================== */
 
 @media (hover: none) and (pointer: coarse) {
-    /* Increase touch targets for mobile */
+    /* Increase touch targets for mobile devices */
     .nav-link,
     .mobile-nav-link,
     .btn,
@@ -929,10 +1048,25 @@ img, video, iframe {
         min-height: 44px;
         display: flex;
         align-items: center;
+        justify-content: flex-start;
     }
 
     button,
     a.btn {
+        min-height: 44px;
+        padding: 0.75rem 1rem;
+    }
+    
+    /* Mobile menu button larger touch area */
+    .mobile-menu-button {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.5rem;
+    }
+    
+    /* Theme toggle larger touch area */
+    .theme-toggle {
+        min-width: 44px;
         min-height: 44px;
     }
 }

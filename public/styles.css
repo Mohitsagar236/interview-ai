@@ -75,12 +75,16 @@ header {
     border-bottom: 1px solid #e5e7eb !important;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
 header.scrolled {
-    background: #ffffff !important;
+    background: rgba(255, 255, 255, 0.95) !important;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
     border-bottom-color: #e5e7eb !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
 }
 
 nav {
@@ -91,6 +95,15 @@ nav {
     align-items: center;
     justify-content: space-between;
     height: 5rem;
+    transition: height 0.3s ease, padding 0.3s ease;
+}
+
+/* Prevent layout shift on smaller containers */
+@media (max-width: 1440px) {
+    nav {
+        max-width: 100%;
+        padding: 0 2rem;
+    }
 }
 
 .logo {
@@ -131,6 +144,7 @@ nav {
     display: flex;
     align-items: center;
     gap: 0.15rem;
+    flex-wrap: wrap;
 }
 
 .nav-link {
@@ -468,13 +482,17 @@ nav {
     top: 0;
     left: 0;
     width: 100%;
-    height: 100%;
+    height: 100vh;
+    height: 100dvh; /* Use dynamic viewport height on modern browsers */
     background: rgba(2, 6, 23, 0.98);
     backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     z-index: 100;
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.3s ease, visibility 0.3s ease;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .mobile-menu-overlay.active {
@@ -484,10 +502,12 @@ nav {
 
 .mobile-menu-content {
     position: relative;
-    height: 100%;
+    min-height: 100%;
     display: flex;
     flex-direction: column;
     padding: 2rem;
+    padding-top: max(2rem, env(safe-area-inset-top)); /* Support for notched devices */
+    padding-bottom: max(2rem, env(safe-area-inset-bottom));
 }
 
 .mobile-menu-header {
@@ -1608,14 +1628,19 @@ footer {
 }
 
 .dark header {
-    background: #0f172a;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    background: rgba(15, 23, 42, 0.95) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
 .dark header.scrolled {
-    background: #0f172a;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    background: rgba(15, 23, 42, 0.98) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+    border-bottom-color: rgba(255, 255, 255, 0.15) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
 }
 
 /* Dark mode for pricing section */
