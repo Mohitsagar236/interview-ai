@@ -2,14 +2,9 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional, Dict
 
-try:
-    from pypdf import PdfReader  # type: ignore
-except Exception:  # pragma: no cover
-    PdfReader = None  # type: ignore
-try:
-    import docx  # type: ignore
-except Exception:  # pragma: no cover
-    docx = None  # type: ignore
+# Lazy loaded
+PdfReader = None
+docx = None
 
 @dataclass
 class ParsedResume:
@@ -26,7 +21,24 @@ URL_RE = re.compile(r"https?://\S+")
 
 
 def extract_text(name: str, raw: bytes) -> str:
+    global PdfReader, docx
+    import io
+
     lower = name.lower()
+    if lower.endswith('.pdf'):
+        if PdfReader is None:
+            try:
+                from pypdf import PdfReader
+            except ImportError:
+                pass
+
+    if lower.endswith('.docx'):
+        if docx is None:
+            try:
+                import docx
+            except ImportError:
+                pass
+
     if lower.endswith('.pdf') and PdfReader:
         try:
             reader = PdfReader.from_bytes(raw) if hasattr(PdfReader, 'from_bytes') else PdfReader(io.BytesIO(raw))  # type: ignore

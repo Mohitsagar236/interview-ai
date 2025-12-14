@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Set
 
-import numpy as np
+# numpy lazy loaded
 # FastAPI imports removed (unused; using raw websockets)
 import websockets
 from websockets.server import serve
@@ -58,11 +58,8 @@ from streaming_fixes import (
 )
 
 # Additional libraries and OCR/IO dependencies
-from pypdf import PdfReader
-import docx
-from PIL import Image, ImageOps, ImageEnhance, ImageFilter, ImageStat, ImageFile
-ImageFile.LOAD_TRUNCATED_IMAGES = True
-import pytesseract
+# Lazy loaded: pypdf, docx, PIL, pytesseract
+ImageFile = None # Will be imported with PIL
 
 # Import improved OCR utilities (optional)
 try:
@@ -75,11 +72,8 @@ except ImportError:
 # Import PaddleOCR engine (superior OCR accuracy) - LAZY LOADING
 try:
     from paddleocr_engine import process_ocr_paddleocr, get_paddle_ocr_engine, check_paddleocr_available
-    _has_paddleocr = check_paddleocr_available()
-    if _has_paddleocr:
-        logger.info("✅ PaddleOCR available - using superior OCR engine")
-    else:
-        logger.warning("PaddleOCR not available - install with: pip install paddleocr")
+    # Defer check to background thread to speed up startup
+    _has_paddleocr = None 
 except ImportError as e:
     logger.warning(f"PaddleOCR module not found: {e}")
     _has_paddleocr = False
@@ -376,6 +370,10 @@ def process_ocr_image(image_bytes: bytes) -> str:
     
     # Legacy OCR processing (fallback) - Enhanced for screen captures
     try:
+        import pytesseract
+        import numpy as np
+        from PIL import Image, ImageFilter, ImageOps, ImageEnhance, ImageStat
+        
         start_time = time.perf_counter()
         # For screen captures, use balanced mode (not too fast, not too slow)
         fast_mode = os.getenv("OCR_FAST_MODE", "0").lower() not in ("0", "false", "no", "off")  # Default thorough for captures
@@ -1961,6 +1959,7 @@ async def ingest_resume(name: str, raw: bytes, session_id: str = None):
     Args:
         session_id: WebSocket session ID for user isolation (REQUIRED for privacy)
     """
+    import numpy as np
     if not session_id:
         logger.error("⚠️ Resume ingestion without session_id - rejecting for privacy")
         return
@@ -1968,9 +1967,11 @@ async def ingest_resume(name: str, raw: bytes, session_id: str = None):
     text = ""
     try:
         if name.lower().endswith(".pdf"):
+            from pypdf import PdfReader
             reader = PdfReader(io.BytesIO(raw))
             text = "\n".join(page.extract_text() or "" for page in reader.pages)
         elif name.lower().endswith(".docx"):
+            import docx
             doc = docx.Document(io.BytesIO(raw))
             text = "\n".join(p.text for p in doc.paragraphs)
         else:
@@ -2054,6 +2055,7 @@ async def ingest_company_brief(text: str, session_id: str = None):
     Args:
         session_id: WebSocket session ID for user isolation (REQUIRED for privacy)
     """
+    import numpy as np
     if not session_id:
         logger.error("⚠️ Company brief ingestion without session_id - rejecting for privacy")
         return
@@ -2828,8 +2830,29 @@ def should_retry_response(response: str, original_question: str) -> bool:
 
 
 async def ensure_ai_initialized():
-    """Ensure AI providers are initialized"""
-    global ai_initialized
+    """Ensure AI providers and heavy modules are initialized in background"""
+    global ai_initialized, _has_paddleocr
+    
+    # 1. Initialize PaddleOCR (Heavy Import)
+    if _has_paddleocr is None:
+        if check_paddleocr_available:
+            logger.info("Initializing PaddleOCR in background...")
+            try:
+                # Run in executor to avoid blocking event loop
+                loop = asyncio.get_running_loop()
+                is_available = await loop.run_in_executor(None, check_paddleocr_available)
+                _has_paddleocr = is_available
+                if is_available:
+                    logger.info("✅ PaddleOCR initialized and available")
+                else:
+                    logger.info("PaddleOCR not available (optional)")
+            except Exception as e:
+                logger.warning(f"Failed to check PaddleOCR: {e}")
+                _has_paddleocr = False
+        else:
+            _has_paddleocr = False
+
+    # 2. Initialize AI Providers
     if not ai_initialized:
         logger.info("Initializing AI providers...")
         try:
@@ -2873,6 +2896,7 @@ async def stream_llm(
     Args:
         session_id: WebSocket session ID for user isolation (if None, broadcasts to all)
     """
+    import numpy as np
     
     # ============================================================================
     # 🎯 DUPLICATE QUESTION DETECTION
@@ -3640,6 +3664,7 @@ async def handle_audio_streaming(ws, session_id=None):
     Real-time streaming audio handler using Deepgram/AssemblyAI for <200ms latency.
     Streams audio directly to provider and forwards interim/final results to UI immediately.
     """
+    import numpy as np
     global partial_text, current_speaker, listen_student_enabled, last_processed_student_utterance, last_student_time, streaming_engine
     
     logger.info(f"[Streaming] Audio WebSocket connected - session_id: {session_id}")
@@ -3842,6 +3867,7 @@ async def handle_audio_streaming(ws, session_id=None):
 
 async def handle_audio(ws):
     global partial_text, current_speaker, listen_student_enabled, last_processed_student_utterance, last_student_time
+    import numpy as np
     
     # Initialize partial_text if it doesn't exist
     if 'partial_text' not in globals() or partial_text is None:

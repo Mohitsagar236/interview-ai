@@ -6,9 +6,15 @@ import io
 import time
 import logging
 from typing import Optional, Dict, List, Tuple, Any
-from PIL import Image, ImageOps, ImageEnhance, ImageFilter, ImageStat
-import numpy as np
-import pytesseract
+
+# Lazy loaded imports
+Image = None
+ImageOps = None
+ImageEnhance = None
+ImageFilter = None
+ImageStat = None
+np = None
+pytesseract = None
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +87,13 @@ class ImagePreprocessor:
     """Image preprocessing for better OCR results"""
     
     @staticmethod
-    def prepare_image(image_bytes: bytes, config: OCRConfig) -> Tuple[Image.Image, Dict]:
+    def prepare_image(image_bytes: bytes, config: OCRConfig) -> Tuple[Any, Dict]:
         """Load and prepare image for OCR"""
+        global Image, ImageOps, ImageEnhance, ImageFilter, ImageStat, np
+        if Image is None:
+            from PIL import Image, ImageOps, ImageEnhance, ImageFilter, ImageStat
+            import numpy as np
+
         img_raw = Image.open(io.BytesIO(image_bytes))
         original_size = img_raw.size
         original_mode = img_raw.mode
@@ -152,8 +163,13 @@ class ImagePreprocessor:
         return img_gray, meta
     
     @staticmethod
-    def create_variants(img_gray: Image.Image, brightness: float) -> List[Tuple[str, Image.Image]]:
+    def create_variants(img_gray: Any, brightness: float) -> List[Tuple[str, Any]]:
         """Create preprocessed image variants for OCR"""
+        global Image, ImageOps, ImageEnhance, ImageFilter, ImageStat, np
+        if Image is None:
+            from PIL import Image, ImageOps, ImageEnhance, ImageFilter, ImageStat
+            import numpy as np
+
         variants = []
         
         # 1. Original grayscale
@@ -267,7 +283,7 @@ class ImagePreprocessor:
         return variants
     
     @staticmethod
-    def _calculate_otsu_threshold(img: Image.Image) -> int:
+    def _calculate_otsu_threshold(img: Any) -> int:
         """Calculate Otsu's threshold for binary conversion"""
         try:
             hist = img.histogram()
@@ -304,6 +320,10 @@ class OCRProcessor:
     """Main OCR processing class"""
     
     def __init__(self, config: Optional[OCRConfig] = None):
+        global pytesseract
+        if pytesseract is None:
+            import pytesseract
+
         self.config = config or OCRConfig()
         if self.config.tesseract_cmd:
             pytesseract.pytesseract.tesseract_cmd = self.config.tesseract_cmd
@@ -490,7 +510,7 @@ class OCRProcessor:
             logger.exception("OCR processing error")
             return f"[OCR error: {str(e)}]"
     
-    def _try_fast_path(self, img: Image.Image) -> Optional[Tuple[str, Dict[str, List[Any]], str]]:
+    def _try_fast_path(self, img: Any) -> Optional[Tuple[str, Dict[str, List[Any]], str]]:
         """Try quick OCR with basic preprocessing"""
         quick_config = self.config.quick_config
         try:
@@ -535,7 +555,7 @@ class OCRProcessor:
     
     def _try_variants(
         self, 
-        variants: List[Tuple[str, Image.Image]], 
+        variants: List[Tuple[str, Any]], 
         start_time: float,
         budget: float
     ) -> Tuple[str, Dict]:
@@ -658,7 +678,7 @@ class OCRProcessor:
         
         return best_text, best_stats, best_data
 
-    def _safe_image_to_data(self, img: Image.Image, config: str) -> Dict[str, List[Any]]:
+    def _safe_image_to_data(self, img: Any, config: str) -> Dict[str, List[Any]]:
         """Safely call pytesseract.image_to_data and return dictionary output"""
         try:
             return pytesseract.image_to_data(

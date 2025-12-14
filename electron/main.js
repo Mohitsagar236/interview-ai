@@ -1243,7 +1243,7 @@ function createToolbarWindow() {
   // Fixed dimensions for compact pill toolbar (adjust here if design changes)
   // Start with conservative width; will auto-shrink to content after load
   const defaultWidth = 640;
-  const defaultHeight = 60; // slightly slimmer
+  const defaultHeight = 90; // increased to show button labels
 
   toolbarWindow = new BrowserWindow({
     x: lastBounds ? lastBounds.x : width - defaultWidth - 20,

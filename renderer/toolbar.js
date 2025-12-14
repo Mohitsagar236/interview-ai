@@ -31,6 +31,7 @@
     companyBriefConfirmedForSession: false, // Require a fresh confirmation each interview session
     companyBriefPendingAction: null, // Deferred action awaiting company brief completion
     companyBriefConfirmationPending: false, // Awaiting server ack for submitted brief
+    isCompanyBriefOpen: false, // Track if company brief overlay is open
   };
 
   const COMPANY_BRIEF_STORAGE_KEY = "company_brief_context";
@@ -466,6 +467,17 @@
   }
   function performResize() {
     try {
+      // If company brief is open, do NOT auto-shrink the window
+      if (state.isCompanyBriefOpen) {
+        // Ensure window is large enough for the brief
+        if (window.electronAPI && window.electronAPI.resizeToolbarDimensions) {
+           // We already set this in toggleCompanyBrief, but enforce it here to prevent fighting
+           // Use a fixed large size when brief is open
+           // Don't call resizeToolbarDimensions here to avoid loop, just return
+           return;
+        }
+      }
+
       const bar = barEl;
       if (!bar) return;
       const barRect = bar.getBoundingClientRect();
@@ -1266,9 +1278,20 @@
       container.classList.remove("expanded");
       container.setAttribute("data-user-collapsed", "true");
       container.setAttribute("data-collapse-time", Date.now().toString());
+      
+      if (toggleChatBtn) {
+        toggleChatBtn.classList.remove("toggled");
+        toggleChatBtn.blur(); // Remove focus ring
+      }
+      
       console.log("[Chat] Collapsed chat");
     } else {
       container.classList.add("expanded");
+      
+      if (toggleChatBtn) {
+        toggleChatBtn.classList.add("toggled");
+      }
+      
       console.log("[Chat] Expanded chat");
       if (hasMsgs) scrollChatToBottom();
       queueResize();
@@ -1401,6 +1424,7 @@
         recordInterviewerBtn.title = "Stop Recording Interviewer";
       } else {
         recordInterviewerBtn.classList.remove("mic-active", "toggled");
+        recordInterviewerBtn.blur(); // Remove focus ring
         recordInterviewerBtn.title = "Record Interviewer (System Audio)";
       }
     }
@@ -1411,6 +1435,7 @@
         listenStudentBtn.title = "Turn Off Student Mic";
       } else {
         listenStudentBtn.classList.remove("mic-active", "toggled");
+        listenStudentBtn.blur(); // Remove focus ring
         listenStudentBtn.title = "Turn On Student Mic";
       }
     }
@@ -1426,7 +1451,10 @@
       if (recLabel) recLabel.textContent = "Start";
       if (recIcon) recIcon.textContent = "🎙️";
       dot.classList.remove("recording");
-      if (toggleRecord) toggleRecord.classList.remove("mic-active");
+      if (toggleRecord) {
+        toggleRecord.classList.remove("mic-active");
+        toggleRecord.blur(); // Remove focus ring
+      }
       if (statusDots) statusDots.classList.remove("recording");
       if (state.connected) {
         dot.classList.add("on");
@@ -1481,6 +1509,7 @@
         toggleStudentBtn.title = "Stop listening to student";
       } else {
         toggleStudentBtn.classList.remove("toggled");
+        toggleStudentBtn.blur(); // Remove focus ring
         toggleStudentBtn.title = "Listen to Student (on/off)";
       }
     }
@@ -1491,6 +1520,7 @@
         listenStudentBtn.classList.add("toggled");
       } else {
         listenStudentBtn.classList.remove("toggled");
+        listenStudentBtn.blur(); // Remove focus ring
       }
     }
   }
@@ -2004,6 +2034,23 @@
       // Handle pong for health monitoring
       if (msg.type === "pong") {
         connectionHealth.receivedPong();
+        return;
+      }
+
+      // Handle AI initialization status
+      if (msg.type === "ai_status") {
+        if (msg.data.initialized) {
+           log.info("AI System Ready:", msg.data.provider);
+           // Only update text if not currently recording
+           if (!state.recording) {
+             statusText.textContent = "AI Ready";
+             setTimeout(() => {
+               if (!state.recording) statusText.textContent = "Connected";
+             }, 2000);
+           }
+        } else {
+           statusText.textContent = msg.data.error ? "AI Error" : "Initializing AI...";
+        }
         return;
       }
 
@@ -3410,60 +3457,95 @@
   }
 
   // -------- Company Brief Capture --------
+  // Verify company brief elements on load
+  console.log("[Company Brief] Element verification:");
+  console.log("  - companyBriefBtn:", !!companyBriefBtn, companyBriefBtn);
+  console.log("  - companyBriefOverlay:", !!companyBriefOverlay, companyBriefOverlay);
+  console.log("  - companyBriefForm:", !!companyBriefForm, companyBriefForm);
+  console.log("  - companyNameInput:", !!companyNameInput, companyNameInput);
+  
   function toggleCompanyBrief(show) {
+    console.log("[Company Brief] toggleCompanyBrief called with show=", show);
     if (!companyBriefOverlay) {
+      console.error("[Company Brief] Overlay element #companyBriefOverlay not found!");
       log.error("Company brief overlay element not found");
+      showNotification("Company brief panel not available", "error");
       return;
     }
 
     log.debug("Toggling company brief:", show);
 
     if (show) {
-      // Position panel relative to toolbar so it hugs the bar like the chat panel
-      if (barEl) {
-        const barRect = barEl.getBoundingClientRect();
-        const offsetTop = Math.max(barRect.bottom + 24, 96);
-        companyBriefOverlay.style.top = `${offsetTop}px`;
-        companyBriefOverlay.style.maxHeight = `calc(100vh - ${offsetTop + 48}px)`;
-        companyBriefOverlay.style.height = `calc(100vh - ${offsetTop + 48}px)`;
-      } else {
-        companyBriefOverlay.style.top = "96px";
-        companyBriefOverlay.style.maxHeight = "calc(100vh - 160px)";
-        companyBriefOverlay.style.height = "calc(100vh - 160px)";
-      }
-
-      companyBriefOverlay.classList.add("show");
-      companyBriefOverlay.setAttribute("aria-hidden", "false");
-      resetCompanyBriefStatus();
-      populateCompanyBriefFormFromState();
-
+      state.isCompanyBriefOpen = true; // Lock auto-resize
+      if (companyBriefBtn) companyBriefBtn.classList.add("toggled");
+      console.log("[Company Brief] Opening overlay");
+      
+      // FIRST: Resize the window to make room for the overlay
       if (window.electronAPI && window.electronAPI.resizeToolbarDimensions) {
         try {
-          const barRect = barEl
-            ? barEl.getBoundingClientRect()
-            : { width: 360 };
+          const barRect = barEl ? barEl.getBoundingClientRect() : { width: 360 };
           const targetW = Math.max(Math.round(barRect.width + 80), 540);
-          window.electronAPI.resizeToolbarDimensions(targetW, 700);
+          const targetH = 700;
+          console.log("[Company Brief] Resizing window to:", targetW, "x", targetH);
+          window.electronAPI.resizeToolbarDimensions(targetW, targetH);
         } catch (resizeErr) {
-          log.warn(
-            "Failed to resize toolbar window for company brief",
-            resizeErr,
-          );
+          console.error("[Company Brief] Failed to resize window:", resizeErr);
+          log.warn("Failed to resize toolbar window for company brief", resizeErr);
         }
       } else {
+        console.log("[Company Brief] No electronAPI, using body resize");
         document.body.style.height = "100vh";
         document.body.style.overflow = "auto";
       }
+      
+      // THEN: Position and show the overlay after a brief delay for window resize
+      setTimeout(() => {
+        // Position panel relative to toolbar
+        if (barEl) {
+          const barRect = barEl.getBoundingClientRect();
+          const offsetTop = Math.max(barRect.bottom + 24, 96);
+          companyBriefOverlay.style.top = `${offsetTop}px`;
+          companyBriefOverlay.style.maxHeight = `calc(100vh - ${offsetTop + 48}px)`;
+          companyBriefOverlay.style.height = `calc(100vh - ${offsetTop + 48}px)`;
+          console.log("[Company Brief] Positioned at top:", offsetTop);
+        } else {
+          companyBriefOverlay.style.top = "96px";
+          companyBriefOverlay.style.maxHeight = "calc(100vh - 160px)";
+          companyBriefOverlay.style.height = "calc(100vh - 160px)";
+          console.warn("[Company Brief] barEl not found, using default positioning");
+        }
 
-      // Focus the overlay and first input once painted
-      requestAnimationFrame(() => {
-        companyBriefOverlay.focus({ preventScroll: true });
-        setTimeout(() => {
-          if (companyNameInput) companyNameInput.focus();
-        }, 30);
-      });
-      log.info("Company brief opened");
+        companyBriefOverlay.classList.add("show");
+        console.log("[Company Brief] Added 'show' class to overlay");
+        companyBriefOverlay.setAttribute("aria-hidden", "false");
+        console.log("[Company Brief] Set aria-hidden to false");
+        resetCompanyBriefStatus();
+        populateCompanyBriefFormFromState();
+        console.log("[Company Brief] Form populated from state");
+
+        // Focus the overlay and first input once painted
+        requestAnimationFrame(() => {
+          companyBriefOverlay.focus({ preventScroll: true });
+          setTimeout(() => {
+            if (companyNameInput) {
+              companyNameInput.focus();
+              console.log("[Company Brief] Focused company name input");
+            } else {
+              console.warn("[Company Brief] companyNameInput not found");
+            }
+          }, 30);
+        });
+        console.log("[Company Brief] Overlay classes:", companyBriefOverlay.classList.toString());
+        console.log("[Company Brief] Overlay visible, opacity:", window.getComputedStyle(companyBriefOverlay).opacity);
+        log.info("Company brief opened");
+      }, 100); // Delay to allow window resize to complete
     } else {
+      state.isCompanyBriefOpen = false; // Unlock auto-resize
+      if (companyBriefBtn) {
+        companyBriefBtn.classList.remove("toggled");
+        companyBriefBtn.blur(); // Remove focus ring
+      }
+      console.log("[Company Brief] Closing overlay");
       companyBriefOverlay.classList.remove("show");
       companyBriefOverlay.setAttribute("aria-hidden", "true");
       companyBriefOverlay.style.top = "";
@@ -3477,6 +3559,7 @@
         document.body.style.overflow = "";
       }
 
+      console.log("[Company Brief] Overlay hidden");
       log.info("Company brief closed");
     }
   }
@@ -3490,22 +3573,33 @@
   if (companyBriefBtn) {
     log.debug("Company brief button found, attaching event listeners");
     companyBriefBtn.addEventListener("click", () => {
+      console.log("[Company Brief] Button clicked");
       log.debug("Company brief button clicked");
-      const shouldShow =
-        !companyBriefOverlay || !companyBriefOverlay.classList.contains("show");
+      if (!companyBriefOverlay) {
+        console.error("[Company Brief] Overlay element not found!");
+        showNotification("Company brief panel not available", "error");
+        return;
+      }
+      const shouldShow = !companyBriefOverlay.classList.contains("show");
+      console.log("[Company Brief] Should show:", shouldShow);
       toggleCompanyBrief(shouldShow);
     });
     companyBriefBtn.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
+        console.log("[Company Brief] Button activated via keyboard");
         log.debug("Company brief button activated via keyboard");
-        const shouldShow =
-          !companyBriefOverlay ||
-          !companyBriefOverlay.classList.contains("show");
+        if (!companyBriefOverlay) {
+          console.error("[Company Brief] Overlay element not found!");
+          showNotification("Company brief panel not available", "error");
+          return;
+        }
+        const shouldShow = !companyBriefOverlay.classList.contains("show");
         toggleCompanyBrief(shouldShow);
       }
     });
   } else {
+    console.error("[Company Brief] Button element #companyBrief not found in DOM!");
     log.warn("Company brief button not found in DOM");
   }
 

@@ -6,8 +6,10 @@ import os
 import io
 import logging
 from typing import Optional, List, Tuple
-from PIL import Image
-import numpy as np
+
+# Lazy loaded
+Image = None
+np = None
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,11 @@ class PaddleOCREngine:
         Returns:
             Extracted text as string
         """
+        global Image, np
+        if Image is None:
+            from PIL import Image
+            import numpy as np
+
         try:
             # Load image
             img = Image.open(io.BytesIO(image_bytes))
