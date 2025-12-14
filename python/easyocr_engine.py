@@ -267,9 +267,6 @@ class EasyOCREngine:
         
         return result.strip()
     
-    def 
-        return '\n'.join(result_lines)
-    
     def extract_text_with_layout(self, image_bytes: bytes) -> dict:
         """
         Extract text with layout information (bounding boxes, confidence)
