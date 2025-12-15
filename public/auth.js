@@ -67,10 +67,6 @@ function setupFormHandlers() {
     document.querySelectorAll('.btn-social.google').forEach(btn => {
         btn.addEventListener('click', () => handleSocialAuth('google'));
     });
-
-    document.querySelectorAll('.btn-social.microsoft').forEach(btn => {
-        btn.addEventListener('click', () => handleSocialAuth('microsoft'));
-    });
 }
 
 // Handle Login with Supabase
@@ -103,6 +99,7 @@ function setupFormHandlers() {
     document.addEventListener('DOMContentLoaded', async () => {
         setupTabSwitching();
         setupFormHandlers();
+        await handleOAuthCallback(); // Handle OAuth redirects first
         await handlePasswordRecoveryIfNeeded();
         if (!recoveryFlowActive) {
             await checkExistingAuth();
@@ -151,10 +148,6 @@ function setupFormHandlers() {
         btn.addEventListener('click', () => handleSocialAuth('google'));
     });
 
-    document.querySelectorAll('.btn-social.microsoft').forEach(btn => {
-        btn.addEventListener('click', () => handleSocialAuth('microsoft'));
-    });
-
     forgotLink?.addEventListener('click', event => {
         event.preventDefault();
         openModal(forgotModal);
@@ -181,6 +174,44 @@ function setupFormHandlers() {
             closeModal(forgotModal);
             closeModal(resetModal);
         }
+    });
+
+    // Setup password visibility toggles
+    setupPasswordToggles();
+}
+
+function setupPasswordToggles() {
+    document.querySelectorAll('.password-toggle').forEach(toggle => {
+        toggle.addEventListener('click', function() {
+            const targetId = this.getAttribute('data-target');
+            const passwordInput = document.getElementById(targetId);
+            
+            if (passwordInput) {
+                const isPassword = passwordInput.type === 'password';
+                passwordInput.type = isPassword ? 'text' : 'password';
+                
+                // Toggle button state
+                this.classList.toggle('show-password', isPassword);
+                
+                // Update icon - add eye-slash if showing password
+                const eyeIcon = this.querySelector('.fa-eye');
+                const eyeSlashIcon = this.querySelector('.fa-eye-slash');
+                
+                if (isPassword) {
+                    // Now showing password
+                    if (!eyeSlashIcon) {
+                        const newIcon = document.createElement('i');
+                        newIcon.className = 'fas fa-eye-slash';
+                        this.appendChild(newIcon);
+                    }
+                } else {
+                    // Now hiding password
+                    if (eyeSlashIcon) {
+                        eyeSlashIcon.remove();
+                    }
+                }
+            }
+        });
     });
 }
 
@@ -410,6 +441,91 @@ async function handleSocialAuth(provider) {
     } catch (error) {
         console.error('Social auth error:', error);
         showMessage(`${provider.charAt(0).toUpperCase() + provider.slice(1)} authentication failed. Please try again.`, 'error');
+    }
+}
+
+async function handleOAuthCallback() {
+    // Check if we're returning from OAuth (hash contains access_token)
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const accessToken = hashParams.get('access_token');
+    
+    if (!accessToken) {
+        return; // Not an OAuth callback
+    }
+    
+    console.log('[OAuth] Handling OAuth callback...');
+    
+    try {
+        // Get the user data from the session
+        const { data: { session, user }, error } = await supabase.auth.getSession();
+        
+        if (error) throw error;
+        
+        if (user) {
+            console.log('[OAuth] User authenticated via OAuth:', user.email);
+            
+            // Check if profile exists
+            const { data: existingProfile, error: profileCheckError } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', user.id)
+                .maybeSingle();
+            
+            if (profileCheckError && profileCheckError.code !== 'PGRST116') {
+                console.warn('[OAuth] Profile check error:', profileCheckError);
+            }
+            
+            // Create profile if it doesn't exist
+            if (!existingProfile) {
+                console.log('[OAuth] Creating profile for OAuth user...');
+                const { error: insertError } = await supabase
+                    .from('profiles')
+                    .insert([{
+                        id: user.id,
+                        name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+                        email: user.email,
+                        phone: user.user_metadata?.phone || '',
+                        created_at: new Date().toISOString()
+                    }]);
+                
+                if (insertError) {
+                    console.warn('[OAuth] Profile creation warning:', insertError);
+                }
+            }
+            
+            // Store user data in session storage
+            const userData = {
+                id: user.id,
+                email: user.email,
+                name: user.user_metadata?.full_name || user.user_metadata?.name || existingProfile?.name || user.email?.split('@')[0] || 'User',
+                phone: existingProfile?.phone || user.user_metadata?.phone || '',
+                authenticated: true,
+                timestamp: Date.now(),
+                supabase_session: session || null
+            };
+            
+            sessionStorage.setItem('interviewai_user', JSON.stringify(userData));
+            console.log('[OAuth] User data stored in session');
+            
+            // Show success message
+            showMessage('Successfully signed in with Google!', 'success');
+            
+            // Redirect after a short delay
+            setTimeout(() => {
+                // Check for redirect parameter
+                const redirectUrl = urlParams.get('redirect');
+                if (redirectUrl) {
+                    window.location.href = redirectUrl;
+                } else {
+                    window.location.href = 'profile.html';
+                }
+            }, 800);
+        }
+    } catch (error) {
+        console.error('[OAuth] Callback error:', error);
+        showMessage('Authentication failed. Please try again.', 'error');
+        // Clear the hash to prevent retry loops
+        window.history.replaceState(null, null, window.location.pathname + window.location.search);
     }
 }
 

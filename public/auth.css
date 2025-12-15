@@ -211,6 +211,57 @@ html.dark .form-group input {
     font-size: 12px;
 }
 
+/* Password Input Wrapper with Toggle */
+.password-input-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.password-input-wrapper input {
+    padding-right: 45px; /* Make room for the toggle button */
+}
+
+.password-toggle {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 16px;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.password-toggle:hover {
+    color: #10b981;
+}
+
+html.dark .password-toggle {
+    color: #9ca3af;
+}
+
+html.dark .password-toggle:hover {
+    color: #10b981;
+}
+
+.password-toggle .fa-eye-slash {
+    display: none;
+}
+
+.password-toggle.show-password .fa-eye {
+    display: none;
+}
+
+.password-toggle.show-password .fa-eye-slash {
+    display: block;
+}
+
 .form-options {
     display: flex;
     justify-content: space-between;
