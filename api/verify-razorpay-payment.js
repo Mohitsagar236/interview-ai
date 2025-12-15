@@ -9,7 +9,15 @@ const { createClient } = require('@supabase/supabase-js');
 // Initialize Supabase client with SERVICE KEY for admin operations
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY; // Use service key for admin.getUserByEmail()
-const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false
+    },
+    db: {
+        schema: 'public'
+    }
+}) : null;
 
 // Credit mapping for each plan
 const PLAN_CREDITS = {
@@ -82,6 +90,9 @@ module.exports = async (req, res) => {
         // Add credits to user's account if Supabase is configured and product type is a credit plan
         // Accept: basic, plus, advanced, credits, windows, mac
         const creditPlans = ['basic', 'plus', 'advanced', 'credits', 'windows', 'mac'];
+        let creditsAdded = false;
+        let creditAdditionDetails = '';
+        
         if (supabase && creditPlans.includes(productType)) {
             try {
                 const creditsToAdd = PLAN_CREDITS[productType] || PLAN_CREDITS.basic || 3;
@@ -113,18 +124,26 @@ module.exports = async (req, res) => {
                     
                     if (guestError) {
                         console.error('❌ Error creating guest subscription:', guestError);
+                        console.error('Guest error details:', JSON.stringify(guestError, null, 2));
+                        creditAdditionDetails = `Guest user failed: ${guestError.message}`;
                     } else {
                         console.log(`✅ Created guest subscription with ${creditsToAdd} credits for ${email}`);
+                        creditsAdded = true;
+                        creditAdditionDetails = `Guest user created: ${creditsToAdd} credits`;
                     }
                 } else if (userData && userData.user) {
                     const userId = userData.user.id;
                     
-                    // Check if subscription exists
-                    const { data: existingSub } = await supabase
+                    // Check if subscription exists (bypass RLS with service key)
+                    const { data: existingSub, error: fetchError } = await supabase
                         .from('subscriptions')
                         .select('*')
                         .eq('user_id', userId)
-                        .single();
+                        .maybeSingle();
+                    
+                    if (fetchError) {
+                        console.error('❌ Error fetching subscription:', fetchError);
+                    }
                     
                     if (existingSub) {
                         // Update existing subscription - add credits
@@ -144,9 +163,12 @@ module.exports = async (req, res) => {
                         if (updateError) {
                             console.error('❌ Error updating subscription credits:', updateError);
                             console.error('Update error details:', JSON.stringify(updateError, null, 2));
+                            creditAdditionDetails = `Failed to update: ${updateError.message}`;
                         } else {
                             console.log(`✅ Successfully added ${creditsToAdd} credits to user ${email}`);
                             console.log(`📊 Total credits now: ${(existingSub.credits_total || 0) + creditsToAdd}`);
+                            creditsAdded = true;
+                            creditAdditionDetails = `Updated: +${creditsToAdd} credits (total: ${(existingSub.credits_total || 0) + creditsToAdd})`;
                         }
                     } else {
                         // Create new subscription
@@ -168,8 +190,11 @@ module.exports = async (req, res) => {
                         if (insertError) {
                             console.error('❌ Error creating subscription with credits:', insertError);
                             console.error('Insert error details:', JSON.stringify(insertError, null, 2));
+                            creditAdditionDetails = `Failed to create: ${insertError.message}`;
                         } else {
                             console.log(`✅ Successfully created subscription with ${creditsToAdd} credits for user ${email}`);
+                            creditsAdded = true;
+                            creditAdditionDetails = `Created: ${creditsToAdd} credits`;
                         }
                     }
                 }
@@ -204,7 +229,9 @@ module.exports = async (req, res) => {
             success: true,
             message: 'Payment verified successfully',
             downloadUrl: downloadUrl,
-            paymentId: razorpay_payment_id
+            paymentId: razorpay_payment_id,
+            creditsAdded: creditsAdded,
+            creditDetails: creditAdditionDetails || 'No credits to add for this product'
         });
 
     } catch (error) {
