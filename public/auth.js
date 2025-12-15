@@ -466,13 +466,6 @@ async function handleOAuthCallback() {
                 throw new Error('Failed to establish user session after OAuth callback');
             }
 
-            // use user from retries/fallback below
-        } else {
-            // no access token in hash - not an OAuth callback
-            return;
-        }
-
-            if (user) {
             console.log('[OAuth] User authenticated via OAuth:', user.email);
 
             // Check if profile exists
@@ -534,6 +527,9 @@ async function handleOAuthCallback() {
                     window.location.href = 'profile.html';
                 }
             }, 800);
+        } else {
+            // no access token in hash - not an OAuth callback
+            return;
         }
     } catch (error) {
         console.error('[OAuth] Callback error:', error);
