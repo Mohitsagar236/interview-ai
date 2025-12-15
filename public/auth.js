@@ -445,11 +445,28 @@ async function handleOAuthCallback() {
             console.log('[OAuth] final session after retries:', session);
             console.log('[OAuth] final user after retries:', user);
 
+            // If user is not returned directly, try to extract from session.user or call getUser()
+            if (!user) {
+                if (session?.user) {
+                    console.log('[OAuth] No direct user returned; using session.user fallback');
+                    user = session.user;
+                } else {
+                    console.log('[OAuth] Attempting supabase.auth.getUser() as a fallback');
+                    const { data: userData, error: userError } = await supabase.auth.getUser();
+                    if (userError) {
+                        console.warn('[OAuth] getUser() error:', userError);
+                    } else if (userData?.user) {
+                        user = userData.user;
+                        console.log('[OAuth] getUser() returned user:', user.email);
+                    }
+                }
+            }
+
             if (!user) {
                 throw new Error('Failed to establish user session after OAuth callback');
             }
 
-            // use user from retries below
+            // use user from retries/fallback below
         } else {
             // no access token in hash - not an OAuth callback
             return;
