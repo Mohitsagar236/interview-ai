@@ -713,7 +713,7 @@ function clearStoredUserData() {
 window.getUserData = getUserData;
 window.supabaseClient = supabase;
 window.supabase = supabase;
-window.supabaseLib = supabaseLibrary;
+window.supabaseLib = supabase; // expose the shared client
 window.logout = logout;
 window.clearUserData = clearStoredUserData;
 })();

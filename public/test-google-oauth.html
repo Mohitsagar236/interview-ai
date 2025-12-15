@@ -259,7 +259,7 @@
         const SUPABASE_URL = 'https://npdysfxewryqcmmztdxl.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wZHlzZnhld3J5cWNtbXp0ZHhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzNzMyMjUsImV4cCI6MjA3Nzk0OTIyNX0.WsEnKex2VNpY-uKB5oVjK9iEK7Ce1o1dfRWLE5z2nIc';
         
-        const supabase = supabaseLibrary.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const supabase = window.__interviewAINativeSupabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
         // Elements
         const authStatus = document.getElementById('auth-status');
