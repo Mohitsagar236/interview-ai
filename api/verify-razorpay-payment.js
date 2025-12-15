@@ -127,37 +127,16 @@ module.exports = async (req, res) => {
                     userError = adminError;
                 }
                 
-                if (userError || !userData || !userData.user) {
-                    console.warn('⚠️ User not found in Supabase, creating guest subscription record');
-                    
-                    // Create a guest subscription record using email as identifier
-                    const { data: guestSub, error: guestError } = await supabase
-                        .from('subscriptions')
-                        .insert({
-                            user_email: email,
-                            user_name: name,
-                            plan_type: productType,
-                            status: 'active',
-                            credits_total: creditsToAdd,
-                            credits_used: 0,
-                            payment_id: razorpay_payment_id,
-                            order_id: razorpay_order_id,
-                            amount: req.body.amount || PLAN_CREDITS[productType] * 100,
-                            description: `${productType.charAt(0).toUpperCase() + productType.slice(1)} Plan - ${creditsToAdd} credits`
-                        })
-                        .select()
-                        .single();
-                    
-                    if (guestError) {
-                        console.error('❌ Error creating guest subscription:', guestError);
-                        console.error('Guest error details:', JSON.stringify(guestError, null, 2));
-                        creditAdditionDetails = `Guest user failed: ${guestError.message}`;
-                    } else {
-                        console.log(`✅ Created guest subscription with ${creditsToAdd} credits for ${email}`);
-                        creditsAdded = true;
-                        creditAdditionDetails = `Guest user created: ${creditsToAdd} credits`;
+                    if (userError || !userData || !userData.user) {
+                        console.error('❌ User not found in Supabase. Login is required before payment.');
+                        return res.status(400).json({
+                            success: false,
+                            error: 'user_not_found',
+                            message: 'Please log in before making a payment so we can add credits to your account.'
+                        });
                     }
-                } else if (userData && userData.user) {
+                
+                    if (userData && userData.user) {
                     const userId = userData.user.id;
                     
                     // Check if subscription exists (bypass RLS with service key)

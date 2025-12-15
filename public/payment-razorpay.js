@@ -91,11 +91,11 @@ const products = {
 const currentProduct = products[productType] || products.credits;
 
 // Initialize page
-document.addEventListener('DOMContentLoaded', function() {
-    checkAuthentication();
+document.addEventListener('DOMContentLoaded', async function() {
+    await checkAuthentication();
     updateProductInfo();
     setupEventListeners();
-    prefillUserData();
+    await prefillUserData();
 });
 
 // Update UI with product info
@@ -150,7 +150,30 @@ function getUserData() {
 }
 
 // Pre-fill user data in form
-function prefillUserData() {
+async function prefillUserData() {
+    // First, check if user is logged in via Supabase
+    if (window.supabase) {
+        const { data: { user } } = await window.supabase.auth.getUser();
+        
+        if (user) {
+            console.log('Pre-filling data from Supabase user:', user.email);
+            // Use Supabase user data (most reliable)
+            if (user.email) {
+                document.getElementById('email').value = user.email;
+                // Make email readonly if logged in via Supabase
+                document.getElementById('email').readOnly = true;
+            }
+            if (user.user_metadata?.name || user.user_metadata?.full_name) {
+                document.getElementById('name').value = user.user_metadata.name || user.user_metadata.full_name;
+            }
+            if (user.user_metadata?.phone || user.phone) {
+                document.getElementById('phone').value = user.user_metadata.phone || user.phone;
+            }
+            return;
+        }
+    }
+    
+    // Fallback to localStorage/sessionStorage
     const userData = getUserData();
     
     if (userData) {
