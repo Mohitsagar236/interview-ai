@@ -20,54 +20,6 @@ console.log('⚠️ SESSION-ONLY MODE: You must log in every time you visit');
 const urlParams = new URLSearchParams(window.location.search);
 const productType = urlParams.get('product') || 'windows';
 
-// Initialize
-document.addEventListener('DOMContentLoaded', function() {
-    setupTabSwitching();
-    setupFormHandlers();
-    checkExistingAuth();
-});
-
-// Tab Switching
-function setupTabSwitching() {
-    const tabs = document.querySelectorAll('.auth-tab');
-    const forms = document.querySelectorAll('.auth-form');
-
-    tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const targetTab = tab.dataset.tab;
-
-            // Update tabs
-            tabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-
-            // Update forms
-            forms.forEach(form => {
-                if (form.id === `${targetTab}-form`) {
-                    form.classList.add('active');
-                } else {
-                    form.classList.remove('active');
-                }
-            });
-
-            // Clear messages
-            hideMessage();
-        });
-    });
-}
-
-// Form Handlers
-function setupFormHandlers() {
-    const loginForm = document.getElementById('login-form');
-    const signupForm = document.getElementById('signup-form');
-
-    loginForm.addEventListener('submit', handleLogin);
-    signupForm.addEventListener('submit', handleSignup);
-
-    // Social buttons
-    document.querySelectorAll('.btn-social.google').forEach(btn => {
-        btn.addEventListener('click', () => handleSocialAuth('google'));
-    });
-}
 
 // Handle Login with Supabase
 // Authentication flow for Interview AI auth page
@@ -461,14 +413,30 @@ async function handleOAuthCallback() {
     console.log('[OAuth] Handling OAuth callback...');
     
     try {
+        // If redirect contains access tokens, set the session manually
+        const refreshToken = hashParams.get('refresh_token');
+        if (accessToken) {
+            console.log('[OAuth] Access token found in URL hash, setting session...');
+            const { data: setData, error: setError } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken
+            });
+
+            if (setError) {
+                throw setError;
+            }
+
+            // After setting session, get it
+        }
+
         // Get the user data from the session
         const { data: { session, user }, error } = await supabase.auth.getSession();
-        
+
         if (error) throw error;
-        
+
         if (user) {
             console.log('[OAuth] User authenticated via OAuth:', user.email);
-            
+
             // Check if profile exists
             const { data: existingProfile, error: profileCheckError } = await supabase
                 .from('profiles')
