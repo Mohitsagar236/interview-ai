@@ -15,7 +15,10 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 const PLAN_CREDITS = {
     basic: 3,        // Basic plan: 3 credits (3 hours)
     plus: 8,         // Plus plan: 6 + 2 free = 8 credits (8 hours)
-    advanced: 15     // Advanced plan: 9 + 6 free = 15 credits (15 hours)
+    advanced: 15,    // Advanced plan: 9 + 6 free = 15 credits (15 hours)
+    credits: 3,      // Generic credits: 3 credits (default)
+    windows: 3,      // Windows app purchase: 3 credits
+    mac: 3           // Mac app purchase: 3 credits
 };
 
 module.exports = async (req, res) => {
@@ -77,17 +80,42 @@ module.exports = async (req, res) => {
         });
 
         // Add credits to user's account if Supabase is configured and product type is a credit plan
-        if (supabase && ['basic', 'plus', 'advanced'].includes(productType)) {
+        // Accept: basic, plus, advanced, credits, windows, mac
+        const creditPlans = ['basic', 'plus', 'advanced', 'credits', 'windows', 'mac'];
+        if (supabase && creditPlans.includes(productType)) {
             try {
-                const creditsToAdd = PLAN_CREDITS[productType] || 0;
+                const creditsToAdd = PLAN_CREDITS[productType] || PLAN_CREDITS.basic || 3;
                 console.log(`💳 Adding ${creditsToAdd} credits for ${productType} plan to user: ${email}`);
                 
                 // Find user by email
                 const { data: userData, error: userError } = await supabase.auth.admin.getUserByEmail(email);
                 
-                if (userError) {
-                    console.error('❌ Could not find user by email:', email, userError);
-                    console.error('Error details:', JSON.stringify(userError, null, 2));
+                if (userError || !userData || !userData.user) {
+                    console.warn('⚠️ User not found in Supabase, creating guest subscription record');
+                    
+                    // Create a guest subscription record using email as identifier
+                    const { data: guestSub, error: guestError } = await supabase
+                        .from('subscriptions')
+                        .insert({
+                            user_email: email,
+                            user_name: name,
+                            plan_type: productType,
+                            status: 'active',
+                            credits_total: creditsToAdd,
+                            credits_used: 0,
+                            payment_id: razorpay_payment_id,
+                            order_id: razorpay_order_id,
+                            amount: req.body.amount || PLAN_CREDITS[productType] * 100,
+                            description: `${productType.charAt(0).toUpperCase() + productType.slice(1)} Plan - ${creditsToAdd} credits`
+                        })
+                        .select()
+                        .single();
+                    
+                    if (guestError) {
+                        console.error('❌ Error creating guest subscription:', guestError);
+                    } else {
+                        console.log(`✅ Created guest subscription with ${creditsToAdd} credits for ${email}`);
+                    }
                 } else if (userData && userData.user) {
                     const userId = userData.user.id;
                     
