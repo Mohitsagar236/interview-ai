@@ -6,9 +6,9 @@
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 
-// Initialize Supabase client
+// Initialize Supabase client with SERVICE KEY for admin operations
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY; // Use service key for admin.getUserByEmail()
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 // Credit mapping for each plan
@@ -80,12 +80,14 @@ module.exports = async (req, res) => {
         if (supabase && ['basic', 'plus', 'advanced'].includes(productType)) {
             try {
                 const creditsToAdd = PLAN_CREDITS[productType] || 0;
+                console.log(`💳 Adding ${creditsToAdd} credits for ${productType} plan to user: ${email}`);
                 
                 // Find user by email
                 const { data: userData, error: userError } = await supabase.auth.admin.getUserByEmail(email);
                 
                 if (userError) {
-                    console.warn('Could not find user by email:', email, userError);
+                    console.error('❌ Could not find user by email:', email, userError);
+                    console.error('Error details:', JSON.stringify(userError, null, 2));
                 } else if (userData && userData.user) {
                     const userId = userData.user.id;
                     
@@ -112,12 +114,15 @@ module.exports = async (req, res) => {
                             .eq('user_id', userId);
                         
                         if (updateError) {
-                            console.error('Error updating subscription credits:', updateError);
+                            console.error('❌ Error updating subscription credits:', updateError);
+                            console.error('Update error details:', JSON.stringify(updateError, null, 2));
                         } else {
-                            console.log(`✅ Added ${creditsToAdd} credits to user ${email}`);
+                            console.log(`✅ Successfully added ${creditsToAdd} credits to user ${email}`);
+                            console.log(`📊 Total credits now: ${(existingSub.credits_total || 0) + creditsToAdd}`);
                         }
                     } else {
                         // Create new subscription
+                        console.log(`📝 Creating new subscription for user ${email}`);
                         const { error: insertError } = await supabase
                             .from('subscriptions')
                             .insert({
@@ -133,9 +138,10 @@ module.exports = async (req, res) => {
                             });
                         
                         if (insertError) {
-                            console.error('Error creating subscription with credits:', insertError);
+                            console.error('❌ Error creating subscription with credits:', insertError);
+                            console.error('Insert error details:', JSON.stringify(insertError, null, 2));
                         } else {
-                            console.log(`✅ Created subscription with ${creditsToAdd} credits for user ${email}`);
+                            console.log(`✅ Successfully created subscription with ${creditsToAdd} credits for user ${email}`);
                         }
                     }
                 }
