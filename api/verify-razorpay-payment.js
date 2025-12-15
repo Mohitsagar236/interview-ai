@@ -6,19 +6,6 @@
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 
-// Initialize Supabase client with SERVICE KEY for admin operations
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY; // Use service key for admin.getUserByEmail()
-const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey, {
-    auth: {
-        autoRefreshToken: false,
-        persistSession: false
-    },
-    db: {
-        schema: 'public'
-    }
-}) : null;
-
 // Credit mapping for each plan
 const PLAN_CREDITS = {
     basic: 3,        // Basic plan: 3 credits (3 hours)
@@ -45,6 +32,24 @@ module.exports = async (req, res) => {
     }
 
     try {
+        // Initialize Supabase client INSIDE the handler (same pattern as grant-free-credits.js)
+        // This ensures environment variables are read at request time, not module load time
+        const supabaseUrl = process.env.SUPABASE_URL;
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+        
+        console.log('🔧 Initializing Supabase client...');
+        console.log('   SUPABASE_URL:', supabaseUrl ? 'Set' : 'MISSING');
+        console.log('   SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Set' : 'Missing');
+        console.log('   SUPABASE_SERVICE_KEY:', process.env.SUPABASE_SERVICE_KEY ? 'Set' : 'Missing');
+        
+        let supabase = null;
+        if (supabaseUrl && supabaseServiceKey) {
+            supabase = createClient(supabaseUrl, supabaseServiceKey);
+            console.log('✅ Supabase client created successfully');
+        } else {
+            console.error('❌ Cannot create Supabase client - missing env vars');
+        }
+
         const { 
             razorpay_order_id, 
             razorpay_payment_id, 
@@ -93,12 +98,10 @@ module.exports = async (req, res) => {
         let creditsAdded = false;
         let creditAdditionDetails = '';
         
-        console.log('🔍 Checking Supabase configuration...');
-        console.log('   SUPABASE_URL:', supabaseUrl ? 'Set' : 'Missing');
-        console.log('   SUPABASE_SERVICE_KEY:', supabaseKey ? 'Set' : 'Missing');
-        console.log('   Supabase client:', supabase ? 'Initialized' : 'NULL');
+        console.log('� Credit addition check:');
         console.log('   Product type:', productType);
         console.log('   Is credit plan:', creditPlans.includes(productType));
+        console.log('   Supabase client ready:', supabase ? 'YES' : 'NO');
         
         if (!supabase) {
             console.error('❌ Supabase client is null! Check environment variables.');
