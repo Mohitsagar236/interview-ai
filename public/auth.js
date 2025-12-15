@@ -11,11 +11,13 @@ if (!window.__interviewAINativeSupabaseClient) {
         auth: {
             persistSession: false, // Don't persist session (session-only mode)
             autoRefreshToken: false, // Don't auto-refresh
-            detectSessionInUrl: false // Don't detect session in URL
+            // Allow parsing session from URL hash (needed to complete OAuth redirects)
+            detectSessionInUrl: true
         }
     });
 }
 const supabase = window.__interviewAINativeSupabaseClient;
+console.log('Supabase auth client initialized (detectSessionInUrl: true)');
 
 console.log('⚠️ SESSION-ONLY MODE: You must log in every time you visit');
 console.log("Tip: To enable persistent sessions in production, set `persistSession: true` when creating the client.");
@@ -413,19 +415,47 @@ async function handleOAuthCallback() {
                 refresh_token: refreshToken
             });
 
+            console.log('[OAuth] setSession result:', { setData, setError });
+
             if (setError) {
                 throw setError;
             }
 
-            // After setting session, get it
+            // After setting session, try to obtain the session/user with retries
+            let session = null;
+            let user = null;
+            const maxAttempts = 6;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                const { data, error: getError } = await supabase.auth.getSession();
+                if (getError) {
+                    console.warn(`[OAuth] getSession attempt ${attempt} error:`, getError);
+                }
+
+                session = data?.session || null;
+                user = data?.user || null;
+
+                console.log(`[OAuth] getSession attempt ${attempt}: user=${user ? user.email : 'null'}`);
+
+                if (user) break;
+
+                // wait before retrying
+                await new Promise(res => setTimeout(res, 400));
+            }
+
+            console.log('[OAuth] final session after retries:', session);
+            console.log('[OAuth] final user after retries:', user);
+
+            if (!user) {
+                throw new Error('Failed to establish user session after OAuth callback');
+            }
+
+            // use user from retries below
+        } else {
+            // no access token in hash - not an OAuth callback
+            return;
         }
 
-        // Get the user data from the session
-        const { data: { session, user }, error } = await supabase.auth.getSession();
-
-        if (error) throw error;
-
-        if (user) {
+            if (user) {
             console.log('[OAuth] User authenticated via OAuth:', user.email);
 
             // Check if profile exists
