@@ -5,16 +5,20 @@
 const SUPABASE_URL = 'https://npdysfxewryqcmmztdxl.supabase.co'; // Replace with your Supabase URL
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wZHlzZnhld3J5cWNtbXp0ZHhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzNzMyMjUsImV4cCI6MjA3Nzk0OTIyNX0.WsEnKex2VNpY-uKB5oVjK9iEK7Ce1o1dfRWLE5z2nIc'; // Replace with your Supabase anon key
 
-// Initialize Supabase client with NO PERSISTENCE (session-only)
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: {
-        persistSession: false, // Don't persist session
-        autoRefreshToken: false, // Don't auto-refresh
-        detectSessionInUrl: false // Don't detect session in URL
-    }
-});
+// Initialize (or reuse) a single Supabase client instance for the app
+if (!window.__interviewAINativeSupabaseClient) {
+    window.__interviewAINativeSupabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+            persistSession: false, // Don't persist session (session-only mode)
+            autoRefreshToken: false, // Don't auto-refresh
+            detectSessionInUrl: false // Don't detect session in URL
+        }
+    });
+}
+const supabase = window.__interviewAINativeSupabaseClient;
 
 console.log('⚠️ SESSION-ONLY MODE: You must log in every time you visit');
+console.log("Tip: To enable persistent sessions in production, set `persistSession: true` when creating the client.");
 
 // Get product type from URL
 const urlParams = new URLSearchParams(window.location.search);
@@ -29,23 +33,10 @@ const productType = urlParams.get('product') || 'windows';
     }
     window.__interviewAIAuthLoaded = true;
 
-    const SUPABASE_URL = 'https://npdysfxewryqcmmztdxl.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wZHlzZnhld3J5cWNtbXp0ZHhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzNzMyMjUsImV4cCI6MjA3Nzk0OTIyNX0.WsEnKex2VNpY-uKB5oVjK9iEK7Ce1o1dfRWLE5z2nIc';
-
-    const supabaseLibrary = window.supabase;
-    // Session-only Supabase client (no persistence)
-    const supabase = supabaseLibrary.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: {
-            persistSession: false, // Don't persist session
-            autoRefreshToken: false, // Don't auto-refresh
-            detectSessionInUrl: false // Don't detect session in URL
-        }
-    });
-    
+    // Use the global `supabase` client defined above (single instance)
+    // Note: session-only mode is enabled (`persistSession: false`), so users must log in every visit
     console.log('⚠️ SESSION-ONLY MODE: Login required on every visit');
-    
-    const urlParams = new URLSearchParams(window.location.search);
-    const productType = urlParams.get('product') || 'windows';
+
     let recoveryFlowActive = false;
 
     document.addEventListener('DOMContentLoaded', async () => {
