@@ -103,23 +103,20 @@ module.exports = async (req, res) => {
                 let userError = null;
                 
                 try {
-                    // Try to use admin API if available
-                    if (supabase.auth.admin && typeof supabase.auth.admin.getUserByEmail === 'function') {
-                        const result = await supabase.auth.admin.getUserByEmail(email);
-                        userData = result.data;
-                        userError = result.error;
-                    } else {
-                        // Fallback: Query auth.users directly using service key
-                        const { data, error } = await supabase
-                            .from('users')
-                            .select('*')
-                            .eq('email', email)
-                            .single();
-                        
-                        if (!error && data) {
-                            userData = { user: data };
+                    // Use listUsers method (same as grant-free-credits.js) - this works!
+                    const { data: users, error: usersError } = await supabase.auth.admin.listUsers();
+                    
+                    if (usersError) {
+                        console.error('Error listing users:', usersError);
+                        userError = usersError;
+                    } else if (users && users.users) {
+                        const matchedUser = users.users.find(u => u.email === email);
+                        if (matchedUser) {
+                            userData = { user: matchedUser };
+                            console.log(`✅ Found user: ${email} (ID: ${matchedUser.id})`);
                         } else {
-                            userError = error;
+                            console.warn(`⚠️ No user found with email: ${email}`);
+                            userError = { message: 'User not found' };
                         }
                     }
                 } catch (adminError) {
