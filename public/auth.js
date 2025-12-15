@@ -422,16 +422,21 @@ async function handleSignup(event) {
 
 async function handleSocialAuth(provider) {
     try {
-        // Check if there's a redirect URL parameter
+        // Get current origin (works for both localhost and production)
+        const currentOrigin = window.location.origin;
+        
+        // Redirect back to auth.html to handle the OAuth callback
         const redirectUrl = urlParams.get('redirect');
-        const finalRedirectUrl = redirectUrl 
-            ? `${window.location.origin}/${redirectUrl}` 
-            : `${window.location.origin}/profile.html`;
+        const callbackUrl = redirectUrl 
+            ? `${currentOrigin}/auth.html?redirect=${encodeURIComponent(redirectUrl)}`
+            : `${currentOrigin}/auth.html`;
+
+        console.log('[OAuth] Initiating OAuth flow with redirect:', callbackUrl);
 
         const { error } = await supabase.auth.signInWithOAuth({
             provider,
             options: {
-                redirectTo: finalRedirectUrl
+                redirectTo: callbackUrl
             }
         });
 
