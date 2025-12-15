@@ -98,8 +98,34 @@ module.exports = async (req, res) => {
                 const creditsToAdd = PLAN_CREDITS[productType] || PLAN_CREDITS.basic || 3;
                 console.log(`💳 Adding ${creditsToAdd} credits for ${productType} plan to user: ${email}`);
                 
-                // Find user by email
-                const { data: userData, error: userError } = await supabase.auth.admin.getUserByEmail(email);
+                // Find user by email using direct API call (admin method may not be available in all versions)
+                let userData = null;
+                let userError = null;
+                
+                try {
+                    // Try to use admin API if available
+                    if (supabase.auth.admin && typeof supabase.auth.admin.getUserByEmail === 'function') {
+                        const result = await supabase.auth.admin.getUserByEmail(email);
+                        userData = result.data;
+                        userError = result.error;
+                    } else {
+                        // Fallback: Query auth.users directly using service key
+                        const { data, error } = await supabase
+                            .from('users')
+                            .select('*')
+                            .eq('email', email)
+                            .single();
+                        
+                        if (!error && data) {
+                            userData = { user: data };
+                        } else {
+                            userError = error;
+                        }
+                    }
+                } catch (adminError) {
+                    console.error('Admin API error:', adminError);
+                    userError = adminError;
+                }
                 
                 if (userError || !userData || !userData.user) {
                     console.warn('⚠️ User not found in Supabase, creating guest subscription record');
