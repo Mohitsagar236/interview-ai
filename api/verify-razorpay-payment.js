@@ -93,118 +93,115 @@ module.exports = async (req, res) => {
         let creditsAdded = false;
         let creditAdditionDetails = '';
         
-        if (supabase && creditPlans.includes(productType)) {
+        console.log('🔍 Checking Supabase configuration...');
+        console.log('   SUPABASE_URL:', supabaseUrl ? 'Set' : 'Missing');
+        console.log('   SUPABASE_SERVICE_KEY:', supabaseKey ? 'Set' : 'Missing');
+        console.log('   Supabase client:', supabase ? 'Initialized' : 'NULL');
+        console.log('   Product type:', productType);
+        console.log('   Is credit plan:', creditPlans.includes(productType));
+        
+        if (!supabase) {
+            console.error('❌ Supabase client is null! Check environment variables.');
+            creditAdditionDetails = 'Supabase not configured';
+        } else if (!creditPlans.includes(productType)) {
+            console.log('ℹ️ Product type not in credit plans, skipping credit addition');
+            creditAdditionDetails = 'Product type does not include credits';
+        } else {
             try {
-                const creditsToAdd = PLAN_CREDITS[productType] || PLAN_CREDITS.basic || 3;
+                const creditsToAdd = PLAN_CREDITS[productType] || 3;
                 console.log(`💳 Adding ${creditsToAdd} credits for ${productType} plan to user: ${email}`);
                 
-                // Find user by email using direct API call (admin method may not be available in all versions)
-                let userData = null;
-                let userError = null;
+                // Use listUsers method (same as grant-free-credits.js) - this works!
+                console.log('📋 Fetching user list from Supabase...');
+                const { data: users, error: usersError } = await supabase.auth.admin.listUsers();
                 
-                try {
-                    // Use listUsers method (same as grant-free-credits.js) - this works!
-                    const { data: users, error: usersError } = await supabase.auth.admin.listUsers();
+                if (usersError) {
+                    console.error('❌ Error listing users:', usersError);
+                    creditAdditionDetails = `Failed to list users: ${usersError.message}`;
+                } else if (!users || !users.users) {
+                    console.error('❌ No users data returned');
+                    creditAdditionDetails = 'No users data returned from Supabase';
+                } else {
+                    console.log(`📋 Found ${users.users.length} total users`);
+                    const matchedUser = users.users.find(u => u.email === email);
                     
-                    if (usersError) {
-                        console.error('Error listing users:', usersError);
-                        userError = usersError;
-                    } else if (users && users.users) {
-                        const matchedUser = users.users.find(u => u.email === email);
-                        if (matchedUser) {
-                            userData = { user: matchedUser };
-                            console.log(`✅ Found user: ${email} (ID: ${matchedUser.id})`);
-                        } else {
-                            console.warn(`⚠️ No user found with email: ${email}`);
-                            userError = { message: 'User not found' };
-                        }
-                    }
-                } catch (adminError) {
-                    console.error('Admin API error:', adminError);
-                    userError = adminError;
-                }
-                
-                    if (userError || !userData || !userData.user) {
-                        console.error('❌ User not found in Supabase. Login is required before payment.');
-                        return res.status(400).json({
-                            success: false,
-                            error: 'user_not_found',
-                            message: 'Please log in before making a payment so we can add credits to your account.'
-                        });
-                    }
-                
-                    if (userData && userData.user) {
-                    const userId = userData.user.id;
-                    
-                    // Check if subscription exists (bypass RLS with service key)
-                    const { data: existingSub, error: fetchError } = await supabase
-                        .from('subscriptions')
-                        .select('*')
-                        .eq('user_id', userId)
-                        .maybeSingle();
-                    
-                    if (fetchError) {
-                        console.error('❌ Error fetching subscription:', fetchError);
-                    }
-                    
-                    if (existingSub) {
-                        // Update existing subscription - add credits
-                        const { error: updateError } = await supabase
-                            .from('subscriptions')
-                            .update({
-                                plan_type: productType,
-                                status: 'active',
-                                credits_total: (existingSub.credits_total || 0) + creditsToAdd,
-                                payment_id: razorpay_payment_id,
-                                order_id: razorpay_order_id,
-                                amount: PLAN_CREDITS[productType] * 100, // Example amount
-                                updated_at: new Date().toISOString()
-                            })
-                            .eq('user_id', userId);
-                        
-                        if (updateError) {
-                            console.error('❌ Error updating subscription credits:', updateError);
-                            console.error('Update error details:', JSON.stringify(updateError, null, 2));
-                            creditAdditionDetails = `Failed to update: ${updateError.message}`;
-                        } else {
-                            console.log(`✅ Successfully added ${creditsToAdd} credits to user ${email}`);
-                            console.log(`📊 Total credits now: ${(existingSub.credits_total || 0) + creditsToAdd}`);
-                            creditsAdded = true;
-                            creditAdditionDetails = `Updated: +${creditsToAdd} credits (total: ${(existingSub.credits_total || 0) + creditsToAdd})`;
-                        }
+                    if (!matchedUser) {
+                        console.error(`❌ No user found with email: ${email}`);
+                        creditAdditionDetails = `User not found: ${email}`;
                     } else {
-                        // Create new subscription
-                        console.log(`📝 Creating new subscription for user ${email}`);
-                        const { error: insertError } = await supabase
-                            .from('subscriptions')
-                            .insert({
-                                user_id: userId,
-                                plan_type: productType,
-                                status: 'active',
-                                credits_total: creditsToAdd,
-                                credits_used: 0,
-                                payment_id: razorpay_payment_id,
-                                order_id: razorpay_order_id,
-                                amount: PLAN_CREDITS[productType] * 100,
-                                description: `${productType.charAt(0).toUpperCase() + productType.slice(1)} Plan - ${creditsToAdd} credits`
-                            });
+                        const userId = matchedUser.id;
+                        console.log(`✅ Found user: ${email} (ID: ${userId})`);
                         
-                        if (insertError) {
-                            console.error('❌ Error creating subscription with credits:', insertError);
-                            console.error('Insert error details:', JSON.stringify(insertError, null, 2));
-                            creditAdditionDetails = `Failed to create: ${insertError.message}`;
+                        // Check if subscription exists
+                        console.log('📋 Checking for existing subscription...');
+                        const { data: existingSub, error: fetchError } = await supabase
+                            .from('subscriptions')
+                            .select('*')
+                            .eq('user_id', userId)
+                            .maybeSingle();
+                        
+                        if (fetchError) {
+                            console.error('❌ Error fetching subscription:', fetchError);
+                            creditAdditionDetails = `Fetch error: ${fetchError.message}`;
+                        } else if (existingSub) {
+                            // Update existing subscription
+                            console.log('📝 Updating existing subscription...');
+                            const newTotal = (existingSub.credits_total || 0) + creditsToAdd;
+                            
+                            const { error: updateError } = await supabase
+                                .from('subscriptions')
+                                .update({
+                                    plan_type: productType,
+                                    status: 'active',
+                                    credits_total: newTotal,
+                                    payment_id: razorpay_payment_id,
+                                    order_id: razorpay_order_id,
+                                    updated_at: new Date().toISOString()
+                                })
+                                .eq('user_id', userId);
+                            
+                            if (updateError) {
+                                console.error('❌ Error updating subscription:', updateError);
+                                creditAdditionDetails = `Update failed: ${updateError.message}`;
+                            } else {
+                                console.log(`✅ Added ${creditsToAdd} credits. Total now: ${newTotal}`);
+                                creditsAdded = true;
+                                creditAdditionDetails = `Updated: +${creditsToAdd} credits (total: ${newTotal})`;
+                            }
                         } else {
-                            console.log(`✅ Successfully created subscription with ${creditsToAdd} credits for user ${email}`);
-                            creditsAdded = true;
-                            creditAdditionDetails = `Created: ${creditsToAdd} credits`;
+                            // Create new subscription
+                            console.log('📝 Creating new subscription...');
+                            const { error: insertError } = await supabase
+                                .from('subscriptions')
+                                .insert({
+                                    user_id: userId,
+                                    plan_type: productType,
+                                    status: 'active',
+                                    credits_total: creditsToAdd,
+                                    credits_used: 0,
+                                    payment_id: razorpay_payment_id,
+                                    order_id: razorpay_order_id,
+                                    description: `${productType} Plan - ${creditsToAdd} credits`
+                                });
+                            
+                            if (insertError) {
+                                console.error('❌ Error creating subscription:', insertError);
+                                creditAdditionDetails = `Insert failed: ${insertError.message}`;
+                            } else {
+                                console.log(`✅ Created subscription with ${creditsToAdd} credits`);
+                                creditsAdded = true;
+                                creditAdditionDetails = `Created: ${creditsToAdd} credits`;
+                            }
                         }
                     }
                 }
             } catch (creditsError) {
-                console.error('Error adding credits:', creditsError);
-                // Don't fail the payment, just log the error
+                console.error('❌ Exception adding credits:', creditsError);
+                creditAdditionDetails = `Exception: ${creditsError.message}`;
             }
         }
+        
+        console.log('📊 Credit addition result:', { creditsAdded, creditAdditionDetails });
 
         // Get download URL based on product type - use R2 direct URLs or API endpoint
         const R2_BASE_URL = process.env.R2_PUBLIC_URL || 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev';
