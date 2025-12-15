@@ -482,6 +482,9 @@ async function handleOAuthCallback() {
             
             // Show success message
             showMessage('Successfully signed in with Google!', 'success');
+
+            // Clear URL hash to remove tokens from address bar
+            window.history.replaceState(null, null, window.location.pathname + window.location.search);
             
             // Redirect after a short delay
             setTimeout(() => {
