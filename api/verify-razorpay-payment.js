@@ -145,13 +145,14 @@ module.exports = async (req, res) => {
             }
         }
 
-        // Get download URL based on product type
+        // Get download URL based on product type - use R2 direct URLs or API endpoint
+        const R2_BASE_URL = process.env.R2_PUBLIC_URL || 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev';
         const downloadUrls = {
-            basic: '/downloads/Interview AI Assistant Setup 0.1.0.exe',
-            plus: '/downloads/Interview AI Assistant Setup 0.1.0.exe',
-            advanced: '/downloads/Interview AI Assistant Setup 0.1.0.exe',
-            windows: '/downloads/Interview AI Assistant Setup 0.1.0.exe',
-            mac: '/downloads/Interview AI Assistant-0.1.0.dmg'
+            basic: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,
+            plus: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,
+            advanced: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,
+            windows: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,
+            mac: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-0.1.0.dmg`
         };
 
         const downloadUrl = downloadUrls[productType] || downloadUrls.windows;

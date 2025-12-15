@@ -525,26 +525,31 @@ function showSuccessModal(email, downloadUrl) {
     // Show modal
     modal.classList.remove('hidden');
     
-    // Download button handler
+    // Store download URL in localStorage for profile page access
+    if (downloadUrl) {
+        localStorage.setItem('pendingDownloadUrl', downloadUrl);
+    }
+    
+    // Download button handler - download and go to profile subscription section
     downloadButton.onclick = function() {
-        window.location.href = downloadUrl;
-        setTimeout(() => {
-            window.location.href = 'index.html';
-        }, 2000);
+        // Start download if user clicks the button
+        if (downloadUrl) {
+            window.open(downloadUrl, '_blank');
+        }
+        // Redirect to profile subscription section
+        window.location.href = 'profile.html#subscription';
     };
     
-    // Close button handler
+    // Close button handler - go to profile subscription section without downloading
     closeButton.onclick = function() {
         modal.classList.add('hidden');
-        window.location.href = 'index.html';
+        window.location.href = 'profile.html#subscription';
     };
     
-    // Auto-download after 2 seconds
+    // Auto-redirect to profile subscription section after 3 seconds (no auto-download)
     setTimeout(() => {
-        if (downloadUrl) {
-            window.location.href = downloadUrl;
-        }
-    }, 2000);
+        window.location.href = 'profile.html#subscription';
+    }, 3000);
 }
 
 // Show message
