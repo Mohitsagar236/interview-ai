@@ -16,7 +16,7 @@ if (!window.__interviewAINativeSupabaseClient) {
         }
     });
 }
-const supabase = window.__interviewAINativeSupabaseClient;
+let supabase = window.__interviewAINativeSupabaseClient;
 console.log('Supabase auth client initialized (detectSessionInUrl: true)');
 
 console.log('⚠️ SESSION-ONLY MODE: You must log in every time you visit');
