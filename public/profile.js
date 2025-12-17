@@ -10,7 +10,7 @@
 
     const supabaseLib = window.supabase;
     // SESSION-ONLY: Don't persist sessions
-    const supabase = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    let supabase = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         auth: {
             persistSession: false, // Don't persist session
             autoRefreshToken: true, // Enable auto-refresh for session duration
