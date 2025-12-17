@@ -755,8 +755,8 @@ function clearStoredUserData() {
 
 window.getUserData = getUserData;
 window.supabaseClient = supabase;
-window.supabase = supabase;
-window.supabaseLib = supabase; // expose the shared client
+// Keep the Supabase library on window (window.supabase) intact; store our client under a unique name
+window.__interviewAINativeSupabaseClient = supabase; // canonical shared client for the app
 window.logout = logout;
 window.clearUserData = clearStoredUserData;
 })();

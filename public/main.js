@@ -1,3 +1,18 @@
+// Defensive wrapper: avoid uncaught TypeError when MutationObserver.observe is called with a non-Node
+(function(){
+  if (typeof MutationObserver !== 'undefined' && MutationObserver.prototype && !MutationObserver.prototype.__safeObserve) {
+    const orig = MutationObserver.prototype.observe;
+    MutationObserver.prototype.observe = function(target, options) {
+      if (!target || (typeof target.nodeType !== 'number')) {
+        console.warn('Skipped MutationObserver.observe: target is not a Node', target);
+        return; // noop instead of throwing
+      }
+      return orig.call(this, target, options);
+    };
+    MutationObserver.prototype.__safeObserve = true;
+  }
+})();
+
 // Wait for DOM to be ready before initializing
 document.addEventListener('DOMContentLoaded', () => {
     // Header scroll effect
