@@ -16,7 +16,6 @@ if (!window.__interviewAINativeSupabaseClient) {
         }
     });
 }
-let supabase = window.__interviewAINativeSupabaseClient;
 console.log('Supabase auth client initialized (detectSessionInUrl: true)');
 
 console.log('⚠️ SESSION-ONLY MODE: You must log in every time you visit');
@@ -35,7 +34,9 @@ const productType = urlParams.get('product') || 'windows';
     }
     window.__interviewAIAuthLoaded = true;
 
-    // Use the global `supabase` client defined above (single instance)
+    // Use the canonical shared client on window to avoid global redeclarations
+    const supabase = window.__interviewAINativeSupabaseClient;
+
     // Note: session-only mode is enabled (`persistSession: false`), so users must log in every visit
     console.log('⚠️ SESSION-ONLY MODE: Login required on every visit');
 
