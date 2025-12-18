@@ -357,10 +357,26 @@
                         <h3 class="video-title">See Interview AI in Action</h3>
                         <p class="video-subtitle">Watch how our AI assistant helps you ace your interviews</p>
                         <div class="video-container">
-                            <a class="video-placeholder" href="https://youtu.be/hugJ6tAYjyA" target="_blank" rel="noopener noreferrer" title="Watch Interview AI demo on YouTube">
-                                <i class="fas fa-play-circle"></i>
-                                <p>Watch Demo Video</p>
+                            <!-- Video trigger: uses data-src with YouTube embed URL; poster image at /assets/demo_poster.png -->
+                            <a class="video-placeholder" href="#" role="button" aria-haspopup="dialog" aria-controls="video-modal" data-video-src="https://www.youtube.com/embed/hugJ6tAYjyA?rel=0" title="Watch Interview AI demo">
+                                <img class="video-poster" src="/assets/demo_poster.png" alt="Interview AI demo poster">
+                                <div class="video-overlay">
+                                    <i class="fas fa-play-circle" aria-hidden="true"></i>
+                                    <p>Watch Demo Video</p>
+                                </div>
                             </a>
+                        </div>
+
+                        <!-- Video Modal / Lightbox -->
+                        <div id="video-modal" class="video-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="video-modal-title">
+                            <div class="video-modal-overlay" data-action="close"></div>
+                            <div class="video-modal-content">
+                                <button class="video-modal-close" aria-label="Close video" data-action="close">&times;</button>
+                                <h2 id="video-modal-title" class="sr-only">Interview AI demo video</h2>
+                                <div class="video-embed-wrapper">
+                                    <iframe class="video-iframe" width="560" height="315" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy" data-src="" title="Interview AI demo video"></iframe>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1030,6 +1046,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="header-auth.js"></script>
     <script src="main.js"></script>
+    <!-- Video modal script -->
+    <script src="js/video-modal.js"></script>
     
     <!-- Vercel Analytics -->
     <script>
