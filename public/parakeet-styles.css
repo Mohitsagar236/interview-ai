@@ -10,6 +10,9 @@
     max-width: 100%;
     margin: 0 auto;
     position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .video-placeholder {
@@ -45,6 +48,25 @@
     color: #f1f5f9;
     font-weight: 600;
     margin: 0;
+}
+
+/* Anchors used as video placeholders should look like the original card */
+.video-placeholder {
+    display: block;
+    text-decoration: none !important;
+    color: inherit !important;
+}
+
+.video-placeholder p {
+    text-decoration: none !important;
+    color: #f1f5f9 !important;
+}
+
+/* Ensure the clickable area is centered and sized appropriately */
+.video-container .video-placeholder {
+    max-width: 360px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .video-stats {
