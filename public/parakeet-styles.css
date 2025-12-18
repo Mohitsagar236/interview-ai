@@ -15,6 +15,14 @@
     align-items: center;
 }
 
+/* Ensure hero play card is sized by poster and no other stylesheet adds padding */
+.hero-video-section .video-placeholder,
+.video-container .video-placeholder {
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 720px !important;
+}
+
 .video-placeholder {
     background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
     border-radius: 12px;
@@ -32,26 +40,25 @@
     display: block;
     width: 100%;
     height: auto;
-    max-width: 360px;
+    max-width: 720px; /* larger poster for high-res */
     object-fit: cover;
 }
 
 .video-overlay {
     position: absolute;
     top: 0;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
     width: 100%;
-    max-width: 360px;
     height: 100%;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
     pointer-events: none; /* clicks pass through to the anchor */
+    background: rgba(0,0,0,0.0);
 }
 
-.video-placeholder { position: relative; }
+.video-placeholder { position: relative; display: inline-block; width: 100%; max-width: 720px; }
 
 .video-placeholder:hover {
     transform: translateY(-2px);
@@ -816,7 +823,7 @@
     }
     
     .video-placeholder {
-        padding: 5rem 2rem;
+        padding: 0 !important;
     }
     
     .video-placeholder i {
