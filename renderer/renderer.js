@@ -323,7 +323,7 @@ class InterviewAssistant {
     this.throttleUpdate('transcript', () => {
       const transcriptEl = document.getElementById('transcript');
       if (!transcriptEl) return;
-      // message may be a string from legacy callers or an object from server
+      // Normalize incoming message
       let text = '';
       let isInterim = false;
       let full = '';
@@ -335,118 +335,96 @@ class InterviewAssistant {
         } else {
           text = String(message || '');
         }
-      } catch {}
-
-      // Debug info: show small summary for troubleshooting
-      try {
-        const dbgSeq = message && (message.seq || message.results_count || 0);
-        console.debug(`[Transcript] incoming (seq=${dbgSeq}, interim=${isInterim}, full=${!!full}) text='${(text||'').slice(0,80)}'`);
-      } catch (e) {}
-
-
-      // Defensive rendering with sequence checks to avoid shrinking/replace flicker
-      const seq = Number(message.seq || message.results_count || 0) || 0;
-      if (isInterim && !full) {
-        // Interim messages are ignored for the persistent transcript UI to avoid flash/replacement.
-        // They can be enabled separately if you want provisional live text.
-        return;
+      } catch (e) {
+        console.warn('[Transcript] Failed to normalize message', e);
       }
 
-      let renderText = '';
+      // Debug logging
+      try { console.debug('[Transcript] incoming', { seq: message && (message.seq || message.results_count || 0), isInterim, fullPresent: !!full, textPreview: (text||'').slice(0,80) }); } catch {}
 
+      // Ignore pure interim messages for persistent transcript to prevent flicker
+      if (isInterim && !full) return;
+
+      // Defensive: ignore invalid/no-op payloads
+      if (!full && !text) return;
+
+      const seq = Number(message && (message.seq || message.results_count) || 0) || 0;
+
+      // If full is present, prefer it but ensure it doesn't shrink or arrive out-of-order
       if (full) {
-        // Prefer server-provided full cumulative transcript when present
-        // Defensive checks:
-        // - Ignore if seq indicates an older message
-        // - Ignore if full is unexpectedly shorter than already rendered text (shrink)
         if (seq && seq < this.lastTranscriptSeq) {
-          console.debug(`[Transcript] Ignoring out-of-order full (seq=${seq} < lastSeq=${this.lastTranscriptSeq})`);
+          console.warn('[Transcript] Ignoring out-of-order full', { seq, lastSeq: this.lastTranscriptSeq });
           return;
         }
-        if (this.lastRenderedLength && full.length < this.lastRenderedLength - 20) {
-          console.warn('[Transcript] Ignoring full because it is shorter than current render (possible shrink)', {fullLen: full.length, lastRendered: this.lastRenderedLength, seq});
+        const lastLen = this.lastRenderedLength || 0;
+        if (lastLen && full.length < Math.max(0, lastLen - 50)) {
+          console.warn('[Transcript] Rejecting shrinking full text', { lastLen, newLen: full.length, seq });
           return;
         }
-
-        this.lastTranscript = String(full || this.lastTranscript || '').trim();
-        this.lastTranscriptSeq = seq || this.lastTranscriptSeq;
+        this.lastTranscript = full.trim();
         this.lastRenderedLength = this.lastTranscript.length;
-        renderText = this.lastTranscript;
+        if (seq) this.lastTranscriptSeq = seq;
       } else {
-        // No full present: treat as a final incremental segment — append safely
+        // Append final segment safely
         const t = (text || '').trim();
-        if (t) {
-          // Avoid duplicate appends if server re-sends the same final
-          const tail = (this.lastTranscript || '').slice(-Math.max(200, t.length + 10));
-          if (!tail.includes(t)) {
-            const sep = this.lastTranscript && /\S$/.test(this.lastTranscript) ? ' ' : '';
-            this.lastTranscript = (this.lastTranscript || '') + sep + t;
-            this.lastRenderedLength = this.lastTranscript.length;
-            // Update seq if provided
-            if (seq && seq > this.lastTranscriptSeq) this.lastTranscriptSeq = seq;
-          } else {
-            console.debug('[Transcript] Skipping duplicate final segment append');
+        if (!t) return;
+        const tailCheckLen = Math.max(200, t.length + 10);
+        const tail = (this.lastTranscript || '').slice(-tailCheckLen);
+        if (!tail.includes(t)) {
+          const sep = this.lastTranscript && /\S$/.test(this.lastTranscript) ? ' ' : '';
+          this.lastTranscript = ((this.lastTranscript || '') + sep + t).trim();
+          this.lastRenderedLength = this.lastTranscript.length;
+          if (seq && seq > this.lastTranscriptSeq) this.lastTranscriptSeq = seq;
+          console.debug('[Transcript] Appended final segment', { added: t.slice(0,80), newLen: this.lastRenderedLength, seq: this.lastTranscriptSeq });
+        } else {
+          console.debug('[Transcript] Duplicate final segment ignored');
+        }
+      }
+
+      // Update DOM only when we have non-empty transcript. Do not clear existing DOM
+      if (this.lastTranscript && this.lastTranscript.trim()) {
+        const fragment = document.createDocumentFragment();
+        const container = document.createElement('div');
+        container.className = 'chat-log';
+        const parts = String(this.lastTranscript).split(/([\.!?]\s+)/);
+        let speaker = this.currentSpeaker;
+        let buffer = '';
+        const name1 = (document.getElementById('user1Name')?.value || this.userNames.user1).trim() || 'User 1';
+        const name2 = (document.getElementById('user2Name')?.value || this.userNames.user2).trim() || 'User 2';
+        for (let i = 0; i < parts.length; i++) {
+          buffer += parts[i] || '';
+          if (i % 2 === 1) {
+            const content = buffer.trim();
+            buffer = '';
+            if (!content) continue;
+            const bubble = document.createElement('div');
+            bubble.className = `bubble ${speaker}`;
+            const name = document.createElement('span');
+            name.className = 'name';
+            name.textContent = speaker === 'user1' ? name1 : name2;
+            bubble.appendChild(name);
+            bubble.appendChild(document.createTextNode(content));
+            container.appendChild(bubble);
+            if (/[?]$/.test(content) || /[.!]$/.test(content)) speaker = speaker === 'user1' ? 'user2' : 'user1';
           }
         }
-        renderText = this.lastTranscript || '';
-      }
-
-      const name1 = (document.getElementById('user1Name')?.value || this.userNames.user1).trim() || 'User 1';
-      const name2 = (document.getElementById('user2Name')?.value || this.userNames.user2).trim() || 'User 2';
-      
-      // Use DocumentFragment for better performance
-      const fragment = document.createDocumentFragment();
-      const container = document.createElement('div');
-      container.className = 'chat-log';
-      
-      // Naive split: when a question mark occurs, switch to other user for the next utterance.
-      const parts = String(renderText).split(/([\.!?]\s+)/);
-      let speaker = this.currentSpeaker;
-      let buffer = '';
-      
-      for (let i = 0; i < parts.length; i++) {
-        buffer += parts[i] || '';
-        if (i % 2 === 1) { // end of sentence delim captured
-          const content = buffer.trim();
-          buffer = '';
-          if (!content) continue;
+        const tail = buffer.trim();
+        if (tail) {
           const bubble = document.createElement('div');
           bubble.className = `bubble ${speaker}`;
           const name = document.createElement('span');
           name.className = 'name';
           name.textContent = speaker === 'user1' ? name1 : name2;
           bubble.appendChild(name);
-          bubble.appendChild(document.createTextNode(content));
+          bubble.appendChild(document.createTextNode(tail));
           container.appendChild(bubble);
-          // Heuristic: switch speaker after a question or end of sentence
-          if (/[?]$/.test(content) || /[.!]$/.test(content)) {
-            speaker = speaker === 'user1' ? 'user2' : 'user1';
-          }
         }
-      }
-      // If any remaining buffer
-      const tail = buffer.trim();
-      if (tail) {
-        const bubble = document.createElement('div');
-        bubble.className = `bubble ${speaker}`;
-        const name = document.createElement('span');
-        name.className = 'name';
-        name.textContent = speaker === 'user1' ? name1 : name2;
-        bubble.appendChild(name);
-        bubble.appendChild(document.createTextNode(tail));
-        container.appendChild(bubble);
-      }
-      
-      fragment.appendChild(container);
-      // Only update DOM when we actually have text to render. This prevents
-      // intermittent empty interim messages from clearing the existing transcript.
-      if (renderText && renderText.trim()) {
+        fragment.appendChild(container);
         transcriptEl.innerHTML = '';
         transcriptEl.appendChild(fragment);
         this.smartScrollToBottom(transcriptEl);
         this.adjustContainerHeight(transcriptEl);
       } else {
-        // Keep existing transcript content if nothing meaningful to render
         this.adjustContainerHeight(transcriptEl);
       }
     });

@@ -1552,6 +1552,14 @@ async def handle_ui(ws):
                         await broadcast({"type": "resume_parsed", "success": False, "error": str(e)}, session_id=session_id)
                 elif mtype == "coach":
                     # Manual coach trigger optionally with provided question
+                    # Reset server-side aggregated transcript when user manually requests AI
+                    try:
+                        partial_text = ""
+                        transcript_seq = 0
+                        logger.debug("[Streaming] Cleared partial_text and reset seq due to manual coach trigger")
+                    except Exception:
+                        logger.exception("Failed to reset partial_text/seq on coach trigger")
+
                     q = msg.get("question") or ""
                     llm = DEFAULT_LLM
                     strict = bool(msg.get("strict"))
@@ -3795,41 +3803,52 @@ async def handle_audio_streaming(ws, session_id=None):
         
         # Append to rolling partial_text without injecting speaker tags
         # Keep the aggregated transcript clean; UI gets speaker via message fields
-        if partial_text and not partial_text.endswith((" ", "\n")):
-            partial_text += " "
-        partial_text += text
-        
-        # Trim if too long (keep last 8000 chars)
-        if len(partial_text) > 12000:
-            partial_text = partial_text[-8000:]
-        
+        try:
+            if partial_text and not partial_text.endswith((" ", "\n")):
+                partial_text += " "
+            partial_text += text
+
+            # Trim if too long (keep last N chars)
+            if len(partial_text) > 12000:
+                partial_text = partial_text[-8000:]
+        except Exception:
+            # Defensive: ensure partial_text remains a string
+            try:
+                partial_text = str(partial_text or '') + ' ' + text
+            except Exception:
+                partial_text = text
+
         last_final_text = text
         interim_buffer = ""  # Clear interim buffer
-        
+
         recording_mode = globals().get('current_recording_mode', 'interviewer')
-        
+
         # Bump transcript seq and timestamp for client-side ordering guards
         try:
             transcript_seq += 1
             seq = transcript_seq
         except Exception:
-            seq = 0
-        
-        logger.info(f"[Streaming] Final ({results_received}, seq={seq}): '{text[:80]}' (conf: {result.confidence:.2f})")
-        
+            seq = int(time.time() * 1000)
+
+        logger.info(f"[Streaming] Final ({results_received}, seq={seq}): '{text[:120]}' (conf: {result.confidence:.2f}) full_len={len(partial_text)}")
+
         # Broadcast final result (include seq and timestamp for client ordering)
-        asyncio.create_task(broadcast({
-            "type": "transcript",
-            "text": text,
-            "full": partial_text,
-            "interim": False,  # Mark as final
-            "speaker": current_speaker,
-            "recording_mode": recording_mode,
-            "confidence": result.confidence,
-            "results_count": results_received,
-            "seq": seq,
-            "ts": time.time()
-        }, session_id=session_id))
+        # Ensure 'full' always contains the cumulative transcript (not empty)
+        try:
+            asyncio.create_task(broadcast({
+                "type": "transcript",
+                "text": text,
+                "full": partial_text,
+                "interim": False,  # Mark as final
+                "speaker": current_speaker,
+                "recording_mode": recording_mode,
+                "confidence": result.confidence,
+                "results_count": results_received,
+                "seq": seq,
+                "ts": time.time()
+            }, session_id=session_id))
+        except Exception as e:
+            logger.exception(f"[Streaming] Failed to broadcast final transcript (seq={seq}): {e}")
         
         # Auto-coach is DISABLED - user must click "Ask AI" button manually
         # No automatic AI triggering on transcription
