@@ -18,6 +18,8 @@ class InterviewAssistant {
   this.currentSpeaker = 'user1';
   this.userNames = { user1: 'User 1', user2: 'User 2' };
   this.lastTranscript = '';
+  // Buffer for accumulating interim (partial) transcriptions between final results
+  this.interimBuffer = '';
   this.streamBuffer = '';
   this.streamComplete = true;
   // Math rendering state
@@ -189,6 +191,14 @@ class InterviewAssistant {
         case 'coach':
           this.updateCoach(message, message.text || message.data || '');
           break;
+        case 'transcript_cleared':
+          this.showNotification('Transcript cleared', 'info');
+          // Also clear UI transcript if present
+          const tEl = document.getElementById('transcript');
+          if (tEl) tEl.innerHTML = '';
+          this.lastTranscript = '';
+          this.interimBuffer = '';
+          break;
         case 'error':
           this.showNotification(message.text || message.data || 'Error', 'error');
           break;
@@ -324,19 +334,28 @@ class InterviewAssistant {
         }
       } catch {}
 
-      // Use server-provided full transcript when available, else accumulate locally
+      // Ignore interim (partial) results — only update UI on final/full transcripts
+      // Clear any existing interim buffer to avoid leftover provisional text
+      if (isInterim && !full) {
+        this.interimBuffer = '';
+        return; // Skip rendering for interim fragments
+      }
+
+      // Use server-provided full transcript when available, else append final segments
+      let renderText = '';
       if (full) {
+        // Full cumulative transcript from server (finalized)
         this.lastTranscript = full;
+        renderText = full;
       } else {
-        // For final segments, append to our local buffer; for interim, render non-destructively
-        if (!isInterim && text) {
-          // Append a space if needed
+        // Final segment: append to our persistent transcript
+        if (text) {
           const sep = this.lastTranscript && /\S$/.test(this.lastTranscript) ? ' ' : '';
           this.lastTranscript = (this.lastTranscript || '') + sep + text;
         }
+        renderText = this.lastTranscript || text || '';
       }
 
-      const renderText = full || this.lastTranscript || text || '';
       const name1 = (document.getElementById('user1Name')?.value || this.userNames.user1).trim() || 'User 1';
       const name2 = (document.getElementById('user2Name')?.value || this.userNames.user2).trim() || 'User 2';
       
@@ -384,10 +403,17 @@ class InterviewAssistant {
       }
       
       fragment.appendChild(container);
-      transcriptEl.innerHTML = '';
-      transcriptEl.appendChild(fragment);
-      this.smartScrollToBottom(transcriptEl);
-      this.adjustContainerHeight(transcriptEl);
+      // Only update DOM when we actually have text to render. This prevents
+      // intermittent empty interim messages from clearing the existing transcript.
+      if (renderText && renderText.trim()) {
+        transcriptEl.innerHTML = '';
+        transcriptEl.appendChild(fragment);
+        this.smartScrollToBottom(transcriptEl);
+        this.adjustContainerHeight(transcriptEl);
+      } else {
+        // Keep existing transcript content if nothing meaningful to render
+        this.adjustContainerHeight(transcriptEl);
+      }
     });
   }
 
@@ -943,44 +969,58 @@ class InterviewAssistant {
       placeholder.remove();
     }
     
-    // Create question bubble
-    if (facts && facts.trim()) {
+    // Determine which text to send: prefer user 'facts', fall back to accumulated transcript
+    const factsInput = document.getElementById('facts');
+    const factsText = (factsInput?.value || '').trim();
+    let sendText = factsText;
+    let contextType = 'general';
+
+    if (!sendText && this.lastTranscript) {
+      // No manual facts provided — use the accumulated transcript
+      sendText = this.lastTranscript.trim();
+      contextType = 'transcription';
+    } else if (sendText && this.lastTranscript) {
+      // Both manual facts and transcript exist — include both, mark as transcription context
+      sendText = sendText + '\n\n[Transcript]:\n' + this.lastTranscript.trim();
+      contextType = 'transcription';
+    }
+
+    // Create question bubble (from combined text if available)
+    if (sendText && sendText.trim()) {
       const questionBubble = document.createElement('div');
       questionBubble.className = 'question-bubble';
       
       const label = document.createElement('div');
       label.className = 'question-label';
-      label.textContent = '❓ Your Question';
+      label.textContent = contextType === 'transcription' ? '🎤 Transcript Sent' : '❓ Your Question';
       questionBubble.appendChild(label);
       
       const content = document.createElement('div');
       content.className = 'question-content';
-      content.textContent = facts.trim();
+      content.textContent = sendText.trim();
       questionBubble.appendChild(content);
       
       streamEl.appendChild(questionBubble);
     }
-    
-    // Detect question context to help AI focus on the right data
-    const questionLower = facts.toLowerCase();
-    let contextType = 'general';
-    
-    // Check if question is about transcription/conversation/speech
-    if (questionLower.match(/transcri(pt|ption|be)|conversation|speech|said|audio|record|mic|listen|talk|spoke/)) {
-      contextType = 'transcription';
-    }
-    // Check if question is about screen capture/OCR/visual content
-    else if (questionLower.match(/screen|capture|image|ocr|see|visual|display|show|code|error|picture/)) {
-      contextType = 'capture';
-    }
-    
-    // Send message to AI with context type
+
+    // Send message to AI with context type and the selected text (facts/transcript)
     this.sendMessage({
       type: 'ask',
-      facts: facts,
-      contextType: contextType  // New field to help server focus on relevant data
+      facts: sendText,
+      contextType: contextType
     });
-    
+
+    // Clear accumulated transcript NOW that user explicitly sent it
+    if (this.lastTranscript) {
+      this.lastTranscript = '';
+      this.interimBuffer = '';
+      const transcriptEl = document.getElementById('transcript');
+      if (transcriptEl) transcriptEl.innerHTML = '';
+
+      // Instruct server to clear its partial_text as well
+      this.sendMessage({ type: 'clear_transcript' });
+    }
+
     // Prepare for answer
     this.streamBuffer = '';
     this.streamComplete = false;

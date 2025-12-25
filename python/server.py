@@ -1904,6 +1904,17 @@ async def handle_ui(ws):
                         session_hist[mode_to_clear] = []
                         logger.info(f"[Session {session_id}] Cleared conversation history for mode: {mode_to_clear}")
                         await broadcast({"type": "conversation_cleared", "mode": mode_to_clear}, session_id=session_id)
+                elif mtype == "clear_transcript":
+                    # Clear server-side accumulated transcript (partial_text) on user request
+                    try:
+                        if 'partial_text' in globals() and isinstance(partial_text, str):
+                            partial_text = ""
+                            logger.info(f"[Session {session_id}] Cleared partial transcript")
+                        else:
+                            partial_text = ""
+                    except Exception as e:
+                        logger.warning(f"Failed to clear partial_text: {e}")
+                    await broadcast({"type": "transcript_cleared"}, session_id=session_id)
                 elif mtype == "start_audio":
                     # Get speaker information and recording mode if provided
                     speaker = msg.get("speaker", "user1")
