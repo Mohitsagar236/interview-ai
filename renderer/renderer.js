@@ -22,6 +22,9 @@ class InterviewAssistant {
   this.interimBuffer = '';
   this.streamBuffer = '';
   this.streamComplete = true;
+  // Sequence and length tracking for defensive rendering
+  this.lastTranscriptSeq = 0;
+  this.lastRenderedLength = 0;
   // Math rendering state
   this.mathReady = false;
   this.mathQueue = [];
@@ -334,26 +337,58 @@ class InterviewAssistant {
         }
       } catch {}
 
-      // Ignore interim (partial) results — only update UI on final/full transcripts
-      // Clear any existing interim buffer to avoid leftover provisional text
+      // Debug info: show small summary for troubleshooting
+      try {
+        const dbgSeq = message && (message.seq || message.results_count || 0);
+        console.debug(`[Transcript] incoming (seq=${dbgSeq}, interim=${isInterim}, full=${!!full}) text='${(text||'').slice(0,80)}'`);
+      } catch (e) {}
+
+
+      // Defensive rendering with sequence checks to avoid shrinking/replace flicker
+      const seq = Number(message.seq || message.results_count || 0) || 0;
       if (isInterim && !full) {
-        this.interimBuffer = '';
-        return; // Skip rendering for interim fragments
+        // Interim messages are ignored for the persistent transcript UI to avoid flash/replacement.
+        // They can be enabled separately if you want provisional live text.
+        return;
       }
 
-      // Use server-provided full transcript when available, else append final segments
       let renderText = '';
+
       if (full) {
-        // Full cumulative transcript from server (finalized)
-        this.lastTranscript = full;
-        renderText = full;
-      } else {
-        // Final segment: append to our persistent transcript
-        if (text) {
-          const sep = this.lastTranscript && /\S$/.test(this.lastTranscript) ? ' ' : '';
-          this.lastTranscript = (this.lastTranscript || '') + sep + text;
+        // Prefer server-provided full cumulative transcript when present
+        // Defensive checks:
+        // - Ignore if seq indicates an older message
+        // - Ignore if full is unexpectedly shorter than already rendered text (shrink)
+        if (seq && seq < this.lastTranscriptSeq) {
+          console.debug(`[Transcript] Ignoring out-of-order full (seq=${seq} < lastSeq=${this.lastTranscriptSeq})`);
+          return;
         }
-        renderText = this.lastTranscript || text || '';
+        if (this.lastRenderedLength && full.length < this.lastRenderedLength - 20) {
+          console.warn('[Transcript] Ignoring full because it is shorter than current render (possible shrink)', {fullLen: full.length, lastRendered: this.lastRenderedLength, seq});
+          return;
+        }
+
+        this.lastTranscript = String(full || this.lastTranscript || '').trim();
+        this.lastTranscriptSeq = seq || this.lastTranscriptSeq;
+        this.lastRenderedLength = this.lastTranscript.length;
+        renderText = this.lastTranscript;
+      } else {
+        // No full present: treat as a final incremental segment — append safely
+        const t = (text || '').trim();
+        if (t) {
+          // Avoid duplicate appends if server re-sends the same final
+          const tail = (this.lastTranscript || '').slice(-Math.max(200, t.length + 10));
+          if (!tail.includes(t)) {
+            const sep = this.lastTranscript && /\S$/.test(this.lastTranscript) ? ' ' : '';
+            this.lastTranscript = (this.lastTranscript || '') + sep + t;
+            this.lastRenderedLength = this.lastTranscript.length;
+            // Update seq if provided
+            if (seq && seq > this.lastTranscriptSeq) this.lastTranscriptSeq = seq;
+          } else {
+            console.debug('[Transcript] Skipping duplicate final segment append');
+          }
+        }
+        renderText = this.lastTranscript || '';
       }
 
       const name1 = (document.getElementById('user1Name')?.value || this.userNames.user1).trim() || 'User 1';

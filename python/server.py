@@ -237,6 +237,8 @@ client_sessions: Dict[websockets.WebSocketServerProtocol, str] = {}
 
 # Transcription state
 partial_text = ""
+# Incremental sequence number for transcript broadcasts (helps clients detect out-of-order messages)
+transcript_seq = 0
 captured_ocr_texts: List[str] = []
 
 # Company brief context chunks (fed into embedding store)
@@ -3783,7 +3785,7 @@ async def handle_audio_streaming(ws, session_id=None):
     # Callback for final results (confirmed transcriptions)
     def on_final_result(result: TranscriptResult):
         nonlocal last_final_text, interim_buffer, results_received
-        global partial_text, last_processed_student_utterance, last_student_time
+        global partial_text, last_processed_student_utterance, last_student_time, transcript_seq
         
         results_received += 1
         text = result.text.strip()
@@ -3806,9 +3808,16 @@ async def handle_audio_streaming(ws, session_id=None):
         
         recording_mode = globals().get('current_recording_mode', 'interviewer')
         
-        logger.info(f"[Streaming] Final ({results_received}): '{text[:80]}' (conf: {result.confidence:.2f})")
+        # Bump transcript seq and timestamp for client-side ordering guards
+        try:
+            transcript_seq += 1
+            seq = transcript_seq
+        except Exception:
+            seq = 0
         
-        # Broadcast final result
+        logger.info(f"[Streaming] Final ({results_received}, seq={seq}): '{text[:80]}' (conf: {result.confidence:.2f})")
+        
+        # Broadcast final result (include seq and timestamp for client ordering)
         asyncio.create_task(broadcast({
             "type": "transcript",
             "text": text,
@@ -3817,7 +3826,9 @@ async def handle_audio_streaming(ws, session_id=None):
             "speaker": current_speaker,
             "recording_mode": recording_mode,
             "confidence": result.confidence,
-            "results_count": results_received
+            "results_count": results_received,
+            "seq": seq,
+            "ts": time.time()
         }, session_id=session_id))
         
         # Auto-coach is DISABLED - user must click "Ask AI" button manually
@@ -4034,7 +4045,13 @@ async def handle_audio(ws):
                     return
                 last_emitted_full = partial_text
                 recording_mode = globals().get('current_recording_mode', 'interviewer')
-                logger.info(f"[Transcript] Broadcasting: speaker={current_speaker}, mode={recording_mode}, text='{new_portion[:80]}'")
+                # Sequence for client-side ordering
+                try:
+                    transcript_seq += 1
+                    seq = transcript_seq
+                except Exception:
+                    seq = 0
+                logger.info(f"[Transcript] Broadcasting: seq={seq}, speaker={current_speaker}, mode={recording_mode}, text='{new_portion[:80]}'")
                 await broadcast({
                     "type": "transcript",
                     "text": new_portion,     # incremental diff portion
@@ -4042,7 +4059,9 @@ async def handle_audio(ws):
                     "speaker": current_speaker,
                     "recording_mode": recording_mode,
                     "bytes": bytes_received,
-                    "emissions": emissions
+                    "emissions": emissions,
+                    "seq": seq,
+                    "ts": time.time()
                 })
                 # Auto-coach is DISABLED - user must click "Ask AI" button manually
                 # No automatic AI triggering on transcription
