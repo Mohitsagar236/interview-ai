@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auth Debug - Interview AI</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #0f0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #000;
+            padding: 20px;
+            border: 1px solid #0f0;
+            border-radius: 8px;
+        }
+        h1 { color: #0ff; }
+        h2 { color: #ff0; margin-top: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-left: 3px solid; }
+        .status.success { background: #002200; border-color: #0f0; }
+        .status.error { background: #220000; border-color: #f00; color: #f00; }
+        .status.warning { background: #222200; border-color: #ff0; color: #ff0; }
+        pre { 
+            background: #111; 
+            padding: 15px; 
+            overflow-x: auto; 
+            border: 1px solid #333;
+            border-radius: 4px;
+        }
+        button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+        button:hover { background: #0ff; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Authentication Debugger</h1>
+        <p>Use this page to debug authentication issues with activation codes</p>
+
+        <button onclick="checkAuth()">🔐 Check Authentication</button>
+        <button onclick="checkSession()">📋 Check Session</button>
+        <button onclick="testActivationAPI()">🚀 Test Activation API</button>
+        <button onclick="clearStorage()">🗑️ Clear Storage</button>
+        <button onclick="location.reload()">🔄 Refresh</button>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://npdysfxewryqcmmztdxl.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wZHlzZnhld3J5cWNtbXp0ZHhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzNzMyMjUsImV4cCI6MjA3Nzk0OTIyNX0.WsEnKex2VNpY-uKB5oVjK9iEK7Ce1o1dfRWLE5z2nIc';
+        
+        let supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const results = document.getElementById('results');
+
+        async function checkAuth() {
+            results.innerHTML = '<h2>🔐 Authentication Check</h2>';
+            
+            try {
+                const { data: { user }, error } = await supabase.auth.getUser();
+                
+                if (error) {
+                    addError('Auth Error', error.message);
+                    return;
+                }
+
+                if (user) {
+                    addSuccess('User Authenticated', `Email: ${user.email}<br>ID: ${user.id}`);
+                    addCode('User Object', user);
+                } else {
+                    addWarning('Not Authenticated', 'No user found. Please <a href="auth.html" style="color:#0ff">login</a>.');
+                }
+            } catch (e) {
+                addError('Exception', e.message);
+            }
+        }
+
+        async function checkSession() {
+            results.innerHTML = '<h2>📋 Session Check</h2>';
+            
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession();
+                
+                if (error) {
+                    addError('Session Error', error.message);
+                    return;
+                }
+
+                if (session) {
+                    addSuccess('Session Found', `Valid until: ${new Date(session.expires_at * 1000).toLocaleString()}`);
+                    addCode('Access Token (first 50 chars)', session.access_token.substring(0, 50) + '...');
+                    addCode('Full Session', session);
+                } else {
+                    addWarning('No Session', 'No active session found. Please <a href="auth.html" style="color:#0ff">login</a>.');
+                }
+
+                // Check localStorage
+                const localUser = localStorage.getItem('interviewai_user');
+                if (localUser) {
+                    addSuccess('LocalStorage User', 'Found user data in localStorage');
+                    addCode('LocalStorage Data', JSON.parse(localUser));
+                } else {
+                    addWarning('LocalStorage', 'No user data in localStorage');
+                }
+            } catch (e) {
+                addError('Exception', e.message);
+            }
+        }
+
+        async function testActivationAPI() {
+            results.innerHTML = '<h2>🚀 Testing Activation API</h2>';
+            
+            try {
+                // Get session
+                const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+                
+                if (sessionError) {
+                    addError('Session Error', sessionError.message);
+                    return;
+                }
+
+                if (!session) {
+                    addWarning('No Session', 'Cannot test API without authentication. Please <a href="auth.html" style="color:#0ff">login</a>.');
+                    return;
+                }
+
+                addSuccess('Session Found', 'Testing API with access token...');
+
+                // Test API
+                const response = await fetch('/api/generate-activation-code', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session.access_token}`
+                    },
+                    body: JSON.stringify({ regenerate: false })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    addSuccess('API Test Successful', `Activation Code: ${result.code}`);
+                    addCode('API Response', result);
+                } else {
+                    addError('API Error', `Status: ${response.status}<br>Error: ${result.error || 'Unknown'}`);
+                    addCode('Full Response', result);
+                }
+
+            } catch (e) {
+                addError('Exception', e.message);
+            }
+        }
+
+        function clearStorage() {
+            if (confirm('This will clear all local storage and session data. Continue?')) {
+                localStorage.clear();
+                sessionStorage.clear();
+                supabase.auth.signOut();
+                addSuccess('Storage Cleared', 'All local data cleared. <a href="auth.html" style="color:#0ff">Login again</a>');
+            }
+        }
+
+        function addSuccess(title, message) {
+            results.innerHTML += `
+                <div class="status success">
+                    <strong>✅ ${title}</strong><br>
+                    ${message}
+                </div>
+            `;
+        }
+
+        function addError(title, message) {
+            results.innerHTML += `
+                <div class="status error">
+                    <strong>❌ ${title}</strong><br>
+                    ${message}
+                </div>
+            `;
+        }
+
+        function addWarning(title, message) {
+            results.innerHTML += `
+                <div class="status warning">
+                    <strong>⚠️ ${title}</strong><br>
+                    ${message}
+                </div>
+            `;
+        }
+
+        function addCode(title, data) {
+            results.innerHTML += `
+                <div style="margin: 10px 0;">
+                    <strong>${title}:</strong>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                </div>
+            `;
+        }
+
+        // Auto-run on load
+        window.addEventListener('load', () => {
+            checkSession();
+        });
+    </script>
+</body>
+</html>

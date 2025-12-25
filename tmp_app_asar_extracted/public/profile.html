@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile - Interview AI</title>
+    <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="profile.css">
+    <link rel="stylesheet" href="responsive.css">
+    <link rel="stylesheet" href="responsive-enhanced.css">
+    
+    <!-- Dark Mode Init Script - Must run before body renders -->
+    <script>
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        if (savedTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+    
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <!-- Header -->
+    <header class="profile-header">
+        <nav>
+            <div class="logo">
+                <a href="index.html">
+                    <img src="images/app-icon.svg" alt="Interview AI" class="logo-img">
+                    <span class="logo-text">Interview AI</span>
+                </a>
+            </div>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link">Home</a>
+                <button class="theme-toggle" aria-label="Toggle theme">
+                    <i class="fas fa-moon"></i>
+                    <i class="fas fa-sun"></i>
+                </button>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Profile Container -->
+    <div class="profile-container">
+        <div class="profile-sidebar">
+            <div class="profile-avatar-large">
+                <i class="fas fa-user-circle"></i>
+            </div>
+            <h2 class="profile-name" id="profile-name-main">Loading...</h2>
+            <p class="profile-email" id="profile-email-main">Loading...</p>
+            
+            <div class="profile-nav">
+                <a href="#account" class="profile-nav-item active" data-section="account">
+                    <i class="fas fa-user"></i>
+                    <span>Account Details</span>
+                </a>
+                <a href="#subscription" class="profile-nav-item" data-section="subscription">
+                    <i class="fas fa-crown"></i>
+                    <span>Subscription</span>
+                </a>
+                <a href="#usage" class="profile-nav-item" data-section="usage">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Usage Statistics</span>
+                </a>
+            </div>
+
+            <button class="btn-logout" id="profile-logout-btn">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+            </button>
+        </div>
+
+        <div class="profile-content">
+            <!-- Account Details Section -->
+            <div class="profile-section active" id="account-section">
+                <h3 class="section-title">Account Details</h3>
+                
+                <div class="profile-card">
+                    <div class="card-header">
+                        <h4>Personal Information</h4>
+                    </div>
+                    <div class="card-content">
+                        <div class="info-row">
+                            <div class="info-label">
+                                <i class="fas fa-user"></i>
+                                <span>Full Name</span>
+                            </div>
+                            <div class="info-value" id="account-name">Loading...</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">
+                                <i class="fas fa-envelope"></i>
+                                <span>Email Address</span>
+                            </div>
+                            <div class="info-value" id="account-email">Loading...</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">
+                                <i class="fas fa-phone"></i>
+                                <span>Phone Number</span>
+                            </div>
+                            <div class="info-value" id="account-phone">Loading...</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">
+                                <i class="fas fa-calendar"></i>
+                                <span>Member Since</span>
+                            </div>
+                            <div class="info-value" id="account-created">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Subscription Section -->
+            <div class="profile-section" id="subscription-section">
+                <h3 class="section-title">Subscription Details</h3>
+                
+                <div class="profile-card subscription-card">
+                    <div class="card-header">
+                        <h4>Current Plan</h4>
+                        <span class="plan-badge" id="plan-badge">Free</span>
+                    </div>
+                    <div class="card-content">
+                        <div class="subscription-info">
+                            <div class="subscription-icon">
+                                <i class="fas fa-crown"></i>
+                            </div>
+                            <div class="subscription-details">
+                                <h5 id="plan-name">Free Plan</h5>
+                                <p id="plan-description">Limited features with basic interview support</p>
+                            </div>
+                        </div>
+
+                        <div class="subscription-stats">
+                            <div class="stat-item">
+                                <div class="stat-label">Status</div>
+                                <div class="stat-value" id="subscription-status">
+                                    <span class="status-badge active">Active</span>
+                                </div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Started</div>
+                                <div class="stat-value" id="subscription-start">N/A</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Expires</div>
+                                <div class="stat-value" id="subscription-expiry">N/A</div>
+                            </div>
+                        </div>
+
+                        <div class="subscription-actions">
+                            <a href="index.html#pricing" class="btn btn-primary" id="get-credits-btn">
+                                <i class="fas fa-coins"></i>
+                                <span>Get Credits</span>
+                            </a>
+                        </div>
+                        
+                        <!-- Credits Display -->
+                        <div class="credits-display" id="credits-display" style="margin-top: 20px; padding: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 12px; color: white;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">
+                                        <i class="fas fa-coins"></i> Interview Credits
+                                    </div>
+                                    <div style="font-size: 32px; font-weight: 700; line-height: 1;">
+                                        <span id="credits-remaining">0</span>
+                                        <span style="font-size: 18px; opacity: 0.8;"> / <span id="credits-total">0</span></span>
+                                    </div>
+                                    <div style="font-size: 12px; margin-top: 8px; opacity: 0.8;">
+                                        <span id="credits-used">0</span> credits used · <span id="credits-hours">0</span> hours remaining
+                                    </div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-size: 48px; opacity: 0.3;">
+                                        <i class="fas fa-hourglass-half"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 12px; opacity: 0.9;">
+                                💡 1 Credit = 1 Hour of interview time
+                            </div>
+                        </div>
+
+                        <!-- Desktop App Activation Code Section -->
+                        <div class="desktop-activation-card" style="margin-top: 20px; padding: 20px; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); border-radius: 12px; color: white;">
+                            <div style="display: flex; align-items: center; margin-bottom: 16px;">
+                                <div style="font-size: 24px; margin-right: 12px;">
+                                    <i class="fas fa-desktop"></i>
+                                </div>
+                                <div>
+                                    <h4 style="margin: 0; font-size: 18px; font-weight: 600;">Desktop App Activation</h4>
+                                    <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Use this code to activate the desktop app</p>
+                                </div>
+                            </div>
+
+                            <div id="activation-code-section">
+                                <!-- Code will be displayed here -->
+                                <div class="activation-code-loading" style="text-align: center; padding: 20px;">
+                                    <i class="fas fa-spinner fa-spin" style="font-size: 24px; opacity: 0.7;"></i>
+                                    <p style="margin-top: 12px; font-size: 14px; opacity: 0.8;">Loading activation code...</p>
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 12px; opacity: 0.9;">
+                                <div style="display: flex; align-items: start;">
+                                    <i class="fas fa-info-circle" style="margin-right: 8px; margin-top: 2px;"></i>
+                                    <div>
+                                        <strong>How to use:</strong><br>
+                                        1. Download the desktop app<br>
+                                        2. Enter this code when prompted<br>
+                                        3. Your credits will be synced automatically
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Usage Statistics Section -->
+            <div class="profile-section" id="usage-section">
+                <h3 class="section-title">Usage Statistics</h3>
+                
+                <div class="usage-grid">
+                    <div class="usage-card">
+                        <div class="usage-icon">
+                            <i class="fas fa-microphone"></i>
+                        </div>
+                        <div class="usage-details">
+                            <h4>Interview Sessions</h4>
+                            <div class="usage-value">
+                                <span class="current" id="sessions-used">0</span>
+                                <span class="separator">/</span>
+                                <span class="limit" id="sessions-limit">∞</span>
+                            </div>
+                            <div class="usage-bar">
+                                <div class="usage-progress" id="sessions-progress" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="usage-card">
+                        <div class="usage-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="usage-details">
+                            <h4>Total Minutes</h4>
+                            <div class="usage-value">
+                                <span class="current" id="minutes-used">0</span>
+                                <span class="separator">/</span>
+                                <span class="limit" id="minutes-limit">∞</span>
+                            </div>
+                            <div class="usage-bar">
+                                <div class="usage-progress" id="minutes-progress" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="usage-card">
+                        <div class="usage-icon">
+                            <i class="fas fa-brain"></i>
+                        </div>
+                        <div class="usage-details">
+                            <h4>AI Responses</h4>
+                            <div class="usage-value">
+                                <span class="current" id="responses-used">0</span>
+                                <span class="separator">/</span>
+                                <span class="limit" id="responses-limit">∞</span>
+                            </div>
+                            <div class="usage-bar">
+                                <div class="usage-progress" id="responses-progress" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="usage-card">
+                        <div class="usage-icon">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <div class="usage-details">
+                            <h4>Resume Scans</h4>
+                            <div class="usage-value">
+                                <span class="current" id="scans-used">0</span>
+                                <span class="separator">/</span>
+                                <span class="limit" id="scans-limit">∞</span>
+                            </div>
+                            <div class="usage-bar">
+                                <div class="usage-progress" id="scans-progress" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="profile-card">
+                    <div class="card-header">
+                        <h4>Recent Activity</h4>
+                    </div>
+                    <div class="card-content">
+                        <div class="activity-list" id="activity-list">
+                            <div class="activity-item">
+                                <i class="fas fa-info-circle"></i>
+                                <span>No recent activity to display</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="message-toast" class="message-toast hidden"></div>
+
+    <script src="profile.js"></script>
+    
+    <!-- Vercel Analytics -->
+    <script>
+        window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+    </script>
+    <script defer src="/_vercel/insights/script.js"></script>
+    
+    <!-- Vercel Speed Insights -->
+    <script>
+        window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
+    </script>
+    <script defer src="/_vercel/speed-insights/script.js"></script>
+</body>
+</html>

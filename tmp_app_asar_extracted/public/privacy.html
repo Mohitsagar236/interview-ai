@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - Interview AI</title>
+    <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Dark Mode Init Script - Must run before body renders -->
+    <script>
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        if (savedTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+    <style>
+        :root {
+            --bg-primary: #f9fafb;
+            --bg-secondary: #ffffff;
+            --text-primary: #333;
+            --text-secondary: #4b5563;
+            --border-color: #e5e7eb;
+            --card-shadow: rgba(0,0,0,0.1);
+            --green-primary: #10b981;
+            --green-dark: #059669;
+            --highlight-bg: #f0fdf4;
+            --highlight-border: #10b981;
+            --highlight-text: #059669;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #1f2937;
+            --bg-secondary: #111827;
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --border-color: #374151;
+            --card-shadow: rgba(0,0,0,0.3);
+            --highlight-bg: #1f2937;
+            --highlight-border: #10b981;
+            --highlight-text: #10b981;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.8;
+            color: var(--text-primary);
+            background-color: var(--bg-primary);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--green-primary), var(--green-dark));
+            color: white;
+            padding: 2rem 1rem;
+            text-align: center;
+            position: relative;
+        }
+
+        .theme-toggle {
+            position: absolute;
+            top: 2rem;
+            right: 2rem;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: all 0.3s;
+        }
+
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.95;
+        }
+
+        .back-link {
+            position: absolute;
+            top: 2rem;
+            left: 2rem;
+            color: white;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 500;
+            transition: opacity 0.3s;
+        }
+
+        .back-link:hover {
+            opacity: 0.8;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 3rem 1rem;
+        }
+
+        .content {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 3rem;
+            box-shadow: 0 2px 8px var(--card-shadow);
+            margin-bottom: 2rem;
+            transition: background-color 0.3s;
+        }
+
+        .last-updated {
+            background: #d1fae5;
+            color: #065f46;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        [data-theme="dark"] .last-updated {
+            background: #064e3b;
+            color: #a7f3d0;
+        }
+
+        h2 {
+            color: var(--green-primary);
+            font-size: 1.8rem;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--green-primary);
+        }
+
+        h3 {
+            color: var(--highlight-text);
+            font-size: 1.3rem;
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        ul, ol {
+            margin-left: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        .highlight-box {
+            background: var(--highlight-bg);
+            border-left: 4px solid var(--highlight-border);
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 8px;
+            transition: background-color 0.3s;
+        }
+
+        .highlight-box strong {
+            color: var(--highlight-text);
+        }
+
+        .highlight-box ul {
+            margin-top: 0.5rem;
+        }
+
+        .contact-section {
+            background: linear-gradient(135deg, var(--green-primary), var(--green-dark));
+            color: white;
+            padding: 2rem;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .contact-section h3 {
+            color: white;
+            margin-top: 0;
+        }
+
+        .contact-section a {
+            color: white;
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8rem;
+            }
+
+            .back-link {
+                position: static;
+                margin-bottom: 1rem;
+            }
+
+            .content {
+                padding: 1.5rem;
+            }
+
+            h2 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="back-link">
+            <i class="fas fa-arrow-left"></i> Back to Home
+        </a>
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+            <i class="fas fa-moon"></i>
+        </button>
+        <h1><i class="fas fa-shield-alt"></i> Privacy Policy</h1>
+        <p>Your privacy is important to us</p>
+    </div>
+
+    <div class="container">
+        <div class="content">
+            <div class="last-updated">
+                <i class="fas fa-calendar-alt"></i> Last Updated: November 6, 2025
+            </div>
+
+            <p>
+                At Interview AI, we take your privacy seriously. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our application and services. Please read this privacy policy carefully.
+            </p>
+
+            <h2>1. Information We Collect</h2>
+            
+            <h3>Personal Information</h3>
+            <p>We collect information that you provide directly to us, including:</p>
+            <ul>
+                <li>Name and email address during account registration</li>
+                <li>Payment information for subscription processing</li>
+                <li>Profile information and preferences</li>
+                <li>Communication data when you contact our support team</li>
+            </ul>
+
+            <h3>Audio Data</h3>
+            <div class="highlight-box">
+                <strong>Important:</strong> Interview AI processes audio in real-time for transcription and analysis. We do not store your interview audio recordings on our servers. Audio is processed temporarily and immediately discarded after analysis.
+            </div>
+
+            <h3>Usage Information</h3>
+            <p>We automatically collect certain information about your device and how you interact with our service:</p>
+            <ul>
+                <li>Device information (operating system, browser type)</li>
+                <li>Usage statistics (sessions, features used, duration)</li>
+                <li>Performance and diagnostic data</li>
+                <li>IP address and general location data</li>
+            </ul>
+
+            <h2>2. How We Use Your Information</h2>
+            
+            <p>We use the information we collect to:</p>
+            <ul>
+                <li><strong>Provide Services:</strong> Deliver interview assistance, transcription, and AI-powered responses</li>
+                <li><strong>Process Payments:</strong> Handle subscription billing and payment transactions</li>
+                <li><strong>Improve Features:</strong> Analyze usage patterns to enhance our application</li>
+                <li><strong>Customer Support:</strong> Respond to your questions and provide technical assistance</li>
+                <li><strong>Security:</strong> Detect and prevent fraud, abuse, and security incidents</li>
+                <li><strong>Communications:</strong> Send service updates, security alerts, and support messages</li>
+                <li><strong>Legal Compliance:</strong> Comply with applicable laws and regulations</li>
+            </ul>
+
+            <h2>3. Data Sharing and Disclosure</h2>
+            
+            <p>We do not sell your personal information. We may share your information only in the following circumstances:</p>
+
+            <h3>Service Providers</h3>
+            <p>We work with third-party service providers who help us operate our business:</p>
+            <ul>
+                <li><strong>OpenAI:</strong> For AI-powered response generation</li>
+                <li><strong>Deepgram:</strong> For real-time audio transcription</li>
+                <li><strong>Razorpay:</strong> For secure payment processing</li>
+                <li><strong>Supabase:</strong> For user authentication and data storage</li>
+                <li><strong>Cloud Hosting:</strong> For application infrastructure</li>
+            </ul>
+            <p>These providers are bound by confidentiality agreements and only process data as necessary to perform their services.</p>
+
+            <h3>Legal Requirements</h3>
+            <p>We may disclose your information if required by law or in response to valid legal requests.</p>
+
+            <h3>Business Transfers</h3>
+            <p>If Interview AI is involved in a merger, acquisition, or sale of assets, your information may be transferred as part of that transaction.</p>
+
+            <h2>4. Data Security</h2>
+            
+            <div class="highlight-box">
+                <p>We implement industry-standard security measures to protect your information:</p>
+                <ul style="margin-bottom: 0;">
+                    <li>End-to-end encryption for data transmission</li>
+                    <li>Secure storage with encryption at rest</li>
+                    <li>Regular security audits and updates</li>
+                    <li>Access controls and authentication requirements</li>
+                    <li>PCI-DSS compliance for payment processing</li>
+                </ul>
+            </div>
+
+            <h2>5. Data Retention</h2>
+            
+            <p>We retain your information for as long as necessary to provide our services and comply with legal obligations:</p>
+            <ul>
+                <li><strong>Account Data:</strong> Retained while your account is active, plus 90 days after deletion</li>
+                <li><strong>Audio Data:</strong> Not stored; processed in real-time only</li>
+                <li><strong>Usage Statistics:</strong> Aggregated and retained for analytical purposes</li>
+                <li><strong>Payment Records:</strong> Retained as required by tax and accounting regulations</li>
+            </ul>
+
+            <h2>6. Your Rights and Choices</h2>
+            
+            <p>You have the following rights regarding your personal information:</p>
+
+            <h3>Access and Portability</h3>
+            <p>You can access, download, and export your personal data from your account settings.</p>
+
+            <h3>Correction</h3>
+            <p>You can update your account information at any time through the profile settings.</p>
+
+            <h3>Deletion</h3>
+            <p>You can request deletion of your account and associated data by contacting us at <a href="mailto:privacy@interview-ai.app">privacy@interview-ai.app</a></p>
+
+            <h3>Marketing Communications</h3>
+            <p>You can opt out of promotional emails by clicking the unsubscribe link in any marketing email.</p>
+
+            <h3>Cookies</h3>
+            <p>You can control cookies through your browser settings. Note that disabling cookies may affect application functionality.</p>
+
+            <h2>7. Children's Privacy</h2>
+            
+            <p>Interview AI is not intended for use by children under the age of 13. We do not knowingly collect personal information from children. If you believe we have collected information from a child, please contact us immediately.</p>
+
+            <h2>8. International Data Transfers</h2>
+            
+            <p>Your information may be transferred to and processed in countries other than your own. We ensure appropriate safeguards are in place to protect your data in accordance with this privacy policy.</p>
+
+            <h2>9. Third-Party Links</h2>
+            
+            <p>Our application may contain links to third-party websites. We are not responsible for the privacy practices of these external sites. We encourage you to review their privacy policies.</p>
+
+            <h2>10. Changes to This Privacy Policy</h2>
+            
+            <p>We may update this Privacy Policy from time to time. We will notify you of any material changes by posting the new policy on this page and updating the "Last Updated" date. Your continued use of Interview AI after such changes constitutes acceptance of the updated policy.</p>
+
+            <h2>11. GDPR Compliance</h2>
+            
+            <p>For users in the European Economic Area (EEA), we comply with the General Data Protection Regulation (GDPR). You have additional rights including:</p>
+            <ul>
+                <li>Right to be informed about data processing</li>
+                <li>Right to restrict processing</li>
+                <li>Right to object to processing</li>
+                <li>Right not to be subject to automated decision-making</li>
+            </ul>
+
+            <h2>12. California Privacy Rights</h2>
+            
+            <p>California residents have specific rights under the California Consumer Privacy Act (CCPA), including the right to know what personal information we collect and how it's used, and the right to request deletion of personal information.</p>
+        </div>
+
+        <div class="contact-section">
+            <h3><i class="fas fa-envelope"></i> Contact Us</h3>
+            <p>
+                If you have any questions about this Privacy Policy or our data practices, please contact us:
+            </p>
+            <p>
+                Email: <a href="mailto:privacy@interview-ai.app">privacy@interview-ai.app</a><br>
+                Address: Interview AI Technologies, Innovation Hub, Bangalore, Karnataka 560001, India
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Dark mode functionality
+        const themeToggle = document.getElementById('themeToggle');
+        const html = document.documentElement;
+        const themeIcon = themeToggle.querySelector('i');
+        
+        // Check for saved theme preference or default to dark mode
+        const currentTheme = localStorage.getItem('theme') || 'dark';
+        html.setAttribute('data-theme', currentTheme);
+        updateThemeIcon(currentTheme);
+        
+        themeToggle.addEventListener('click', () => {
+            const theme = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            updateThemeIcon(theme);
+        });
+        
+        function updateThemeIcon(theme) {
+            if (theme === 'dark') {
+                themeIcon.classList.remove('fa-moon');
+                themeIcon.classList.add('fa-sun');
+            } else {
+                themeIcon.classList.remove('fa-sun');
+                themeIcon.classList.add('fa-moon');
+            }
+        }
+    </script>
+</body>
+</html>

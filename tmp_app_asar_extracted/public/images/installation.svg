@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="800" height="500" viewBox="0 0 800 500" xmlns="http://www.w3.org/2000/svg">
+  <!-- Installation Window -->
+  <rect x="0" y="0" width="800" height="500" fill="#ffffff"/>
+  
+  <!-- Title Bar -->
+  <rect x="0" y="0" width="800" height="40" fill="#2563eb"/>
+  <text x="20" y="25" fill="white" font-family="Arial" font-size="14">Interview AI Assistant Setup</text>
+  
+  <!-- Progress Bar -->
+  <rect x="100" y="200" width="600" height="20" fill="#f3f4f6" rx="10"/>
+  <rect x="100" y="200" width="300" height="20" fill="#2563eb" rx="10"/>
+  
+  <!-- Installation Text -->
+  <text x="100" y="170" fill="#1f2937" font-family="Arial" font-size="16">Installing Interview AI Assistant...</text>
+  <text x="100" y="250" fill="#6b7280" font-family="Arial" font-size="14">Progress: 50%</text>
+  
+  <!-- Status Messages -->
+  <text x="100" y="300" fill="#4b5563" font-family="Arial" font-size="12">Installing required components...</text>
+  <text x="100" y="320" fill="#4b5563" font-family="Arial" font-size="12">Configuring AI models...</text>
+  
+  <!-- Control Buttons -->
+  <rect x="500" y="400" width="100" height="30" fill="#ef4444" rx="4"/>
+  <text x="525" y="420" fill="white" font-family="Arial" font-size="12">Cancel</text>
+  
+  <rect x="620" y="400" width="100" height="30" fill="#2563eb" rx="4"/>
+  <text x="645" y="420" fill="white" font-family="Arial" font-size="12">Next</text>
+</svg>

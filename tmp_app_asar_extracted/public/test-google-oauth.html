@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google OAuth Test - Interview AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .test-container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .test-section h2 {
+            color: #667eea;
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+        
+        .btn-google {
+            background: white;
+            color: #444;
+            border: 1px solid #ddd;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-google:hover {
+            background: #f8f9fa;
+            transform: translateY(-2px);
+        }
+        
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+        
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .status {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        
+        .status.success {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #10b981;
+        }
+        
+        .status.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #ef4444;
+        }
+        
+        .status.info {
+            background: #dbeafe;
+            color: #1e40af;
+            border: 1px solid #3b82f6;
+        }
+        
+        .code-block {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            margin-top: 10px;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .checklist {
+            list-style: none;
+            margin-top: 15px;
+        }
+        
+        .checklist li {
+            padding: 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .checklist li::before {
+            content: '⚠️';
+        }
+        
+        .checklist li.done::before {
+            content: '✅';
+        }
+        
+        .link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🔐 Google OAuth Test</h1>
+        <p class="subtitle">Test Google login and signup integration for Interview AI</p>
+        
+        <!-- Configuration Status -->
+        <div class="test-section">
+            <h2>📋 Configuration Checklist</h2>
+            <ul class="checklist" id="checklist">
+                <li class="pending">Google Cloud Console OAuth credentials created</li>
+                <li class="pending">Supabase Google provider configured</li>
+                <li class="pending">Redirect URLs added to Google Console</li>
+                <li class="pending">Redirect URLs added to Supabase</li>
+            </ul>
+            <div style="margin-top: 15px;">
+                <a href="GOOGLE_OAUTH_SETUP.md" class="link">📖 View Setup Guide</a>
+            </div>
+        </div>
+        
+        <!-- Test Auth Status -->
+        <div class="test-section">
+            <h2>🔍 Current Authentication Status</h2>
+            <div id="auth-status" class="status info">
+                <span class="spinner"></span>Checking authentication...
+            </div>
+            <div id="user-info" class="hidden"></div>
+        </div>
+        
+        <!-- Test Google Login -->
+        <div class="test-section">
+            <h2>🚀 Test Google OAuth</h2>
+            <p style="margin-bottom: 15px; color: #666;">Click the button below to test Google login:</p>
+            <button class="btn btn-google" id="google-login">
+                <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                    <path fill="none" d="M0 0h48v48H0z"/>
+                </svg>
+                Sign in with Google
+            </button>
+            <button class="btn btn-primary" id="go-to-auth">
+                Go to Auth Page
+            </button>
+        </div>
+        
+        <!-- Supabase Connection Test -->
+        <div class="test-section">
+            <h2>🔌 Supabase Connection</h2>
+            <button class="btn btn-primary" id="test-connection">Test Connection</button>
+            <div id="connection-result" class="hidden"></div>
+        </div>
+        
+        <!-- Profile Test -->
+        <div class="test-section">
+            <h2>👤 Profile Management</h2>
+            <button class="btn btn-success" id="check-profile" disabled>Check Profile</button>
+            <button class="btn btn-danger" id="logout" disabled>Logout</button>
+            <div id="profile-result" class="hidden"></div>
+        </div>
+    </div>
+
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script>
+        // Supabase Configuration
+        const SUPABASE_URL = 'https://npdysfxewryqcmmztdxl.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wZHlzZnhld3J5cWNtbXp0ZHhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzNzMyMjUsImV4cCI6MjA3Nzk0OTIyNX0.WsEnKex2VNpY-uKB5oVjK9iEK7Ce1o1dfRWLE5z2nIc';
+        
+        let supabase = window.__interviewAINativeSupabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        // Elements
+        const authStatus = document.getElementById('auth-status');
+        const userInfo = document.getElementById('user-info');
+        const googleLoginBtn = document.getElementById('google-login');
+        const goToAuthBtn = document.getElementById('go-to-auth');
+        const testConnectionBtn = document.getElementById('test-connection');
+        const connectionResult = document.getElementById('connection-result');
+        const checkProfileBtn = document.getElementById('check-profile');
+        const logoutBtn = document.getElementById('logout');
+        const profileResult = document.getElementById('profile-result');
+        
+        // Check auth on load
+        checkAuth();
+        
+        async function checkAuth() {
+            try {
+                const { data: { session, user }, error } = await supabase.auth.getSession();
+                
+                if (error) throw error;
+                
+                if (user) {
+                    authStatus.className = 'status success';
+                    authStatus.innerHTML = '✅ Authenticated';
+                    
+                    userInfo.className = '';
+                    userInfo.innerHTML = `
+                        <div class="code-block">
+                            <strong>User ID:</strong> ${user.id}<br>
+                            <strong>Email:</strong> ${user.email}<br>
+                            <strong>Provider:</strong> ${user.app_metadata?.provider || 'email'}<br>
+                            <strong>Name:</strong> ${user.user_metadata?.full_name || user.user_metadata?.name || 'N/A'}
+                        </div>
+                    `;
+                    
+                    checkProfileBtn.disabled = false;
+                    logoutBtn.disabled = false;
+                } else {
+                    authStatus.className = 'status info';
+                    authStatus.innerHTML = 'ℹ️ Not authenticated - click "Sign in with Google" to test';
+                }
+            } catch (error) {
+                authStatus.className = 'status error';
+                authStatus.innerHTML = '❌ Error: ' + error.message;
+            }
+        }
+        
+        // Google Login
+        googleLoginBtn.addEventListener('click', async () => {
+            try {
+                const { error } = await supabase.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: {
+                        redirectTo: window.location.href
+                    }
+                });
+                
+                if (error) throw error;
+            } catch (error) {
+                authStatus.className = 'status error';
+                authStatus.innerHTML = '❌ OAuth Error: ' + error.message;
+            }
+        });
+        
+        // Go to auth page
+        goToAuthBtn.addEventListener('click', () => {
+            window.location.href = 'auth.html';
+        });
+        
+        // Test connection
+        testConnectionBtn.addEventListener('click', async () => {
+            connectionResult.className = 'status info';
+            connectionResult.innerHTML = '<span class="spinner"></span>Testing connection...';
+            
+            try {
+                // Try to ping Supabase
+                const { data, error } = await supabase.from('profiles').select('count', { count: 'exact', head: true });
+                
+                if (error) throw error;
+                
+                connectionResult.className = 'status success';
+                connectionResult.innerHTML = '✅ Successfully connected to Supabase!';
+            } catch (error) {
+                connectionResult.className = 'status error';
+                connectionResult.innerHTML = '❌ Connection Error: ' + error.message;
+            }
+        });
+        
+        // Check profile
+        checkProfileBtn.addEventListener('click', async () => {
+            profileResult.className = 'status info';
+            profileResult.innerHTML = '<span class="spinner"></span>Checking profile...';
+            
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                
+                if (!user) {
+                    throw new Error('Not authenticated');
+                }
+                
+                const { data: profile, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', user.id)
+                    .single();
+                
+                if (error) throw error;
+                
+                profileResult.className = 'status success';
+                profileResult.innerHTML = `
+                    <div>✅ Profile found!</div>
+                    <div class="code-block" style="margin-top: 10px;">
+                        ${JSON.stringify(profile, null, 2)}
+                    </div>
+                `;
+            } catch (error) {
+                profileResult.className = 'status error';
+                profileResult.innerHTML = '❌ Error: ' + error.message;
+            }
+        });
+        
+        // Logout
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                await supabase.auth.signOut();
+                sessionStorage.clear();
+                localStorage.clear();
+                location.reload();
+            } catch (error) {
+                alert('Logout error: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html>

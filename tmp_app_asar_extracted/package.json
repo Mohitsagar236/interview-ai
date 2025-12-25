@@ -1,0 +1,41 @@
+{
+  "name": "interview-ai-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Privacy-first Interview AI Assistant with real-time local Whisper, multi-LLM streaming, OCR, and stealth overlay",
+  "author": {
+    "name": "Interview AI",
+    "email": "support@interview-ai.app",
+    "url": "https://github.com/Mohitsagar236/interview-ai"
+  },
+  "homepage": "https://github.com/Mohitsagar236/interview-ai",
+  "license": "MIT",
+  "copyright": "Copyright © 2025 Interview AI",
+  "main": "electron/main.js",
+  "vercel": {
+    "builds": [
+      {
+        "src": "api/*.py",
+        "use": "@vercel/python"
+      }
+    ]
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.79.0",
+    "@vercel/blob": "^2.0.0",
+    "dotenv": "^16.4.5",
+    "electron-store": "^8.1.0",
+    "eventsource-parser": "^1.1.2",
+    "node-fetch": "^3.3.2",
+    "razorpay": "^2.9.6",
+    "tesseract.js": "^5.1.0",
+    "ws": "^8.18.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mohitsagar236/interview-ai.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Mohitsagar236/interview-ai/issues"
+  }
+}
