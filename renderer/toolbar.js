@@ -2138,7 +2138,9 @@
       // Transcript updates
       if (msg.type === "transcript") {
         console.log("[Transcript] Received:", msg);
-        const isFinal = !!msg.is_final;
+        // Some providers send `is_final`, others send `interim: false` for finals.
+        // Treat a message as final if either flag indicates it.
+        const isFinal = Boolean(msg.is_final) || (msg.interim === false);
         const text = msg.text || "";
         if (!text.trim()) return;
 
