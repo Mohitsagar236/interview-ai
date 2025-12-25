@@ -574,29 +574,55 @@
   // Maintain a single live transcript (all speakers) until AI button pressed
   let liveTranscriptMsgId = null;
   let liveTranscriptAccumulated = "";
-  function appendToLiveTranscript(content) {
+  // Defensive seq/length tracking for toolbar live transcript
+  window._lastTranscriptSeq = window._lastTranscriptSeq || 0;
+  window._lastRenderedLength = window._lastRenderedLength || 0;
+  function appendToLiveTranscript(content, opts = {}) {
     if (!content) return;
-    console.log("[appendToLiveTranscript] Adding:", content.substring(0, 50));
-    if (!liveTranscriptMsgId) {
-      console.log("[appendToLiveTranscript] Creating new transcript message");
-      const msg = {
-        type: "interviewer",
-        content: "",
-        timestamp: new Date(),
-        id: Date.now() + Math.random(),
-      };
-      state.chatHistory.push(msg);
-      liveTranscriptMsgId = msg.id;
-      renderChatMessage(msg);
-      liveTranscriptAccumulated = "";
+    const seq = Number(opts.seq || 0) || 0;
+    const full = opts.full || '';
+    console.log("[appendToLiveTranscript] Adding:", content.substring(0, 50), { seq, fullPresent: !!full });
+
+    // If server sent a full cumulative, prefer it (with guards)
+    if (full) {
+      if (seq && seq < window._lastTranscriptSeq) {
+        console.warn('[appendToLiveTranscript] Ignoring out-of-order full', { seq, lastSeq: window._lastTranscriptSeq });
+        return;
+      }
+      if (window._lastRenderedLength && full.length < Math.max(0, window._lastRenderedLength - 50)) {
+        console.warn('[appendToLiveTranscript] Rejecting shrinking full text from server', { lastLen: window._lastRenderedLength, newLen: full.length, seq });
+        return;
+      }
+      // Accept full as authoritative
+      liveTranscriptAccumulated = String(full || '').trim();
+      window._lastRenderedLength = liveTranscriptAccumulated.length;
+      if (seq) window._lastTranscriptSeq = seq;
+    } else {
+      if (!liveTranscriptMsgId) {
+        console.log("[appendToLiveTranscript] Creating new transcript message");
+        const msg = {
+          type: "interviewer",
+          content: "",
+          timestamp: new Date(),
+          id: Date.now() + Math.random(),
+        };
+        state.chatHistory.push(msg);
+        liveTranscriptMsgId = msg.id;
+        renderChatMessage(msg);
+        liveTranscriptAccumulated = "";
+      }
+      // Single paragraph: normalize whitespace and append with a space
+      const cleaned = content.replace(/\s+/g, " ").trim();
+      if (cleaned) {
+        if (liveTranscriptAccumulated && !liveTranscriptAccumulated.endsWith(" "))
+          liveTranscriptAccumulated += " ";
+        liveTranscriptAccumulated += cleaned;
+        // update length/seq heuristics
+        window._lastRenderedLength = liveTranscriptAccumulated.length;
+        if (seq && seq > window._lastTranscriptSeq) window._lastTranscriptSeq = seq;
+      }
     }
-    // Single paragraph: normalize whitespace and append with a space
-    const cleaned = content.replace(/\s+/g, " ").trim();
-    if (cleaned) {
-      if (liveTranscriptAccumulated && !liveTranscriptAccumulated.endsWith(" "))
-        liveTranscriptAccumulated += " ";
-      liveTranscriptAccumulated += cleaned;
-    }
+
     const target = state.chatHistory.find((m) => m.id === liveTranscriptMsgId);
     if (target) target.content = liveTranscriptAccumulated;
     if (chatMessages) {
@@ -623,9 +649,28 @@
 
   // Update the live transcript with an interim (partial) string without
   // permanently appending it. We render: accumulated finals + current interim.
-  function updateLiveTranscriptInterim(content) {
+  function updateLiveTranscriptInterim(content, opts = {}) {
     const cleaned = (content || "").replace(/\s+/g, " ").trim();
-    if (!cleaned) return;
+    const seq = Number(opts.seq || 0) || 0;
+    const full = opts.full || '';
+    if (!cleaned && !full) return;
+
+    // If server provided a full transcript with interim, be cautious and prefer full if consistent
+    if (full) {
+      if (seq && seq < window._lastTranscriptSeq) {
+        console.warn('[Transcript] Ignoring out-of-order full (interim)', { seq, lastSeq: window._lastTranscriptSeq });
+        return;
+      }
+      if (window._lastRenderedLength && full.length < Math.max(0, window._lastRenderedLength - 50)) {
+        console.warn('[Transcript] Rejecting shrinking full (interim)', { lastLen: window._lastRenderedLength, newLen: full.length, seq });
+        return;
+      }
+      // Use full as the interim base (will still show as interim until final confirmed)
+      liveTranscriptAccumulated = String(full || '').trim();
+      if (seq) window._lastTranscriptSeq = seq;
+      window._lastRenderedLength = liveTranscriptAccumulated.length;
+    }
+
     if (!liveTranscriptMsgId) {
       console.log("[Transcript] Creating new live transcript message");
       const msg = {
@@ -637,12 +682,10 @@
       state.chatHistory.push(msg);
       liveTranscriptMsgId = msg.id;
       renderChatMessage(msg);
-      liveTranscriptAccumulated = "";
+      liveTranscriptAccumulated = liveTranscriptAccumulated || "";
     }
     const combined =
-      (liveTranscriptAccumulated
-        ? liveTranscriptAccumulated.trim() + " "
-        : "") + cleaned;
+      (liveTranscriptAccumulated && liveTranscriptAccumulated.trim() ? liveTranscriptAccumulated.trim() + " " : "") + cleaned;
     console.log(
       "[Transcript] Updating live transcript, new length:",
       combined.length,
@@ -2138,24 +2181,78 @@
       // Transcript updates
       if (msg.type === "transcript") {
         console.log("[Transcript] Received:", msg);
-        // Some providers send `is_final`, others send `interim: false` for finals.
-        // Treat a message as final if either flag indicates it.
-        const isFinal = Boolean(msg.is_final) || (msg.interim === false);
         const text = msg.text || "";
-        if (!text.trim()) return;
+        const full = msg.full || "";
+        // Determine finality: prefer explicit is_final, otherwise infer from interim
+        let isFinal = undefined;
+        if (msg.hasOwnProperty('is_final')) {
+          isFinal = Boolean(msg.is_final);
+        } else if (msg.hasOwnProperty('interim')) {
+          isFinal = !Boolean(msg.interim);
+        }
+        if (!text && !full) return;
 
         const mode = msg.mode || state.recordingMode || "interviewer";
-        console.log(`[Transcript] Mode: ${mode}, Final: ${isFinal}`);
+        const seq = Number(msg.seq || msg.results_count || 0) || 0;
+        console.log(`[Transcript] Mode: ${mode}, isFinal: ${String(isFinal)}, seq: ${seq}, fullPresent: ${!!full}`);
 
-        if (isFinal) {
-          console.log("[Transcript] FINAL -", text.substring(0, 50) + "...");
+        // If a full cumulative transcript is provided, prefer it (with guards)
+        if (full) {
+          // Defensive guards: ignore out-of-order or shrinking full updates
+          if (seq && seq < (window._lastTranscriptSeq || 0)) {
+            console.warn('[Transcript] Ignoring out-of-order full', { seq, lastSeq: window._lastTranscriptSeq });
+          } else if (window._lastRenderedLength && full.length < Math.max(0, window._lastRenderedLength - 50)) {
+            console.warn('[Transcript] Rejecting shrinking full text', { lastLen: window._lastRenderedLength, newLen: full.length, seq });
+          } else {
+            // Accept full as authoritative
+            console.debug('[Transcript] Accepting full cumulative transcript', { len: full.length, seq });
+            liveTranscriptAccumulated = String(full || '').trim();
+            window._lastRenderedLength = liveTranscriptAccumulated.length;
+            if (seq) window._lastTranscriptSeq = seq;
+            // Update DOM via same path used by appendToLiveTranscript (no duplication)
+            const target = state.chatHistory.find((m) => m.id === liveTranscriptMsgId);
+            if (target) target.content = liveTranscriptAccumulated;
+            if (chatMessages) {
+              const el = chatMessages.querySelector(`.chat-message[data-id="${liveTranscriptMsgId}"] .chat-content div:last-child`);
+              if (el) el.innerHTML = preserveUserFormatting(liveTranscriptAccumulated.trim());
+            }
+          }
+        } else if (isFinal === true) {
+          // Final single segment: append to accumulated
+          console.log("[Transcript] FINAL (segment) -", text.substring(0, 50) + "...");
           appendToLiveTranscript(text);
-        } else {
+        } else if (isFinal === false) {
+          // Explicitly interim
           console.log("[Transcript] INTERIM -", text.substring(0, 50));
           updateLiveTranscriptInterim(text);
+        } else {
+          // Unknown finality: fall back to treating messages with interim===false as final
+          if (msg.hasOwnProperty('interim') && msg.interim === false) {
+            console.log("[Transcript] TREAT AS FINAL (inferred) -", text.substring(0, 50) + "...");
+            appendToLiveTranscript(text);
+          } else {
+            console.log("[Transcript] TREAT AS INTERIM (fallback) -", text.substring(0, 50));
+            updateLiveTranscriptInterim(text);
+          }
         }
 
         usageStats.increment("transcriptions");
+      }
+
+      // Server requested transcript clear - clear toolbar live transcript state too
+      if (msg.type === 'transcript_cleared') {
+        console.log('[Transcript] Server requested transcript clear - clearing live transcript');
+        liveTranscriptMsgId = null;
+        liveTranscriptAccumulated = '';
+        window._lastTranscriptSeq = 0;
+        window._lastRenderedLength = 0;
+        // Remove any existing live transcript chat message element
+        if (chatMessages) {
+          const el = chatMessages.querySelector('.chat-message[data-id]');
+          if (el && el.querySelector('.question-label')?.textContent === '🎤 Transcript Sent') {
+            el.remove();
+          }
+        }
       }
 
       // Handle screen/OCR captures
