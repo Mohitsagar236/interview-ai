@@ -3785,6 +3785,7 @@ async def handle_audio_streaming(ws, session_id=None):
             "type": "transcript",
             "text": result.text,
             "interim": True,  # Mark as interim
+            "is_final": False,
             "speaker": current_speaker,
             "recording_mode": recording_mode,
             "confidence": result.confidence
@@ -3840,6 +3841,7 @@ async def handle_audio_streaming(ws, session_id=None):
                 "text": text,
                 "full": partial_text,
                 "interim": False,  # Mark as final
+                "is_final": True,   # legacy flag used by toolbar
                 "speaker": current_speaker,
                 "recording_mode": recording_mode,
                 "confidence": result.confidence,
@@ -4075,6 +4077,8 @@ async def handle_audio(ws):
                     "type": "transcript",
                     "text": new_portion,     # incremental diff portion
                     "full": partial_text,    # full rolling history
+                    "interim": True,         # Mark as interim (not final)
+                    "is_final": False,       # legacy flag used by toolbar
                     "speaker": current_speaker,
                     "recording_mode": recording_mode,
                     "bytes": bytes_received,

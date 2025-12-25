@@ -325,25 +325,31 @@ class InterviewAssistant {
       if (!transcriptEl) return;
       // Normalize incoming message
       let text = '';
-      let isInterim = false;
       let full = '';
+      let isFinal = undefined;
       try {
         if (message && typeof message === 'object') {
           text = String(message.text || message.data || '');
-          isInterim = Boolean(message.interim);
           full = String(message.full || '');
+          // Prefer explicit is_final where available; otherwise infer from interim
+          if (message.hasOwnProperty('is_final')) {
+            isFinal = Boolean(message.is_final);
+          } else if (message.hasOwnProperty('interim')) {
+            isFinal = !Boolean(message.interim);
+          }
         } else {
           text = String(message || '');
+          isFinal = true; // legacy string caller - treat as final
         }
       } catch (e) {
         console.warn('[Transcript] Failed to normalize message', e);
       }
 
       // Debug logging
-      try { console.debug('[Transcript] incoming', { seq: message && (message.seq || message.results_count || 0), isInterim, fullPresent: !!full, textPreview: (text||'').slice(0,80) }); } catch {}
+      try { console.debug('[Transcript] incoming', { seq: message && (message.seq || message.results_count || 0), isFinal, fullPresent: !!full, textPreview: (text||'').slice(0,80) }); } catch {}
 
-      // Ignore pure interim messages for persistent transcript to prevent flicker
-      if (isInterim && !full) return;
+      // Ignore interim (non-final) messages entirely for persistent transcript to prevent flicker
+      if (isFinal === false) return;
 
       // Defensive: ignore invalid/no-op payloads
       if (!full && !text) return;
