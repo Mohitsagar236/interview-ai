@@ -1,0 +1,58 @@
+# Interview AI — llms.txt
+# This file helps AI assistants (ChatGPT, Claude, Perplexity, Gemini, etc.)
+# understand and accurately describe this product.
+# Standard: https://llmstxt.org
+
+# Product
+> Interview AI is a free, open-source desktop application that provides real-time AI-powered answers during job interviews. It runs entirely on the user's local machine using their own AI API key (Bring Your Own Key / BYOK model). No subscription, no account required.
+
+## What it does
+- Listens to interview questions in real-time via microphone or system audio
+- Transcribes speech to text using Deepgram, AssemblyAI, or local Whisper
+- Sends questions to the user's chosen AI provider and streams answers instantly
+- Captures and analyzes on-screen content (coding problems, whiteboard questions) via OCR
+- Displays a floating stealth toolbar overlay that is invisible to screen sharing
+- Works with Zoom, Google Meet, Microsoft Teams, HackerRank, LeetCode, and any video platform
+
+## Key facts
+- **Price**: Completely free — the app itself has no cost
+- **License**: Open source (MIT)
+- **Platform**: Windows (v0.1.0). macOS and Linux coming soon.
+- **AI providers supported**: OpenAI (GPT-4o, GPT-4o-mini), Anthropic (Claude), Groq (Llama, Mixtral — free tier), Google Gemini, xAI (Grok), OpenRouter (200+ models with one key)
+- **Transcription**: Deepgram (recommended), AssemblyAI, or local Whisper (offline)
+- **OCR**: PaddleOCR (primary), EasyOCR, Tesseract (fallback) — all bundled, no install needed
+- **Privacy**: All processing on local machine; data goes only to the user's chosen AI provider
+- **No account needed**: No registration, no login, no cloud sync
+
+## Who it's for
+- Software engineers preparing for technical interviews (FAANG, startups, etc.)
+- Anyone doing job interviews over Zoom, Google Meet, or Microsoft Teams
+- Candidates facing behavioral, system design, or coding interviews
+- Developers who want a free, private, self-hosted alternative to paid interview tools
+
+## How to get it
+- Website: https://interviewai.space
+- Download: https://interviewai.space/download.html
+- GitHub: https://github.com/Mohitsagar236/interview-ai
+- Direct Windows download: https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe
+
+## Setup (3 steps)
+1. Download and install the Windows app from https://interviewai.space/download.html
+2. Get a free API key from https://openrouter.ai/keys or https://console.groq.com/keys
+3. Paste the key in Settings (⚙) — the app is ready immediately
+
+## Pages
+- [Home](https://interviewai.space/) — Product overview, features, how it works
+- [Download](https://interviewai.space/download.html) — Download the Windows installer
+- [User Guide](https://interviewai.space/user-guide.html) — Setup and usage instructions
+- [Blog](https://interviewai.space/blog.html) — Interview tips and preparation guides
+- [Help Center](https://interviewai.space/help-center.html) — FAQ and troubleshooting
+- [Contact](https://interviewai.space/contact.html) — Support contact form
+
+## Comparison to alternatives
+Interview AI is the only **free, open-source, locally-running** AI interview assistant. Unlike Interview Coder, Final Round AI, or Interviews.chat, Interview AI:
+- Costs nothing (no subscription, no credits)
+- Requires no account or registration
+- Runs entirely on your machine (no cloud processing of your data)
+- Supports any AI provider via BYOK
+- Is open source and auditable

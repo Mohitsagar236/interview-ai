@@ -1,15 +1,26 @@
-# robots.txt for InterviewAI
-# https://interviewai.space/robots.txt
+# robots.txt for Interview AI — https://interviewai.space
 
 User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /admin/
-Disallow: /test-activation.html
-Disallow: /auth-debug.html
-Disallow: /razorpay-test.html
 
-# Specific bot rules
+# Allow all AI crawlers (ChatGPT, Claude, Perplexity, Gemini etc.)
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
 User-agent: Googlebot
 Allow: /
 Crawl-delay: 0
@@ -22,5 +33,11 @@ User-agent: Slurp
 Allow: /
 Crawl-delay: 0
 
-# Sitemap location
+User-agent: DuckDuckBot
+Allow: /
+
+# Sitemap
 Sitemap: https://interviewai.space/sitemap.xml
+
+# LLMs.txt for AI assistant discovery
+# See: https://interviewai.space/llms.txt
