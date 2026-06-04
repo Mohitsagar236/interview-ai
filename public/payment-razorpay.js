@@ -1,4 +1,4 @@
-// Razorpay Payment Integration for Interview AI
+﻿// Razorpay Payment Integration for Interview AI
 // Automated payment processing - No manual verification needed
 
 // Configuration
@@ -7,12 +7,12 @@ const PAYMENT_CONFIG = {
     
     // Pricing (in INR)
     prices: {
-        basic: 499,      // ₹499
-        plus: 999,       // ₹999
-        advanced: 1699,  // ₹1,699
-        windows: 999,    // ₹999
-        mac: 999,        // ₹999
-        subscription: 999  // ₹999/month
+        basic: 499,      // â‚¹499
+        plus: 999,       // â‚¹999
+        advanced: 1699,  // â‚¹1,699
+        windows: 999,    // â‚¹999
+        mac: 999,        // â‚¹999
+        subscription: 999  // â‚¹999/month
     },
     
     // Coupon codes
@@ -20,9 +20,9 @@ const PAYMENT_CONFIG = {
         'WELCOME10': { discount: 10, type: 'percentage' },  // 10% off
         'SAVE20': { discount: 20, type: 'percentage' },      // 20% off
         'FIRSTBUY': { discount: 15, type: 'percentage' },    // 15% off
-        'FLAT100': { discount: 100, type: 'fixed' },         // ₹100 off
-        'FLAT200': { discount: 200, type: 'fixed' },         // ₹200 off
-        'FLAT498': { discount: 498, type: 'fixed' },         // ₹498 off
+        'FLAT100': { discount: 100, type: 'fixed' },         // â‚¹100 off
+        'FLAT200': { discount: 200, type: 'fixed' },         // â‚¹200 off
+        'FLAT498': { discount: 498, type: 'fixed' },         // â‚¹498 off
         'STUDENT': { discount: 100, type: 'percentage', restrictTo: ['credits', 'basic', 'plus', 'advanced'] }  // 100% off on credits only (STUDENT coupon)
     }
 };
@@ -70,14 +70,14 @@ const products = {
         description: '100% Private and Undetectable Desktop Application',
         price: PAYMENT_CONFIG.prices.windows,
         icon: 'fa-windows',
-        downloadUrl: 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe'
+        downloadUrl: 'https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe'
     },
     mac: {
         name: 'Interview AI Assistant - macOS',
         description: '100% Private and Undetectable Desktop Application',
         price: PAYMENT_CONFIG.prices.mac,
         icon: 'fa-apple',
-        downloadUrl: 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev/releases/v0.1.0/Interview-AI-0.1.0.dmg'
+        downloadUrl: 'https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev/releases/v0.1.0/Interview-AI-0.1.0.dmg'
     },
     subscription: {
         name: 'Interview AI Pro - Monthly',
@@ -102,9 +102,9 @@ document.addEventListener('DOMContentLoaded', async function() {
 function updateProductInfo() {
     document.getElementById('product-name').textContent = currentProduct.name;
     document.getElementById('product-description').textContent = currentProduct.description;
-    document.getElementById('product-price').textContent = `₹${currentProduct.price.toLocaleString('en-IN')}`;
-    document.getElementById('subtotal').textContent = `₹${currentProduct.price.toLocaleString('en-IN')}`;
-    document.getElementById('total').textContent = `₹${currentProduct.price.toLocaleString('en-IN')}`;
+    document.getElementById('product-price').textContent = `â‚¹${currentProduct.price.toLocaleString('en-IN')}`;
+    document.getElementById('subtotal').textContent = `â‚¹${currentProduct.price.toLocaleString('en-IN')}`;
+    document.getElementById('total').textContent = `â‚¹${currentProduct.price.toLocaleString('en-IN')}`;
     
     // Update icon
     const iconElement = document.querySelector('.order-icon');
@@ -247,8 +247,8 @@ function applyCoupon() {
     updatePriceDisplay();
     
     // Show success message
-    const savingsText = discountAmount === originalPrice ? 'FREE!' : `You saved ₹${discountAmount}`;
-    couponMessage.textContent = `✓ Coupon applied! ${savingsText}`;
+    const savingsText = discountAmount === originalPrice ? 'FREE!' : `You saved â‚¹${discountAmount}`;
+    couponMessage.textContent = `âœ“ Coupon applied! ${savingsText}`;
     couponMessage.className = 'coupon-message success';
     
     // Disable input and button
@@ -262,20 +262,20 @@ function updatePriceDisplay() {
     const finalPrice = originalPrice - discountAmount;
     
     // Update subtotal
-    document.getElementById('subtotal').textContent = `₹${originalPrice.toLocaleString('en-IN')}`;
+    document.getElementById('subtotal').textContent = `â‚¹${originalPrice.toLocaleString('en-IN')}`;
     
     // Show/hide discount row
     const discountRow = document.getElementById('discount-row');
     if (discountAmount > 0) {
         discountRow.style.display = 'flex';
         document.getElementById('discount-code').textContent = `(${appliedCoupon})`;
-        document.getElementById('discount-amount').textContent = `-₹${discountAmount.toLocaleString('en-IN')}`;
+        document.getElementById('discount-amount').textContent = `-â‚¹${discountAmount.toLocaleString('en-IN')}`;
     } else {
         discountRow.style.display = 'none';
     }
     
     // Update total
-    document.getElementById('total').textContent = `₹${finalPrice.toLocaleString('en-IN')}`;
+    document.getElementById('total').textContent = `â‚¹${finalPrice.toLocaleString('en-IN')}`;
 }
 
 // Handle payment form submission
@@ -341,7 +341,7 @@ async function handlePayment(e) {
             });
             
             if (result.success) {
-                showMessage('🎉 Congratulations! Your credits have been granted for FREE!', 'success');
+                showMessage('ðŸŽ‰ Congratulations! Your credits have been granted for FREE!', 'success');
                 
                 // Show success and redirect
                 setTimeout(() => {

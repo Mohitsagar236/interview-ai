@@ -90,7 +90,7 @@ class R2Client {
                 res.on('end', () => {
                     if (res.statusCode >= 200 && res.statusCode < 300) {
                         // Generate public URL - extract account hash from bucket endpoint
-                        const publicUrl = `https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev/${key}`;
+                        const publicUrl = `https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev/${key}`;
                         console.log(`✅ Uploaded: ${publicUrl}\n`);
                         resolve(publicUrl);
                     } else {

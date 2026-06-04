@@ -1,29 +1,29 @@
-// UPI Payment System for Interview AI
+﻿// UPI Payment System for Interview AI
 // No Stripe - Direct UPI/Bank Transfer
 
 // Configuration - UPDATE THESE WITH YOUR DETAILS
 const PAYMENT_CONFIG = {
-    upiId: 'cp8137108@oksbi',  // 🔴 UPDATE: Your UPI ID
-    upiName: 'mohitsagar',      // 🔴 UPDATE: Your name for UPI
+    upiId: 'cp8137108@oksbi',  // ðŸ”´ UPDATE: Your UPI ID
+    upiName: 'mohitsagar',      // ðŸ”´ UPDATE: Your name for UPI
     
     // Bank Details
     bankName: 'mohitsagar',
-    accountNumber: '39716154031',  // 🔴 UPDATE: Your account number
-    ifscCode: 'SBIN00018563',      // 🔴 UPDATE: Your IFSC code
-    bankBranch: 'State Bank of India',  // 🔴 UPDATE: Your bank name
+    accountNumber: '39716154031',  // ðŸ”´ UPDATE: Your account number
+    ifscCode: 'SBIN00018563',      // ðŸ”´ UPDATE: Your IFSC code
+    bankBranch: 'State Bank of India',  // ðŸ”´ UPDATE: Your bank name
     
     // Pricing (in INR)
     prices: {
-        basic: 499,      // ₹499
-        plus: 999,       // ₹999
-        advanced: 1699,  // ₹1,699
-        windows: 999,    // ₹999 (default)
-        mac: 999,        // ₹999 (default)
-        subscription: 999  // ₹999/month
+        basic: 499,      // â‚¹499
+        plus: 999,       // â‚¹999
+        advanced: 1699,  // â‚¹1,699
+        windows: 999,    // â‚¹999 (default)
+        mac: 999,        // â‚¹999 (default)
+        subscription: 999  // â‚¹999/month
     },
     
     // Your admin email to receive payment notifications
-    adminEmail: 'admin@yourdomain.com'  // 🔴 UPDATE: Your email
+    adminEmail: 'admin@yourdomain.com'  // ðŸ”´ UPDATE: Your email
 };
 
 // Get product type from URL
@@ -37,35 +37,35 @@ const products = {
         description: '3 Interview Credits',
         price: PAYMENT_CONFIG.prices.basic,
         icon: 'fa-star',
-        downloadUrl: 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe'
+        downloadUrl: 'https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe'
     },
     plus: {
         name: 'Interview AI - Plus Plan',
         description: '6 Interview Credits + 2 Free',
         price: PAYMENT_CONFIG.prices.plus,
         icon: 'fa-star',
-        downloadUrl: 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe'
+        downloadUrl: 'https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe'
     },
     advanced: {
         name: 'Interview AI - Advanced Plan',
         description: '9 Interview Credits + 6 Free',
         price: PAYMENT_CONFIG.prices.advanced,
         icon: 'fa-star',
-        downloadUrl: 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe'
+        downloadUrl: 'https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe'
     },
     windows: {
         name: 'Interview AI Assistant - Windows',
         description: '100% Private and Undetectable Desktop Application',
         price: PAYMENT_CONFIG.prices.windows,
         icon: 'fa-windows',
-        downloadUrl: 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe'
+        downloadUrl: 'https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe'
     },
     mac: {
         name: 'Interview AI Assistant - macOS',
         description: '100% Private and Undetectable Desktop Application',
         price: PAYMENT_CONFIG.prices.mac,
         icon: 'fa-apple',
-        downloadUrl: 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev/releases/v0.1.0/Interview-AI-0.1.0.dmg'
+        downloadUrl: 'https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev/releases/v0.1.0/Interview-AI-0.1.0.dmg'
     },
     subscription: {
         name: 'Interview AI Pro - Monthly',
@@ -82,14 +82,14 @@ const currentProduct = products[productType] || products.windows;
 function updateProductInfo() {
     document.getElementById('product-name').textContent = currentProduct.name;
     document.getElementById('product-description').textContent = currentProduct.description;
-    document.getElementById('product-price').textContent = `₹${currentProduct.price.toLocaleString('en-IN')}`;
-    document.getElementById('subtotal').textContent = `₹${currentProduct.price.toLocaleString('en-IN')}`;
-    document.getElementById('total').textContent = `₹${currentProduct.price.toLocaleString('en-IN')}`;
+    document.getElementById('product-price').textContent = `â‚¹${currentProduct.price.toLocaleString('en-IN')}`;
+    document.getElementById('subtotal').textContent = `â‚¹${currentProduct.price.toLocaleString('en-IN')}`;
+    document.getElementById('total').textContent = `â‚¹${currentProduct.price.toLocaleString('en-IN')}`;
     document.getElementById('button-text').textContent = 'Verify Payment';
     
     // Update amount displays
-    document.getElementById('amount-inr').textContent = `₹${currentProduct.price.toLocaleString('en-IN')}`;
-    document.getElementById('amount-bank').textContent = `₹${currentProduct.price.toLocaleString('en-IN')}`;
+    document.getElementById('amount-inr').textContent = `â‚¹${currentProduct.price.toLocaleString('en-IN')}`;
+    document.getElementById('amount-bank').textContent = `â‚¹${currentProduct.price.toLocaleString('en-IN')}`;
     
     // Update icon
     const iconElement = document.querySelector('.order-icon');
@@ -306,7 +306,7 @@ function startPaymentPolling(paymentId, email) {
 // Handle immediate payment verification
 function handlePaymentVerified(result, email) {
     setLoading(false);
-    updatePollingStatus('Payment verified! 🎉', 'success');
+    updatePollingStatus('Payment verified! ðŸŽ‰', 'success');
     
     // Update modal with download link
     document.getElementById('user-email').textContent = email;
@@ -314,7 +314,7 @@ function handlePaymentVerified(result, email) {
     const modal = document.getElementById('success-modal');
     const modalContent = modal.querySelector('.modal-content');
     
-    modalContent.querySelector('h2').textContent = 'Payment Verified! 🎉';
+    modalContent.querySelector('h2').textContent = 'Payment Verified! ðŸŽ‰';
     modalContent.querySelector('p').textContent = 'Your payment has been confirmed. Download your app now!';
     modalContent.querySelector('.download-info').textContent = `Download link expires in 24 hours.`;
     
@@ -475,6 +475,6 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('Configuration:', {
         upiId: PAYMENT_CONFIG.upiId,
         product: currentProduct.name,
-        amount: `₹${currentProduct.price}`
+        amount: `â‚¹${currentProduct.price}`
     });
 });

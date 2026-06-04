@@ -34,7 +34,7 @@
 - Website: https://interviewai.space
 - Download: https://interviewai.space/download.html
 - GitHub: https://github.com/Mohitsagar236/interview-ai
-- Direct Windows download: https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe
+- Direct Windows download: https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe
 
 ## Setup (3 steps)
 1. Download and install the Windows app from https://interviewai.space/download.html
