@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.deepgram.com https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://api.groq.com https://openrouter.ai;" />
+  <title>Settings — Interview AI</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0b0f19;
+      --surface: #111827;
+      --surface2: #1a2235;
+      --border: #1e293b;
+      --border2: #2d3748;
+      --text: #e2e8f0;
+      --text2: #94a3b8;
+      --text3: #475569;
+      --accent: #10b981;
+      --accent2: #059669;
+      --blue: #6366f1;
+      --red: #f85149;
+      --yellow: #d29922;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      overflow-x: hidden;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      width: 192px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 0;
+      overflow-y: auto;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar-logo {
+      padding: 18px 16px 14px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: -.2px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 14px;
+      cursor: pointer;
+      border-radius: 7px;
+      margin: 1px 8px;
+      color: var(--text2);
+      transition: all 0.15s;
+      font-size: 13px;
+      font-weight: 500;
+      position: relative;
+    }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active {
+      background: rgba(16,185,129,.1);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .nav-item.active::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 20%; bottom: 20%;
+      width: 3px;
+      background: var(--accent);
+      border-radius: 0 3px 3px 0;
+    }
+    .nav-item .icon { width: 18px; text-align: center; font-size: 14px; flex-shrink: 0; }
+
+    /* ── Main ── */
+    .main {
+      margin-left: 192px;
+      padding: 28px 32px 100px;
+      min-height: 100vh;
+      max-width: calc(100vw - 192px);
+    }
+
+    .section { display: none; }
+    .section.active { display: block; animation: fadeIn .15s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    h2 {
+      font-size: 19px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .section-desc {
+      color: var(--text2);
+      font-size: 13px;
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 14px;
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      margin-bottom: 16px;
+    }
+
+    .form-row { margin-bottom: 16px; }
+    .form-row:last-child { margin-bottom: 0; }
+
+    label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text2);
+      margin-bottom: 6px;
+    }
+    .label-hint {
+      font-size: 11px;
+      color: var(--text3);
+      font-weight: 400;
+      margin-left: 6px;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    select,
+    textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border2);
+      border-radius: 7px;
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      transition: border-color .15s, box-shadow .15s;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(16,185,129,.12);
+    }
+    input::placeholder { color: var(--text3); }
+    select option { background: var(--surface2); }
+
+    .input-with-button { display: flex; gap: 8px; align-items: center; }
+    .input-with-button input { flex: 1; }
+
+    .key-row { display: flex; gap: 8px; align-items: center; }
+    .key-row input {
+      flex: 1;
+      font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+      font-size: 12px;
+      letter-spacing: .3px;
+    }
+
+    /* ── Badges ── */
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 9px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .status-badge.ok       { background: rgba(63,185,80,.1);  color: #3fb950; border: 1px solid rgba(63,185,80,.2); }
+    .status-badge.err      { background: rgba(248,81,73,.1);  color: var(--red); border: 1px solid rgba(248,81,73,.2); }
+    .status-badge.warn     { background: rgba(210,153,34,.1); color: var(--yellow); border: 1px solid rgba(210,153,34,.2); }
+    .status-badge.idle     { background: var(--surface2);     color: var(--text3); border: 1px solid var(--border); }
+    .status-badge.testing  { background: rgba(99,102,241,.1); color: #818cf8; border: 1px solid rgba(99,102,241,.2); }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 16px;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+      color: #fff;
+      box-shadow: 0 2px 6px rgba(16,185,129,.3);
+    }
+    .btn-primary:hover { box-shadow: 0 4px 10px rgba(16,185,129,.4); transform: translateY(-1px); }
+    .btn-secondary { background: var(--surface2); border-color: var(--border2); color: var(--text2); }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-danger { background: rgba(248,81,73,.08); border-color: rgba(248,81,73,.2); color: var(--red); }
+    .btn-danger:hover { background: rgba(248,81,73,.16); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .provider-section { display: none; }
+    .provider-section.active { display: block; animation: fadeIn .15s ease; }
+
+    /* ── Checkboxes ── */
+    .checkbox-row {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .checkbox-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .checkbox-row input[type="checkbox"] {
+      width: 16px; height: 16px; margin-top: 2px; flex-shrink: 0;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .checkbox-row .check-info .check-label {
+      font-size: 13px; font-weight: 600; color: var(--text);
+    }
+    .checkbox-row .check-info .check-desc {
+      font-size: 12px; color: var(--text2); margin-top: 3px; line-height: 1.5;
+    }
+
+    /* ── Footer ── */
+    .footer-actions {
+      position: fixed;
+      bottom: 0; left: 192px; right: 0;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      padding: 14px 32px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      z-index: 20;
+    }
+    .save-status {
+      font-size: 12px; color: var(--accent); margin-left: 8px;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .save-status.visible { opacity: 1; }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+    .about-info { color: var(--text2); font-size: 13px; line-height: 2; }
+    .about-info strong { color: var(--text); }
+
+    /* ── Provider Grid ── */
+    .provider-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .provider-card {
+      background: var(--bg);
+      border: 2px solid var(--border2);
+      border-radius: 9px;
+      padding: 12px 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text2);
+    }
+    .provider-card:hover {
+      border-color: var(--accent);
+      color: var(--text);
+      background: rgba(16,185,129,.05);
+    }
+    .provider-card.selected {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(16,185,129,.1);
+      font-weight: 700;
+    }
+    .provider-card .provider-icon { font-size: 22px; margin-bottom: 6px; display: block; }
+  </style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="sidebar-logo">⚙ Settings</div>
+  <div class="nav-item" data-section="claude-account">
+    <span class="icon">🟣</span> Claude Account
+  </div>
+  <div class="nav-item active" data-section="deepgram">
+    <span class="icon">🎙</span> Deepgram
+  </div>
+  <div class="nav-item" data-section="ai">
+    <span class="icon">🤖</span> AI Provider
+  </div>
+  <div class="nav-item" data-section="behavior">
+    <span class="icon">🧠</span> AI Behavior
+  </div>
+  <div class="nav-item" data-section="app">
+    <span class="icon">🖥</span> App
+  </div>
+  <div class="nav-item" data-section="about">
+    <span class="icon">ℹ</span> About
+  </div>
+</nav>
+
+<main class="main">
+
+  <!-- ── 0. Claude Account ── -->
+  <section class="section" id="section-claude-account">
+    <h2>Claude Account</h2>
+    <p class="section-desc">
+      Connect your <strong>Anthropic API key</strong> to power the AI features.
+      Get a key from the Anthropic Console — it only takes a minute.
+    </p>
+
+    <!-- Connected state -->
+    <div class="card" id="claudeAccountConnected" style="display:none">
+      <div class="card-title">Connected</div>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <span class="status-badge ok" style="font-size:13px;padding:6px 14px">✓ Anthropic API Key Active</span>
+        <span id="claudeAccountMasked" style="font-family:monospace;font-size:12px;color:var(--text2)"></span>
+        <button class="btn btn-danger btn-sm" id="claudeAccountSignOut">Disconnect</button>
+      </div>
+      <p style="color:var(--text2);font-size:12px;margin-top:12px;line-height:1.6">
+        Your Anthropic API key is active and being used as the AI provider.
+        Disconnecting will remove the saved key.
+      </p>
+    </div>
+
+    <!-- Disconnected state -->
+    <div class="card" id="claudeAccountDisconnected">
+      <div class="card-title">Connect API Key</div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:16px;line-height:1.6">
+        1. Open the Anthropic Console and create an API key.<br>
+        2. Paste it below and click <strong>Connect</strong>.
+      </p>
+      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-secondary btn-sm" id="claudeAccountOpenConsole">Open console.anthropic.com →</button>
+      </div>
+      <div class="form-row" style="margin-bottom:12px">
+        <label style="font-size:12px;color:var(--text2);margin-bottom:6px;display:block">Anthropic API Key</label>
+        <div class="key-row">
+          <input type="password" id="claudeAccountKeyInput" placeholder="sk-ant-api03-…" autocomplete="off" style="flex:1" />
+          <span class="status-badge idle" id="claudeAccountStatus">Not connected</span>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="claudeAccountSignIn">Connect</button>
+    </div>
+  </section>
+
+  <!-- ── A. Deepgram ── -->
+  <section class="section active" id="section-deepgram">
+    <h2>Deepgram API</h2>
+    <p class="section-desc">Real-time speech-to-text transcription. Get a free key at <strong>deepgram.com</strong>.</p>
+
+    <div class="card">
+      <div class="card-title">API Key</div>
+      <div class="form-row">
+        <label>Deepgram API Key</label>
+        <div class="key-row">
+          <input type="password" id="deepgramKey" placeholder="dg_…" autocomplete="off" />
+          <span class="status-badge idle" id="deepgramStatus">Not set</span>
+          <button class="btn btn-secondary btn-sm" id="testDeepgram">Test</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Model <span class="label-hint">Default: nova-2</span></label>
+        <select id="deepgramModel">
+          <option value="nova-2">nova-2 (recommended)</option>
+          <option value="nova">nova</option>
+          <option value="enhanced">enhanced</option>
+          <option value="base">base</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Transcription Language <span class="label-hint">Default: English (US)</span></label>
+        <select id="deepgramLanguage">
+          <option value="en-US">🇺🇸 English (US)</option>
+          <option value="en-GB">🇬🇧 English (UK)</option>
+          <option value="en-IN">🇮🇳 English (India)</option>
+          <option value="hi">🇮🇳 Hindi</option>
+          <option value="es">🇪🇸 Spanish</option>
+          <option value="fr">🇫🇷 French</option>
+          <option value="de">🇩🇪 German</option>
+          <option value="pt">🇧🇷 Portuguese</option>
+          <option value="ja">🇯🇵 Japanese</option>
+          <option value="ko">🇰🇷 Korean</option>
+          <option value="zh">🇨🇳 Chinese</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── B. AI Provider ── -->
+  <section class="section" id="section-ai">
+    <h2>AI Provider</h2>
+    <p class="section-desc">Choose your LLM. All keys are stored encrypted on your local machine.</p>
+
+    <div class="card">
+      <div class="card-title">Provider</div>
+      <div class="provider-grid" id="providerGrid">
+        <div class="provider-card selected" data-provider="openai"><div class="provider-icon">🟢</div>OpenAI</div>
+        <div class="provider-card" data-provider="anthropic"><div class="provider-icon">🟣</div>Anthropic</div>
+        <div class="provider-card" data-provider="gemini"><div class="provider-icon">🔵</div>Gemini</div>
+        <div class="provider-card" data-provider="groq"><div class="provider-icon">⚡</div>Groq</div>
+        <div class="provider-card" data-provider="openrouter"><div class="provider-icon">🔀</div>OpenRouter</div>
+        <div class="provider-card" data-provider="ollama"><div class="provider-icon">🦙</div>Ollama</div>
+        <div class="provider-card" data-provider="custom"><div class="provider-icon">🔧</div>Custom</div>
+      </div>
+    </div>
+
+    <!-- OpenAI -->
+    <div class="card provider-section active" id="ps-openai">
+      <div class="card-title">OpenAI</div>
+      <div class="form-row">
+        <label>API Key</label>
+        <div class="key-row">
+          <input type="password" id="openaiKey" placeholder="sk-…" autocomplete="off" />
+          <span class="status-badge idle" id="openaiStatus">Not set</span>
+          <button class="btn btn-secondary btn-sm" id="testOpenai">Test</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Model <span class="label-hint">Default: gpt-4o-mini</span></label>
+        <input type="text" id="openaiModel" placeholder="gpt-4o-mini" />
+      </div>
+    </div>
+
+    <!-- Anthropic -->
+    <div class="card provider-section" id="ps-anthropic">
+      <div class="card-title">Anthropic</div>
+      <div class="form-row">
+        <label>API Key</label>
+        <div class="key-row">
+          <input type="password" id="anthropicKey" placeholder="sk-ant-…" autocomplete="off" />
+          <span class="status-badge idle" id="anthropicStatus">Not set</span>
+          <button class="btn btn-secondary btn-sm" id="testAnthropic">Test</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Model <span class="label-hint">Default: claude-3-5-haiku-latest</span></label>
+        <input type="text" id="anthropicModel" placeholder="claude-3-5-haiku-latest" />
+      </div>
+    </div>
+
+    <!-- Gemini -->
+    <div class="card provider-section" id="ps-gemini">
+      <div class="card-title">Google Gemini</div>
+      <div class="form-row">
+        <label>API Key</label>
+        <div class="key-row">
+          <input type="password" id="geminiKey" placeholder="AIza…" autocomplete="off" />
+          <span class="status-badge idle" id="geminiStatus">Not set</span>
+          <button class="btn btn-secondary btn-sm" id="testGemini">Test</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Model <span class="label-hint">Default: gemini-1.5-flash</span></label>
+        <input type="text" id="geminiModel" placeholder="gemini-1.5-flash" />
+      </div>
+    </div>
+
+    <!-- Groq -->
+    <div class="card provider-section" id="ps-groq">
+      <div class="card-title">Groq</div>
+      <div class="form-row">
+        <label>API Key</label>
+        <div class="key-row">
+          <input type="password" id="groqKey" placeholder="gsk_…" autocomplete="off" />
+          <span class="status-badge idle" id="groqStatus">Not set</span>
+          <button class="btn btn-secondary btn-sm" id="testGroq">Test</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Model <span class="label-hint">Default: llama3-70b-8192</span></label>
+        <input type="text" id="groqModel" placeholder="llama3-70b-8192" />
+      </div>
+    </div>
+
+    <!-- OpenRouter -->
+    <div class="card provider-section" id="ps-openrouter">
+      <div class="card-title">OpenRouter</div>
+      <div class="form-row">
+        <label>API Key</label>
+        <div class="key-row">
+          <input type="password" id="openrouterKey" placeholder="sk-or-…" autocomplete="off" />
+          <span class="status-badge idle" id="openrouterStatus">Not set</span>
+          <button class="btn btn-secondary btn-sm" id="testOpenrouter">Test</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Model <span class="label-hint">e.g. openai/gpt-4o-mini</span></label>
+        <input type="text" id="openrouterModel" placeholder="openai/gpt-4o-mini" />
+      </div>
+    </div>
+
+    <!-- Ollama -->
+    <div class="card provider-section" id="ps-ollama">
+      <div class="card-title">Ollama (local)</div>
+      <p style="color:#8b949e;font-size:13px;margin-bottom:16px;">No API key required. Ensure Ollama is running at the base URL below.</p>
+      <div class="form-row">
+        <label>Base URL</label>
+        <input type="text" id="ollamaBaseUrl" placeholder="http://localhost:11434" />
+      </div>
+      <div class="form-row">
+        <label>Model</label>
+        <input type="text" id="ollamaModel" placeholder="llama3" />
+      </div>
+      <button class="btn btn-secondary btn-sm" id="testOllama" style="margin-top:4px;">Test connection</button>
+      <span class="status-badge idle" id="ollamaStatus" style="margin-left:8px">Not tested</span>
+    </div>
+
+    <!-- Custom -->
+    <div class="card provider-section" id="ps-custom">
+      <div class="card-title">Custom OpenAI-compatible endpoint</div>
+      <div class="form-row">
+        <label>Base URL</label>
+        <input type="text" id="customBaseUrl" placeholder="https://your-api.example.com/v1" />
+      </div>
+      <div class="form-row">
+        <label>API Key <span class="label-hint">Optional</span></label>
+        <input type="password" id="customKey" placeholder="Bearer token or API key" autocomplete="off" />
+      </div>
+      <div class="form-row">
+        <label>Model</label>
+        <input type="text" id="customModel" placeholder="model-name" />
+      </div>
+    </div>
+  </section>
+
+  <!-- ── C. AI Behavior ── -->
+  <section class="section" id="section-behavior">
+    <h2>AI Behavior</h2>
+    <p class="section-desc">Tune how the AI responds during interviews.</p>
+
+    <div class="card">
+      <div class="checkbox-row">
+        <input type="checkbox" id="smartRouting" checked />
+        <div class="check-info">
+          <div class="check-label">Smart Routing</div>
+          <div class="check-desc">Automatically pick the best model for each request type</div>
+        </div>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="budgetMode" />
+        <div class="check-info">
+          <div class="check-label">Budget Mode</div>
+          <div class="check-desc">Prefer cheaper / faster models to reduce API costs</div>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:8px">
+        <label>Max cost per request ($) <span class="label-hint">0 = unlimited</span></label>
+        <input type="text" id="maxCostPerRequest" placeholder="0.10" style="max-width:120px" />
+      </div>
+    </div>
+  </section>
+
+  <!-- ── D. App ── -->
+  <section class="section" id="section-app">
+    <h2>App Preferences</h2>
+    <p class="section-desc">General application settings.</p>
+
+    <div class="card">
+      <div class="checkbox-row">
+        <input type="checkbox" id="launchOnStartup" />
+        <div class="check-info">
+          <div class="check-label">Launch on system startup</div>
+          <div class="check-desc">Start Interview AI when you log in</div>
+        </div>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="minimizeToTray" checked />
+        <div class="check-info">
+          <div class="check-label">Minimize to tray</div>
+          <div class="check-desc">Keep running in background when window is closed</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── E. About ── -->
+  <section class="section" id="section-about">
+    <h2>About</h2>
+    <p class="section-desc">Interview AI — open-source BYOK edition</p>
+
+    <div class="card">
+      <div class="about-info" id="aboutInfo">
+        <strong>Version:</strong> loading…<br />
+        <strong>Mode:</strong> Open-source (BYOK)<br />
+        <strong>Data location:</strong> loading…<br />
+        <strong>Website:</strong> github.com/Mohitsagar236/interview-ai
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Reset</div>
+      <p style="color:#8b949e;font-size:13px;margin-bottom:16px;">Permanently clear all saved API keys and settings. This cannot be undone.</p>
+      <button class="btn btn-danger" id="clearAllKeys">Clear all API keys &amp; settings</button>
+    </div>
+  </section>
+
+  <div class="footer-actions">
+    <button class="btn btn-primary" id="saveAll">Save settings</button>
+    <button class="btn btn-secondary" id="cancelBtn">Close</button>
+    <span class="save-status" id="saveStatus">✓ Saved</span>
+  </div>
+
+</main>
+
+<script src="settings.js"></script>
+</body>
+</html>

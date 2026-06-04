@@ -5,24 +5,20 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Copy requirements first (for better caching)
-COPY python/requirements-cloud.txt .
+# Use lite version for faster deployment (no PaddleOCR)
+COPY python/requirements-cloud-lite.txt .
 
-# Install system dependencies for PaddleOCR, Tesseract, and build tools
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    python3-dev \
+# Install minimal system dependencies (Tesseract only)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     tesseract-ocr-eng \
-    libgomp1 \
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libgl1 \
-    && rm -rf /var/lib/apt/lists/*
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-# Install Python dependencies (includes PaddleOCR from requirements-cloud.txt)
-RUN pip install --no-cache-dir -r requirements-cloud.txt
+# Install Python dependencies (lighter, faster install)
+RUN pip install --no-cache-dir -r requirements-cloud-lite.txt
 
 # Copy the entire python directory
 COPY python/ ./python/
@@ -37,6 +33,13 @@ ENV PORT=8000
 ENV HOST=0.0.0.0
 ENV WS_PING_INTERVAL=30
 ENV WS_PING_TIMEOUT=60
+# Disable PaddleOCR since not installed (uses Tesseract fallback)
+ENV USE_PADDLEOCR=0
+ENV OCR_ENGINE=tesseract
+
+# Health check for cloud platforms
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the server using start_server.py
 CMD ["python", "python/start_server.py"]

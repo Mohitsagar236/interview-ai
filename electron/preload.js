@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     console.log('🥷 Toggling stealth mode via IPC...');
     return ipcRenderer.invoke('toggle-stealth');
   },
+  getStealthStatus: () => ipcRenderer.invoke('get-stealth-status'),
   
   // Audio functionality (for future use)
   sendAudioChunk: (chunk) => {
@@ -86,6 +87,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Settings
   loadSettings: () => ipcRenderer.invoke('settings-load'),
   saveSettings: (patch) => ipcRenderer.invoke('settings-save', patch),
+  // Server control
+  restartServer: () => ipcRenderer.invoke('server-restart'),
   // Interviews
   listInterviews: () => ipcRenderer.invoke('interviews-list'),
   createInterview: (payload) => ipcRenderer.invoke('interviews-create', payload),
@@ -107,25 +110,53 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Main Desktop App Download
   downloadMainApp: (options) => ipcRenderer.invoke('download-main-app', options || {}),
   
-  // Desktop Activation (Simplified Authentication)
-  desktopIsActivated: () => ipcRenderer.invoke('desktop-is-activated'),
-  desktopGetActivationStatus: () => ipcRenderer.invoke('desktop-get-activation-status'),
-  desktopGetUser: () => ipcRenderer.invoke('desktop-get-user'),
-  desktopActivate: (code) => ipcRenderer.invoke('desktop-activate', code),
-  desktopDeactivate: () => ipcRenderer.invoke('desktop-deactivate'),
-  desktopOpenActivation: () => ipcRenderer.invoke('desktop-open-activation'),
-  desktopGetCredits: () => ipcRenderer.invoke('desktop-get-credits'),
-  desktopSyncCredits: () => ipcRenderer.invoke('desktop-sync-credits'),
-  closeActivationWindow: () => ipcRenderer.invoke('close-activation-window'),
-  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  // Settings (BYOK — local encrypted storage)
+  settings: {
+    get: (key) => ipcRenderer.invoke('settings:get', key),
+    set: (key, value) => ipcRenderer.invoke('settings:set', key, value),
+    saveApiKey: (provider, key) => ipcRenderer.invoke('settings:save-api-key', provider, key),
+    getApiKey: (provider) => ipcRenderer.invoke('settings:get-api-key', provider),
+    clearAll: () => ipcRenderer.invoke('settings:clear-all'),
+    getAll: () => ipcRenderer.invoke('settings:get-all'),
+    hasAiKey: () => ipcRenderer.invoke('settings:has-ai-key'),
+    hasDeepgramKey: () => ipcRenderer.invoke('settings:has-deepgram-key'),
+    openWindow: () => ipcRenderer.invoke('settings:open-window'),
+  },
+  onboardingComplete: () => ipcRenderer.invoke('onboarding:complete'),
+
+  // Claude Account — direct API key import
+  claudeAccount: {
+    signIn:    (apiKey) => ipcRenderer.invoke('claude-account:sign-in', apiKey),
+    signOut:   () => ipcRenderer.invoke('claude-account:sign-out'),
+    getStatus: () => ipcRenderer.invoke('claude-account:get-status'),
+  },
+  shell: {
+    openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+  },
+
+  // Activation stubs — open-source mode, always return success
+  desktopIsActivated: () => Promise.resolve({ activated: true }),
+  desktopGetActivationStatus: () => Promise.resolve({ ok: true, activated: true, planType: 'open-source' }),
+  desktopGetUser: () => Promise.resolve({ ok: true, user: null }),
+  desktopActivate: () => Promise.resolve({ success: true }),
+  desktopDeactivate: () => Promise.resolve({ ok: true }),
+  desktopOpenActivation: () => ipcRenderer.invoke('settings:open-window'),
+  desktopGetCredits: () => Promise.resolve({ success: true, credits: { remaining: 9999, total: 9999, used: 0, planType: 'open-source' } }),
+  desktopSyncCredits: () => Promise.resolve({ success: true, credits: { remaining: 9999, total: 9999, used: 0, planType: 'open-source' } }),
+  closeActivationWindow: () => Promise.resolve({ ok: true }),
+  desktopIsAuthenticated: () => Promise.resolve({ authenticated: true }),
+  desktopLogin: () => ipcRenderer.invoke('settings:open-window'),
+  desktopLogout: () => Promise.resolve({ ok: true }),
+  desktopOpenLogin: () => ipcRenderer.invoke('settings:open-window'),
+  closeLoginWindow: () => Promise.resolve({ ok: true }),
   
-  // Legacy authentication methods (deprecated, kept for backward compatibility)
-  desktopIsAuthenticated: () => ipcRenderer.invoke('desktop-is-activated'),
-  desktopLogin: () => ipcRenderer.invoke('desktop-open-activation'),
-  desktopLogout: () => ipcRenderer.invoke('desktop-deactivate'),
-  desktopOpenLogin: () => ipcRenderer.invoke('desktop-open-activation'),
-  closeLoginWindow: () => ipcRenderer.invoke('close-activation-window'),
-  
+  // Setup progress events (first-run dependency install)
+  onSetupProgress: (callback) => {
+    ipcRenderer.on('setup-progress', (_e, data) => {
+      try { callback(data); } catch (err) { console.error('onSetupProgress handler error', err); }
+    });
+  },
+
   // Event listeners for main process communications
   onQuickCaptureResult: (callback) => {
     ipcRenderer.on('quick-capture-result', (event, imageData) => {
@@ -136,12 +167,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onStealthToggled: (callback) => {
     ipcRenderer.on('stealth-toggled', (event, isActive) => {
       callback(isActive);
-    });
-  },
-  
-  onCreditsUpdated: (callback) => {
-    ipcRenderer.on('credits-updated', (event, credits) => {
-      callback(credits);
     });
   },
   onInterviewSessionEnded: (callback) => {

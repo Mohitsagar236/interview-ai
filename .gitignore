@@ -27,6 +27,7 @@ logs/
 .env
 .env.local
 .env.*.local
+.env.backup
 # Keep .env.example for documentation
 !.env.example
 

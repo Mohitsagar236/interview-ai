@@ -135,26 +135,30 @@ async function main() {
         process.exit(1);
     }
     
-    const installers = [
-        'Interview-AI-Setup-0.1.0-x64.exe',
-        'Interview-AI-Setup-0.1.0-ia32.exe'
+    // Each entry: [preferred filename, fallback filename, R2 upload key]
+    const candidates = [
+        ['Interview-AI-Setup-0.1.0-x64.exe',             'Interview AI Assistant-Setup-0.1.0-x64.exe',  'Interview-AI-Setup-0.1.0-x64.exe'],
+        ['Interview-AI-Setup-0.1.0-ia32.exe',            'Interview AI Assistant-Setup-0.1.0-ia32.exe', 'Interview-AI-Setup-0.1.0-ia32.exe'],
+        ['Interview AI Assistant-Portable-0.1.0.exe',    'Interview-AI-Portable-0.1.0.exe',             'Interview-AI-Portable-0.1.0.exe'],
     ];
+    const installers = candidates.map(([preferred, fallback, uploadName]) => {
+        const preferredPath = path.join(distDir, preferred);
+        const fallbackPath  = path.join(distDir, fallback);
+        if (fs.existsSync(preferredPath)) return { file: preferredPath, key: uploadName };
+        if (fs.existsSync(fallbackPath))  return { file: fallbackPath,  key: uploadName };
+        return null;
+    }).filter(Boolean);
     
     const client = new R2Client(accountId, accessKeyId, secretAccessKey, bucketName);
     const urls = {};
     
-    for (const installer of installers) {
-        const filePath = path.join(distDir, installer);
-        if (fs.existsSync(filePath)) {
-            try {
-                const key = `releases/v${VERSION}/${installer}`;
-                const url = await client.uploadFile(filePath, key);
-                urls[installer] = url;
-            } catch (error) {
-                console.error(`❌ Failed to upload ${installer}:`, error.message);
-            }
-        } else {
-            console.warn(`⚠️  File not found: ${installer}`);
+    for (const { file, key: uploadName } of installers) {
+        try {
+            const r2Key = `releases/v${VERSION}/${uploadName}`;
+            const url = await client.uploadFile(file, r2Key);
+            urls[uploadName] = url;
+        } catch (error) {
+            console.error(`❌ Failed to upload ${uploadName}:`, error.message);
         }
     }
     

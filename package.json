@@ -22,7 +22,7 @@
     "test:comprehensive": "cd python && python run_tests.py",
     "check:env": "cd python && python check_environment.py",
     "cleanup:duplicates": "node ./scripts/cleanup-duplicates.js",
-    "start": "electron .",
+    "start": "node scripts/start-electron.js",
     "verify-build": "node ./scripts/verify-build.js",
     "verify-prod": "node ./scripts/verify-production-build.js",
     "generate-icons": "node ./scripts/generate-icons.js",
@@ -31,7 +31,10 @@
     "build:prod": "cross-env NODE_ENV=production electron-builder --config electron-builder-prod.json",
     "build:dev": "electron-builder",
     "build:standalone": "node ./scripts/build-python-standalone.js && electron-builder",
-    "build:mac": "node ./scripts/build-python-standalone.js && electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:portable": "node ./scripts/build-python-standalone.js && electron-builder --win --config electron-builder-portable.json",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
     "build:compact-bar": "cd compact-bar-app && npm install && npm run build",
     "pack": "electron-builder --dir",
     "lint": "echo 'No linter configured'",
@@ -50,17 +53,17 @@
     ]
   },
   "build": {
-    "appId": "com.example.interviewaiassistant",
+    "appId": "space.interviewai.app",
     "productName": "Interview AI Assistant",
     "files": [
       "electron/**/*",
       "renderer/**/*",
-      "python/**/*",
+      "public/**/*",
       "assets/**/*",
       "package.json",
-      ".env",
       "!python/__pycache__/**/*",
-      "!**/*.pyc"
+      "!**/*.pyc",
+      "!python-dist/**/*"
     ],
     "extraResources": [
       {
@@ -69,18 +72,45 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "external-deps/tesseract/",
+        "to": "tesseract",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "asarUnpack": [
-      "**/*.{node,dll,dylib,so}",
-      "**/python/**/*"
+      "**/*.{node,dll,dylib,so}"
     ],
     "win": {
       "target": [
-        "nsis"
+        {
+          "target": "nsis",
+          "arch": ["x64", "ia32"]
+        },
+        "portable"
       ],
-      "publisherName": "Your Company",
-      "requestedExecutionLevel": "asInvoker"
+      "icon": "assets/icon.ico",
+      "publisherName": "Interview AI",
+      "requestedExecutionLevel": "asInvoker",
+      "artifactName": "Interview-AI-Setup-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Interview AI",
+      "runAfterFinish": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "include": "build/installer.nsh"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.exe"
     },
     "mac": {
       "target": [
@@ -91,20 +121,17 @@
     }
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.79.0",
-    "@vercel/blob": "^2.0.0",
     "dotenv": "^16.4.5",
     "electron-store": "^8.1.0",
     "eventsource-parser": "^1.1.2",
     "node-fetch": "^3.3.2",
-    "razorpay": "^2.9.6",
     "tesseract.js": "^5.1.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
-    "electron": "^31.3.1",
+    "electron": "^31.7.7",
     "electron-builder": "^24.13.3",
     "electron-icon-builder": "^2.0.1",
     "express": "^5.1.0",

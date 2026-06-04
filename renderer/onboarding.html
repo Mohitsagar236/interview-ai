@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>Welcome — Interview AI</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #080d18;
+      --surface: #0f1929;
+      --surface2: #172035;
+      --border: #1e2d45;
+      --border2: #263550;
+      --text: #e8edf5;
+      --text2: #7f92ae;
+      --text3: #3d5270;
+      --accent: #10b981;
+      --accent2: #059669;
+      --blue: #6366f1;
+      --radius: 14px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse 60% 50% at 50% -10%, rgba(16,185,129,.12) 0%, transparent 70%);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 28px 20px;
+    }
+
+    .wizard {
+      width: 100%;
+      max-width: 500px;
+    }
+
+    /* ── Step Indicator ── */
+    .steps {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 28px;
+      gap: 0;
+    }
+    .step-dot {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: var(--surface2);
+      border: 2px solid var(--border2);
+      color: var(--text3);
+      font-size: 12px;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .25s;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+    .step-dot.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 16px rgba(16,185,129,.5);
+    }
+    .step-dot.done {
+      background: var(--accent2);
+      border-color: var(--accent2);
+      color: #fff;
+    }
+    .step-dot.done::after {
+      content: '✓';
+      font-size: 13px;
+    }
+    .step-dot.done span { display: none; }
+    .step-line {
+      flex: 1; height: 2px;
+      background: var(--border2);
+      max-width: 64px;
+      transition: background .25s;
+    }
+    .step-line.done { background: var(--accent2); }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.4);
+    }
+
+    .step-page { display: none; }
+    .step-page.active { display: block; animation: slideUp .2s ease; }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    h1 { font-size: 21px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .subtitle { color: var(--text2); font-size: 13.5px; margin-bottom: 24px; line-height: 1.6; }
+
+    /* ── Feature List ── */
+    .feature-list { list-style: none; margin-bottom: 24px; }
+    .feature-list li {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      color: var(--text);
+      margin-bottom: 4px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+    }
+    .feature-list li .icon { font-size: 18px; flex-shrink: 0; }
+
+    /* ── Forms ── */
+    label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text2);
+      margin-bottom: 6px;
+    }
+    .hint { font-size: 12px; color: var(--text3); margin-top: 5px; line-height: 1.5; }
+
+    input[type="text"],
+    input[type="password"],
+    select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 10px 13px;
+      font-size: 13px;
+      font-family: inherit;
+      transition: border-color .15s, box-shadow .15s;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(16,185,129,.15);
+    }
+    input::placeholder { color: var(--text3); }
+    select option { background: var(--surface2); }
+
+    .form-row { margin-bottom: 18px; }
+
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 9px;
+      border-radius: 20px;
+      font-size: 11px; font-weight: 600;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .status-badge.ok      { background: rgba(16,185,129,.12); color: #34d399; border: 1px solid rgba(16,185,129,.2); }
+    .status-badge.err     { background: rgba(248,81,73,.12);  color: #f87171; border: 1px solid rgba(248,81,73,.2); }
+    .status-badge.idle    { background: var(--surface2);      color: var(--text3); border: 1px solid var(--border); }
+    .status-badge.testing { background: rgba(99,102,241,.12); color: #a5b4fc; border: 1px solid rgba(99,102,241,.2); }
+
+    .key-row { display: flex; gap: 8px; align-items: center; }
+    .key-row input { flex: 1; font-family: 'SF Mono', 'Cascadia Code', monospace; font-size: 12px; letter-spacing: .3px; }
+
+    /* ── Provider Grid ── */
+    .provider-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .provider-card {
+      background: var(--bg);
+      border: 2px solid var(--border2);
+      border-radius: 10px;
+      padding: 12px 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .15s;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text2);
+    }
+    .provider-card:hover {
+      border-color: var(--accent);
+      color: var(--text);
+      background: rgba(16,185,129,.05);
+    }
+    .provider-card.selected {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(16,185,129,.1);
+      font-weight: 700;
+    }
+    .provider-card .icon { font-size: 20px; margin-bottom: 5px; display: block; }
+
+    .provider-fields {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Nav Row ── */
+    .nav-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 22px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all .15s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+      color: #fff;
+      box-shadow: 0 3px 10px rgba(16,185,129,.35);
+    }
+    .btn-primary:hover {
+      box-shadow: 0 5px 16px rgba(16,185,129,.5);
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: var(--surface2);
+      border-color: var(--border2);
+      color: var(--text2);
+    }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+
+    .skip-link {
+      font-size: 12px;
+      color: var(--text3);
+      text-decoration: none;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 4px 8px;
+      transition: color .15s;
+    }
+    .skip-link:hover { color: var(--text2); }
+
+    /* ── Step 4 Done ── */
+    .done-icon {
+      font-size: 52px;
+      text-align: center;
+      margin-bottom: 16px;
+      filter: drop-shadow(0 0 20px rgba(16,185,129,.4));
+    }
+    .done-checklist { list-style: none; margin-bottom: 24px; }
+    .done-checklist li {
+      display: flex; gap: 10px; align-items: center;
+      padding: 9px 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 6px;
+      font-size: 13.5px;
+      color: var(--text);
+    }
+    .done-checklist li .ck {
+      color: var(--accent);
+      font-size: 14px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+<div class="wizard">
+
+  <!-- Step indicator -->
+  <div class="steps">
+    <div class="step-dot active" id="dot1">1</div>
+    <div class="step-line" id="line1"></div>
+    <div class="step-dot" id="dot2">2</div>
+    <div class="step-line" id="line2"></div>
+    <div class="step-dot" id="dot3">3</div>
+    <div class="step-line" id="line3"></div>
+    <div class="step-dot" id="dot4">4</div>
+  </div>
+
+  <!-- Step 1: Welcome -->
+  <div class="step-page active" id="step1">
+    <div class="card">
+      <h1>Welcome to Interview AI 👋</h1>
+      <p class="subtitle">Open-source, local-first, Bring Your Own Keys — your data never leaves your machine.</p>
+
+      <ul class="feature-list">
+        <li><span class="icon">🎙</span><span>Real-time transcription powered by Deepgram</span></li>
+        <li><span class="icon">🤖</span><span>AI answers via OpenAI, Anthropic, Gemini, Groq, Ollama & more</span></li>
+        <li><span class="icon">🔒</span><span>API keys stored encrypted locally using OS keychain</span></li>
+        <li><span class="icon">📡</span><span>Zero data sent to any third-party server — 100% private</span></li>
+        <li><span class="icon">🖥</span><span>Screen capture & resume-aware coaching</span></li>
+      </ul>
+
+      <div class="nav-row">
+        <span></span>
+        <button class="btn btn-primary" id="step1Next">Get started →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Deepgram -->
+  <div class="step-page" id="step2">
+    <div class="card">
+      <h1>🎙 Set up Deepgram</h1>
+      <p class="subtitle">Deepgram transcribes your voice in real time. Get a free API key at <strong>console.deepgram.com</strong> — free tier includes generous credits.</p>
+
+      <div class="form-row">
+        <label>Deepgram API Key</label>
+        <div class="key-row">
+          <input type="password" id="ob_deepgramKey" placeholder="dg_…" autocomplete="off" />
+          <span class="status-badge idle" id="ob_deepgramStatus">—</span>
+        </div>
+        <p class="hint">Paste your key above. It is stored encrypted on your device.</p>
+      </div>
+      <div class="form-row">
+        <label>Transcription model</label>
+        <select id="ob_deepgramModel">
+          <option value="nova-2">nova-2 (recommended)</option>
+          <option value="nova">nova</option>
+          <option value="enhanced">enhanced</option>
+          <option value="base">base</option>
+        </select>
+      </div>
+
+      <div class="nav-row">
+        <button class="btn btn-secondary" id="step2Back">← Back</button>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="skip-link" id="step2Skip">Skip for now</button>
+          <button class="btn btn-primary" id="step2Next">Next →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3: AI Provider -->
+  <div class="step-page" id="step3">
+    <div class="card">
+      <h1>🤖 Choose AI Provider</h1>
+      <p class="subtitle">Pick the LLM that generates interview answers and coaching. You can change this anytime in Settings.</p>
+
+      <div class="provider-grid" id="ob_providerGrid">
+        <div class="provider-card selected" data-provider="openai"><div class="icon">🟢</div>OpenAI</div>
+        <div class="provider-card" data-provider="anthropic"><div class="icon">🟣</div>Anthropic</div>
+        <div class="provider-card" data-provider="gemini"><div class="icon">🔵</div>Gemini</div>
+        <div class="provider-card" data-provider="groq"><div class="icon">⚡</div>Groq</div>
+        <div class="provider-card" data-provider="openrouter"><div class="icon">🔀</div>OpenRouter</div>
+        <div class="provider-card" data-provider="ollama"><div class="icon">🦙</div>Ollama</div>
+      </div>
+
+      <div class="provider-fields">
+        <!-- OpenAI -->
+        <div id="ob_ps-openai">
+          <div class="form-row">
+            <label>OpenAI API Key</label>
+            <div class="key-row">
+              <input type="password" id="ob_openaiKey" placeholder="sk-…" autocomplete="off" />
+              <span class="status-badge idle" id="ob_openaiStatus">—</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>Model <span style="color:#6e7681;font-size:11px">Default: gpt-4o-mini</span></label>
+            <input type="text" id="ob_openaiModel" placeholder="gpt-4o-mini" />
+          </div>
+        </div>
+        <!-- Anthropic -->
+        <div id="ob_ps-anthropic" style="display:none">
+          <div class="form-row">
+            <label>Anthropic API Key</label>
+            <div class="key-row">
+              <input type="password" id="ob_anthropicKey" placeholder="sk-ant-…" autocomplete="off" />
+              <span class="status-badge idle" id="ob_anthropicStatus">—</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>Model</label>
+            <input type="text" id="ob_anthropicModel" placeholder="claude-3-5-haiku-latest" />
+          </div>
+        </div>
+        <!-- Gemini -->
+        <div id="ob_ps-gemini" style="display:none">
+          <div class="form-row">
+            <label>Gemini API Key</label>
+            <div class="key-row">
+              <input type="password" id="ob_geminiKey" placeholder="AIza…" autocomplete="off" />
+              <span class="status-badge idle" id="ob_geminiStatus">—</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>Model</label>
+            <input type="text" id="ob_geminiModel" placeholder="gemini-1.5-flash" />
+          </div>
+        </div>
+        <!-- Groq -->
+        <div id="ob_ps-groq" style="display:none">
+          <div class="form-row">
+            <label>Groq API Key</label>
+            <div class="key-row">
+              <input type="password" id="ob_groqKey" placeholder="gsk_…" autocomplete="off" />
+              <span class="status-badge idle" id="ob_groqStatus">—</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>Model</label>
+            <input type="text" id="ob_groqModel" placeholder="llama3-70b-8192" />
+          </div>
+        </div>
+        <!-- OpenRouter -->
+        <div id="ob_ps-openrouter" style="display:none">
+          <div class="form-row">
+            <label>OpenRouter API Key</label>
+            <div class="key-row">
+              <input type="password" id="ob_openrouterKey" placeholder="sk-or-…" autocomplete="off" />
+              <span class="status-badge idle" id="ob_openrouterStatus">—</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>Model</label>
+            <input type="text" id="ob_openrouterModel" placeholder="openai/gpt-4o-mini" />
+          </div>
+        </div>
+        <!-- Ollama -->
+        <div id="ob_ps-ollama" style="display:none">
+          <p style="color:#8b949e;font-size:13px;margin-bottom:12px">No API key needed. Make sure Ollama is running locally.</p>
+          <div class="form-row">
+            <label>Base URL</label>
+            <input type="text" id="ob_ollamaBaseUrl" placeholder="http://localhost:11434" />
+          </div>
+          <div class="form-row">
+            <label>Model</label>
+            <input type="text" id="ob_ollamaModel" placeholder="llama3" />
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-row">
+        <button class="btn btn-secondary" id="step3Back">← Back</button>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="skip-link" id="step3Skip">Skip for now</button>
+          <button class="btn btn-primary" id="step3Next">Next →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 4: Done -->
+  <div class="step-page" id="step4">
+    <div class="card">
+      <div class="done-icon">🎉</div>
+      <h1 style="text-align:center">You're all set!</h1>
+      <p class="subtitle" style="text-align:center">Interview AI is configured and ready. You can change these settings anytime via the ⚙ icon in the toolbar.</p>
+
+      <ul class="done-checklist" id="doneChecklist">
+        <li><span class="ck">✓</span> Deepgram transcription configured</li>
+        <li><span class="ck">✓</span> AI provider configured</li>
+        <li><span class="ck">✓</span> All keys stored encrypted locally</li>
+      </ul>
+
+      <div class="nav-row">
+        <span></span>
+        <button class="btn btn-primary" id="launchBtn">Launch Interview AI →</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="onboarding.js"></script>
+</body>
+</html>

@@ -81,6 +81,15 @@
         }
     </script>
     
+    <style>
+      /* Section tints — light in light mode, dark in dark mode */
+      .section-tint-blue { background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); }
+      .section-tint-amber { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); }
+      html.dark .section-tint-blue  { background: linear-gradient(135deg, #0b1929 0%, #071422 100%); }
+      html.dark .section-tint-amber { background: linear-gradient(135deg, #1c1205 0%, #120c02 100%); }
+      html.dark .section-tint-blue  .feature-item,
+      html.dark .section-tint-amber .feature-item { border-color: rgba(255,255,255,.06); }
+    </style>
     <!-- Theme Color -->
     <meta name="theme-color" content="#0f172a">
     <meta name="msapplication-TileColor" content="#0f172a">
@@ -200,8 +209,8 @@
                 <span class="logo-text">Interview AI</span>
             </div>
             <div class="nav-links">
-                <a href="#features" class="nav-link">Premium Features</a>
-                <a href="#pricing" class="nav-link">Pricing</a>
+                <a href="#key-features" class="nav-link">Features</a>
+                <a href="#how-it-works" class="nav-link">How It Works</a>
                 <a href="#download" class="nav-link">Download</a>
                 <a href="user-guide.html" class="nav-link">User Guide</a>
                 <button class="shortcuts-btn nav-link" id="shortcutsBtn" aria-label="Keyboard Shortcuts" title="Keyboard Shortcuts">
@@ -214,7 +223,7 @@
                 </button>
                 <!-- Auth Section -->
                 <div class="auth-section">
-                    <a href="auth.html" class="btn-login" id="header-login-btn">Login</a>
+                    <a href="download.html" class="btn-login" id="header-login-btn">Download Free</a>
                     <div class="user-profile-dropdown" id="user-profile-dropdown" style="display: none;">
                         <button class="profile-trigger" id="profile-trigger">
                             <i class="fas fa-user-circle"></i>
@@ -264,15 +273,14 @@
                     </button>
                 </div>
                 <nav class="mobile-nav">
-                    <a href="#features" class="mobile-nav-link">Premium Features</a>
-                    <a href="#pricing" class="mobile-nav-link">Pricing</a>
-
+                    <a href="#key-features" class="mobile-nav-link">Features</a>
+                    <a href="#how-it-works" class="mobile-nav-link">How It Works</a>
                     <a href="#download" class="mobile-nav-link">Download</a>
                     <a href="user-guide.html" class="mobile-nav-link">User Guide</a>
                     <div class="mobile-nav-divider"></div>
                     <!-- Mobile Auth Section -->
-                    <a href="auth.html" class="mobile-nav-link mobile-login-btn" id="mobile-login-btn">
-                        <i class="fas fa-sign-in-alt"></i> Login / Sign Up
+                    <a href="download.html" class="mobile-nav-link mobile-login-btn" id="mobile-login-btn">
+                        <i class="fas fa-download"></i> Download Free
                     </a>
                     <a href="profile.html" class="mobile-nav-link mobile-profile-link" id="mobile-profile-link" style="display: none;">
                         <i class="fas fa-user"></i> My Profile
@@ -299,14 +307,13 @@
             <button class="promo-modal-close" aria-label="Close">&times;</button>
             <div class="promo-banner">
                 <div class="promo-banner-left">
-                    <div class="promo-gift-icon">🎁</div>
+                    <div class="promo-gift-icon">🔓</div>
                 </div>
                 <div class="promo-banner-right">
-                    <h2 class="promo-title">Special Offer for Students!</h2>
-                    <p class="promo-text">Use coupon code <span class="promo-code-highlight">'STUDENT'</span> and get</p>
-                    <p class="promo-credit">1 FREE CREDIT</p>
-                    <p class="promo-subtext">(1 credit = 1 hour of AI-powered interview assistance)</p>
-                    <a href="download.html" class="promo-cta-btn">Try it now - No payment required!</a>
+                    <h2 class="promo-title">100% Free &amp; Open Source</h2>
+                    <p class="promo-text">Download the desktop app, add your own AI API key, and run everything locally.</p>
+                    <p class="promo-subtext">Works with OpenAI, Claude, Groq, Gemini, xAI, and OpenRouter</p>
+                    <a href="download.html" class="promo-cta-btn">Download Now — It's Free!</a>
                 </div>
             </div>
         </div>
@@ -318,25 +325,25 @@
                 <div class="hero-left">
                     <div class="hero-badge-top">
                         <span class="pulse-badge">
-                            <i class="fas fa-sparkles"></i> FULL CODING INTERVIEW SUPPORT + HR INTERVIEW
+                            <i class="fas fa-lock-open"></i> 100% Free &amp; Open Source — No Subscription
                         </span>
                     </div>
                     <h1 class="hero-title">Your Real-Time <br><span class="gradient-text">AI</span> Interview Assistant</h1>
-                    <p class="hero-sub">Automatically get an answer to every job interview question with ChatGPT AI software. An AI interview copilot. Real-time and private.</p>
+                    <p class="hero-sub">Real-time AI coaching during any interview. Bring your own API key, run everything locally — private by design.</p>
                     <div class="hero-cta">
                         <a href="download.html" class="cta btn btn-primary">
-                            DOWNLOAD FREE
+                            <i class="fas fa-download" style="margin-right:6px"></i> Download Free
                         </a>
-                        <a href="#pricing" class="cta btn btn-secondary">
-                            GET CREDITS
+                        <a href="#how-it-works" class="cta btn btn-secondary">
+                            How It Works
                         </a>
                     </div>
                     <div class="payment-info">
-                        Free to download • Pay only for credits you use<br>
-                        <span class="no-subscription">No subscription required</span><br>
-                        <span class="promo-code" style="color: #10b981; font-weight: 600; margin-top: 8px; display: inline-block;">
-                            🎁 Use code <strong>STUDENT</strong> for 1 FREE credit (1 hour of usage)!   
-                        </span>
+                        <span style="display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-key" style="color:#10b981"></i> Bring Your Own API Key</span>
+                        &nbsp;·&nbsp;
+                        <span style="display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-shield-alt" style="color:#10b981"></i> Runs Locally</span>
+                        &nbsp;·&nbsp;
+                        <span style="display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-infinity" style="color:#10b981"></i> No Limits</span>
                     </div>
                     <div class="hero-stats">
                         <div class="stat-item">
@@ -473,7 +480,7 @@
         </section>
 
         <!-- Platform Compatibility Section -->
-        <section id="platforms" class="key-features" style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);">
+        <section id="platforms" class="key-features section-tint-blue">
             <div class="download-content">
                 <div class="section-title">
                     <h2>Works with Any Interview Platform</h2>
@@ -527,7 +534,7 @@
         </section>
 
         <!-- Privacy & Undetectability Section -->
-        <section id="privacy-features" class="key-features" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);">
+        <section id="privacy-features" class="key-features section-tint-amber">
             <div class="download-content">
                 <div class="section-title">
                     <h2>100% Private & Undetectable</h2>
@@ -577,9 +584,6 @@
                         </div>
                     </div>
                 </div>
-            </div>
-        </section>
-            </div>
             </div>
         </section>
 
@@ -703,44 +707,36 @@
             </div>
         </section>
 
-        <section id="pricing" class="pricing">
+        <section id="how-it-works" class="pricing">
             <div class="download-content">
             <div class="section-title">
-                <h2>Flexible Interview Prep</h2>
-                <p class="pricing-subtitle-main">One-time payment ✨</p>
+                <h2>Get Started in 3 Steps</h2>
+                <p class="pricing-subtitle-main">100% Free &amp; Open Source</p>
             </div>
-            
+
             <div class="pricing-benefits">
-                <span class="benefit-badge"><i class="fas fa-undo"></i> 30-Day Money Back</span>
-                <span class="benefit-badge"><i class="fas fa-infinity"></i> Credits Never Expire</span>
-                <span class="benefit-badge"><i class="fas fa-clock"></i> 1 Credit = 1h Interview</span>
-            </div>
-            
-            <div style="text-align: center; margin: 20px 0; padding: 15px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 12px; color: white; font-size: 18px; font-weight: 600; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);">
-                🎁 Special Offer: Use coupon code <span style="background: white; color: #059669; padding: 4px 12px; border-radius: 6px; margin: 0 5px;">STUDENT</span> to get 1 FREE credit!
+                <span class="benefit-badge"><i class="fas fa-lock-open"></i> No Subscription</span>
+                <span class="benefit-badge"><i class="fas fa-key"></i> Your Own API Keys</span>
+                <span class="benefit-badge"><i class="fas fa-server"></i> Runs Locally</span>
             </div>
 
             <div class="pricing-grid-three">
-                <!-- Basic Plan -->
+                <!-- Step 1 -->
                 <div class="pricing-card-modern">
                     <div class="plan-dots">
                         <span class="dot dot-green"></span>
                         <span class="dot dot-green"></span>
                         <span class="dot dot-green"></span>
                     </div>
-                    <h3 class="plan-title">Basic</h3>
-                    <div class="price-display">
-                        <span class="rupee-symbol">₹</span>
-                        <span class="price-amount">499</span>
-                    </div>
-                    <p class="price-usd">($5.99)</p>
-                    <p class="credit-info">3 Interview Credits</p>
-                    <a href="payment.html?product=basic" class="get-credits-btn">
-                        Get Credits <i class="fas fa-arrow-right"></i>
+                    <div style="font-size: 40px; margin: 16px 0 8px;">⬇️</div>
+                    <h3 class="plan-title">1. Download</h3>
+                    <p style="color: var(--text-secondary, #94a3b8); margin: 12px 0 20px; font-size: 14px; line-height: 1.6;">Download the desktop app for Windows, macOS, or Linux. Free forever.</p>
+                    <a href="download.html" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:10px;font-weight:700;text-decoration:none;font-size:14px;">
+                        Download App <i class="fas fa-arrow-right"></i>
                     </a>
                 </div>
 
-                <!-- Plus Plan (Featured) -->
+                <!-- Step 2 (Featured) -->
                 <div class="pricing-card-modern featured">
                     <div class="plan-dots">
                         <span class="dot dot-white"></span>
@@ -749,54 +745,34 @@
                         <span class="dot dot-white"></span>
                         <span class="dot dot-white"></span>
                         <span class="dot dot-white"></span>
-                        <span class="dot dot-white"></span>
-                        <span class="dot dot-white"></span>
-                        <span class="dot dot-white"></span>
                     </div>
-                    <h3 class="plan-title">Plus</h3>
-                    <div class="price-display">
-                        <span class="rupee-symbol">₹</span>
-                        <span class="price-amount">999</span>
-                    </div>
-                    <p class="price-usd">($11.99)</p>
-                    <p class="credit-info">6 Interview Credits + 2 Free</p>
-                    <a href="payment.html?product=plus" class="get-credits-btn featured-btn">
-                        Get Credits <i class="fas fa-arrow-right"></i>
+                    <div style="font-size: 40px; margin: 16px 0 8px;">🔑</div>
+                    <h3 class="plan-title">2. Add API Key</h3>
+                    <p style="margin: 12px 0 20px; font-size: 14px; line-height: 1.6; opacity: 0.9;">Get a free or paid API key from OpenAI, Groq, Anthropic, Gemini, or OpenRouter. Paste it in Settings.</p>
+                    <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:10px;background:rgba(255,255,255,0.2);color:white;text-decoration:none;font-size:14px;font-weight:700;border:1px solid rgba(255,255,255,0.3);">
+                        Get Free API Key <i class="fas fa-external-link-alt"></i>
                     </a>
                 </div>
 
-                <!-- Advanced Plan -->
+                <!-- Step 3 -->
                 <div class="pricing-card-modern">
                     <div class="plan-dots">
                         <span class="dot dot-green"></span>
                         <span class="dot dot-green"></span>
                         <span class="dot dot-green"></span>
-                        <span class="dot dot-green"></span>
-                        <span class="dot dot-green"></span>
-                        <span class="dot dot-green"></span>
-                        <span class="dot dot-yellow"></span>
-                        <span class="dot dot-yellow"></span>
-                        <span class="dot dot-yellow"></span>
-                        <span class="dot dot-yellow"></span>
-                        <span class="dot dot-yellow"></span>
-                        <span class="dot dot-yellow"></span>
                     </div>
-                    <h3 class="plan-title">Advanced</h3>
-                    <div class="price-display">
-                        <span class="rupee-symbol">₹</span>
-                        <span class="price-amount">1,699</span>
-                    </div>
-                    <p class="price-usd">($19.99)</p>
-                    <p class="credit-info">9 Interview Credits + 6 Free</p>
-                    <a href="payment.html?product=advanced" class="get-credits-btn">
-                        Get Credits <i class="fas fa-arrow-right"></i>
+                    <div style="font-size: 40px; margin: 16px 0 8px;">🚀</div>
+                    <h3 class="plan-title">3. Start Coaching</h3>
+                    <p style="color: var(--text-secondary, #94a3b8); margin: 12px 0 20px; font-size: 14px; line-height: 1.6;">Launch the app, join your interview, and get real-time AI answers streamed directly to you.</p>
+                    <a href="user-guide.html" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:10px;font-weight:700;text-decoration:none;font-size:14px;">
+                        View Guide <i class="fas fa-arrow-right"></i>
                     </a>
                 </div>
             </div>
 
             <div class="pricing-footer-note">
                 <i class="fas fa-info-circle"></i>
-                <span>You can split credits into 30-minute sessions.</span>
+                <span>You pay only for what you use directly to your AI provider. Interview AI itself is always free.</span>
             </div>
             </div>
         </section>
@@ -815,7 +791,7 @@
                         <h3>Windows</h3>
                         <p>For Windows 10 and 11</p>
                         <a href="download.html" class="cta btn btn-download">Download for Windows</a>
-                        <span class="download-info">Version 2.0.1 • 45 MB</span>
+                        <span class="download-info">Version 0.1.0 • ~590 MB • Fully bundled</span>
                     </div>
                     <div class="download-card">
                         <div class="download-icon">
@@ -823,8 +799,8 @@
                         </div>
                         <h3>macOS</h3>
                         <p>For macOS 11.0 or later</p>
-                        <a href="download.html" class="cta btn btn-download">Download for macOS</a>
-                        <span class="download-info">Version 2.0.1 • 52 MB</span>
+                        <a href="download.html" class="cta btn btn-download" style="opacity:.6;pointer-events:none;">Coming Soon</a>
+                        <span class="download-info">In development</span>
                     </div>
                     <div class="download-card">
                         <div class="download-icon">
@@ -832,8 +808,8 @@
                         </div>
                         <h3>Linux</h3>
                         <p>For Ubuntu, Debian, Fedora</p>
-                        <a href="download.html" class="cta btn btn-download">Download for Linux</a>
-                        <span class="download-info">Version 2.0.1 • 48 MB</span>
+                        <a href="download.html" class="cta btn btn-download" style="opacity:.6;pointer-events:none;">Coming Soon</a>
+                        <span class="download-info">In development</span>
                     </div>
                 </div>
             </div>
@@ -896,17 +872,17 @@
 
                 <div class="faq-item">
                     <h4>Do I need an internet connection?</h4>
-                    <p>Yes, an active internet connection is required for the AI features to work, as it connects to ChatGPT's API for generating responses.</p>
+                    <p>Yes, an active internet connection is required for AI responses, as the app sends queries to your chosen AI provider (OpenAI, Anthropic, Groq, etc.). All other processing — transcription, OCR, and resume search — runs locally.</p>
                 </div>
 
                 <div class="faq-item">
                     <h4>Can I use it for multiple interviews?</h4>
-                    <p>Absolutely! With the one-time payment, you get unlimited usage for as many interviews as you need. No restrictions or hidden fees.</p>
+                    <p>Absolutely! The app is 100% free with no session limits. You pay only for the AI tokens you consume directly to your API provider — Interview AI itself never charges you.</p>
                 </div>
 
                 <div class="faq-item">
-                    <h4>What if I'm not satisfied?</h4>
-                    <p>We offer a 30-day money-back guarantee. If Interview AI doesn't meet your expectations, just contact us for a full refund.</p>
+                    <h4>Which AI providers are supported?</h4>
+                    <p>OpenAI (GPT-4o, GPT-4o-mini), Anthropic (Claude), Groq (Llama, Mixtral), Google Gemini, xAI (Grok), and OpenRouter — which gives you access to 200+ models with one key.</p>
                 </div>
             </div>
             </div>
@@ -1018,7 +994,7 @@
                 <h4>Product</h4>
                 <ul>
                     <li><a href="#features">Features</a></li>
-                    <li><a href="#pricing">Pricing</a></li>
+                    <li><a href="#how-it-works">How It Works</a></li>
                     <li><a href="#download">Download</a></li>
                 </ul>
             </div>
@@ -1034,7 +1010,7 @@
             </div>
         </div>
         <div class="footer-bottom">
-            <p>&copy; 2025 Interview AI. All rights reserved.</p>
+            <p>&copy; 2025–2026 Interview AI. All rights reserved.</p>
             <div class="footer-badges">
                 <span class="badge"><i class="fas fa-shield-alt"></i> SOC 2 Compliant</span>
                 <span class="badge"><i class="fas fa-lock"></i> GDPR Ready</span>

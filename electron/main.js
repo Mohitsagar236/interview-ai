@@ -1,4 +1,6 @@
-const { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, screen, powerMonitor, session, shell } = require('electron');
+const _electronModule = require('electron');
+console.log('[DEBUG] require(electron) type:', typeof _electronModule, 'hasApp:', !!(_electronModule && _electronModule.app), 'hasIpcMain:', !!(_electronModule && _electronModule.ipcMain));
+const { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, screen, powerMonitor, session, shell } = _electronModule;
 const path = require('path');
 const WebSocket = require('ws');
 const { spawn } = require('child_process');
@@ -15,7 +17,7 @@ const envLocations = [
   path.join(__dirname, '..', '.env'),                    // Development: project root
   path.join(process.resourcesPath, 'app.asar.unpacked', '.env'), // Packaged: asar unpacked
   path.join(process.resourcesPath, '.env'),              // Packaged: resources folder (if not in asar)
-  path.join(app.getPath('userData'), '.env'),            // User data folder (user override)
+  (() => { try { return path.join(app.getPath('userData'), '.env'); } catch(e) { return ''; } })(), // User data folder (user override)
   path.join(process.cwd(), '.env')                       // Current working directory
 ];
 
@@ -39,22 +41,19 @@ if (!envLoaded) {
   console.warn(`[ENV] This is OK if you configure API keys via Settings UI.`);
 }
 
-// Log critical variables to verify they're loaded
-// Configure bundled Tesseract OCR path (if packaged)
-if (app.isPackaged) {
+// Configure bundled Tesseract OCR path — deferred until app is ready
+if (app && typeof app.whenReady === 'function') app.whenReady().then(() => {
+  if (!app.isPackaged) return;
   const tesseractExe = path.join(process.resourcesPath, 'tesseract', 'tesseract.exe');
   const tessdataPath = path.join(process.resourcesPath, 'tesseract', 'tessdata');
-  
   if (fs.existsSync(tesseractExe)) {
     process.env.TESSERACT_CMD = tesseractExe;
     process.env.TESSDATA_PREFIX = tessdataPath;
     console.log('[OCR] ✅ Using bundled Tesseract OCR');
-    console.log(`[OCR] Tesseract: ${tesseractExe}`);
-    console.log(`[OCR] Tessdata: ${tessdataPath}`);
   } else {
     console.warn('[OCR] ⚠️ Bundled Tesseract not found, will try system installation');
   }
-}
+});
 
 console.log('[ENV] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 console.log('[ENV] Environment Variables Status:');
@@ -81,7 +80,7 @@ console.log('[ENV] ━━━━━━━━━━━━━━━━━━━━�
 
 let mainWindow;
 let toolbarWindow;
-let noCreditsWindow; // Window to show when user has no credits
+let setupWindow = null;
 let overlayWindows = [];
 let overlayDebug = false;
 let forcedStealth = !process.env.DISABLE_STEALTH_OVERLAY; // Can be disabled via environment variable
@@ -107,16 +106,10 @@ let coachWS = null;
 let coachWSConnecting = false;
 // File I/O cache to reduce disk operations
 let fileCache = new Map(); // path -> { data, timestamp }
-// Credits Manager
-const CreditsManager = require('./credits-manager');
-let creditsManager = null;
 const CACHE_TTL = 5000; // 5 seconds cache
 const CACHE_MAX_SIZE = 20;
-// Desktop Activation Manager (Simplified Authentication)
-const DesktopActivationManager = require('./desktop-activation-manager');
-let activationManager = null;
-let activationWindow = null;
-let creditSyncInterval = null; // Periodic credit sync timer
+// CHANGED: Load settings store (encrypted local persistence for BYOK mode)
+const { store: settingsStore, saveApiKey, getApiKey, clearAllKeys, hasAnyAiKey, hasDeepgramKey, hasClaudeAccount } = require('./settings-store');
 
 // ---------------- Backend bootstrap helpers ----------------
 function getPythonScriptsRoot() {
@@ -204,12 +197,19 @@ async function ensureVenvReady(logPrefix='[Backend]') {
   const venvPy = getVenvPythonExe(venvDir);
   if (fs.existsSync(venvPy)) return { venvDir, venvPy };
 
-  // Need to create a venv using system Python
+  // First-time setup — show progress window
+  createSetupWindow();
+  sendSetupProgress(2, 'Finding Python installation…', 'Looking for Python 3…', 'inf');
+
   const sysPy = await resolveSystemPython();
   if (!sysPy) {
-    console.error(`${logPrefix} No system Python found. Please install Python 3.x and relaunch.`);
+    const msg = 'Python 3 not found. Please install Python 3.10+ from python.org and relaunch.';
+    sendSetupProgress(0, 'Python not found', msg, 'err');
+    console.error(`${logPrefix} ${msg}`);
     return { error: 'python-missing' };
   }
+
+  sendSetupProgress(8, 'Creating virtual environment…', `Found Python: ${sysPy.cmd}`, 'ok');
   console.log(`${logPrefix} Creating virtual environment at ${venvDir}`);
   await new Promise((resolve, reject) => {
     const args = [...sysPy.args, '-m', 'venv', venvDir];
@@ -217,25 +217,54 @@ async function ensureVenvReady(logPrefix='[Backend]') {
     p.on('exit', (code) => code === 0 ? resolve() : reject(new Error('venv exit code '+code)));
     p.on('error', reject);
   });
-  // Upgrade pip and install requirements
-  const req = getRequirementsPath();
-  try { fs.accessSync(req, fs.constants.R_OK); } catch { console.warn(`${logPrefix} requirements.txt not found: ${req}`); return { venvDir, venvPy }; }
-  console.log(`${logPrefix} Upgrading pip...`);
+
+  sendSetupProgress(15, 'Upgrading pip…', 'Virtual environment created', 'ok');
+
   await new Promise((resolve) => {
     const p = spawn(venvPy, ['-m', 'pip', 'install', '--upgrade', 'pip', 'wheel', 'setuptools'], { shell: false });
-    p.stdout.on('data', d => console.log(`${logPrefix} ${d.toString().trim()}`));
-    p.stderr.on('data', d => console.log(`${logPrefix} ${d.toString().trim()}`));
+    const fwd = (d) => { const s = d.toString().trim(); if (s) { console.log(`${logPrefix} ${s}`); sendSetupProgress(null, null, s); } };
+    p.stdout.on('data', fwd);
+    p.stderr.on('data', fwd);
     p.on('exit', () => resolve());
     p.on('error', () => resolve());
   });
+
+  // Prefer portable (lightweight) requirements for the initial install
+  const scriptRoot = getPythonScriptsRoot();
+  const portableReq = path.join(scriptRoot, 'requirements-portable.txt');
+  const fullReq = getRequirementsPath();
+  const req = fs.existsSync(portableReq) ? portableReq : fullReq;
+  const reqLabel = fs.existsSync(portableReq) ? 'requirements-portable.txt' : 'requirements.txt';
+
+  try { fs.accessSync(req, fs.constants.R_OK); } catch {
+    console.warn(`${logPrefix} requirements file not found: ${req}`);
+    return { venvDir, venvPy };
+  }
+
+  sendSetupProgress(20, `Installing AI backend packages (${reqLabel})…`,
+    `Installing from ${reqLabel} — this takes 2-5 min…`, 'inf');
   console.log(`${logPrefix} Installing backend requirements from ${req}`);
+
+  let installPct = 20;
   await new Promise((resolve, reject) => {
-    const p = spawn(venvPy, ['-m', 'pip', 'install', '-r', req], { shell: false });
-    p.stdout.on('data', d => console.log(`${logPrefix} ${d.toString().trim()}`));
-    p.stderr.on('data', d => console.log(`${logPrefix} ${d.toString().trim()}`));
+    const p = spawn(venvPy, ['-m', 'pip', 'install', '-r', req, '--progress-bar', 'off'], { shell: false });
+    const fwd = (d) => {
+      const lines = d.toString().split(/\r?\n/).filter(Boolean);
+      lines.forEach(l => {
+        console.log(`${logPrefix} ${l}`);
+        // Bump progress as packages install
+        if (/Successfully installed/i.test(l)) { installPct = Math.min(installPct + 4, 88); }
+        else if (/Collecting|Downloading|Installing/i.test(l)) { installPct = Math.min(installPct + 1, 87); }
+        sendSetupProgress(installPct, `Installing packages…`, l);
+      });
+    };
+    p.stdout.on('data', fwd);
+    p.stderr.on('data', fwd);
     p.on('exit', (code) => code === 0 ? resolve() : reject(new Error('pip exit code '+code)));
     p.on('error', reject);
   });
+
+  sendSetupProgress(95, 'Finalizing setup…', 'All packages installed successfully', 'ok');
   return { venvDir, venvPy };
 }
 
@@ -457,11 +486,6 @@ function ensureDataPaths() {
   interviewsPath = path.join(dataDir, 'interviews.json');
   activitiesPath = path.join(dataDir, 'activities.json');
     
-    // Initialize credits manager
-    if (!creditsManager) {
-      creditsManager = new CreditsManager(dataDir);
-    }
-    
     // Initialize files if missing
     if (!fs.existsSync(profilePath)) {
       fs.writeFileSync(profilePath, JSON.stringify({ fullName: '', email: '', phone: '', location: '', bio: '' }, null, 2));
@@ -570,6 +594,42 @@ console.log(`[CONFIG] Environment: ${process.env.NODE_ENV || 'development'}`);
 console.log(`[CONFIG] Cloud Mode: ${config.cloudMode}`);
 console.log(`[CONFIG] Server URL: ${config.serverUrl}`);
 
+// ── Setup progress window ─────────────────────────────────────────────────────
+
+function createSetupWindow() {
+  if (setupWindow && !setupWindow.isDestroyed()) { setupWindow.focus(); return setupWindow; }
+  setupWindow = new BrowserWindow({
+    width: 540,
+    height: 520,
+    resizable: false,
+    center: true,
+    title: 'Interview AI — Setting Up',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
+    }
+  });
+  setupWindow.loadFile(path.join(__dirname, '../renderer/setup.html'));
+  setupWindow.on('closed', () => { setupWindow = null; });
+  return setupWindow;
+}
+
+function sendSetupProgress(pct, label, log, logType) {
+  const payload = { pct, label, log, logType };
+  [setupWindow, mainWindow].forEach(w => {
+    try { if (w && !w.isDestroyed()) w.webContents.send('setup-progress', payload); } catch {}
+  });
+}
+
+function closeSetupWindow() {
+  try { if (setupWindow && !setupWindow.isDestroyed()) { setupWindow.close(); setupWindow = null; } } catch {}
+}
+
+ipcMain.handle('setup:retry', () => { startPythonServer(); return true; });
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function startPythonServer() {
   // Skip local server if cloud mode is enabled
   if (config.cloudMode) {
@@ -587,9 +647,8 @@ function startPythonServer() {
     return;
   }
   (async () => {
-    // DEVELOPMENT MODE: Skip standalone executable to use latest Python code
-    // Check for standalone executable first (PyInstaller build)
-    const standaloneExe = false; // Disabled: getStandalonePythonExecutable();
+    // Check for standalone PyInstaller executable first (bundled portable build)
+    const standaloneExe = getStandalonePythonExecutable();
     if (standaloneExe) {
       console.log(`[Server] Using standalone executable: ${standaloneExe}`);
       
@@ -601,7 +660,7 @@ function startPythonServer() {
       if (!env.USE_STREAMING_TRANSCRIPTION) env.USE_STREAMING_TRANSCRIPTION = 'true';
       if (!env.OPENAI_BASE_URL) env.OPENAI_BASE_URL = 'https://openrouter.ai/api/v1';
       if (!env.STREAMING_PROVIDER) env.STREAMING_PROVIDER = 'deepgram';
-      if (!env.AUTO_COACH_ENABLED) env.AUTO_COACH_ENABLED = 'false';
+      if (!env.AUTO_COACH_ENABLED) env.AUTO_COACH_ENABLED = 'true';
       if (!env.AI_TEMPERATURE) env.AI_TEMPERATURE = '0.7';
       if (!env.USE_PADDLEOCR) env.USE_PADDLEOCR = '1';  // Enable PaddleOCR for superior OCR accuracy
       
@@ -650,7 +709,45 @@ function startPythonServer() {
         }
         
         if (settings.defaultLLM) env.DEFAULT_LLM = settings.defaultLLM;
-        
+
+        // BYOK: encrypted store keys take priority over settings.json (same as venv path)
+        const _ekOpenAI     = getApiKey('openai');
+        const _ekOpenRouter = getApiKey('openrouter');
+        const _ekAnthropic  = getApiKey('anthropic');
+        const _ekGroq       = getApiKey('groq');
+        const _ekDeepgram   = getApiKey('deepgram');
+        const _ekGemini     = getApiKey('gemini');
+        const _ekXAI        = getApiKey('xai');
+        if (_ekOpenAI)     { env.OPENAI_API_KEY     = _ekOpenAI;     console.log('[Server] ✅ OpenAI key loaded from encrypted store'); }
+        if (_ekOpenRouter) { env.OPENROUTER_API_KEY = _ekOpenRouter; console.log('[Server] ✅ OpenRouter key loaded from encrypted store'); }
+        if (_ekAnthropic)  { env.ANTHROPIC_API_KEY  = _ekAnthropic;  console.log('[Server] ✅ Anthropic key loaded from encrypted store'); }
+        if (_ekGroq)       { env.GROQ_API_KEY       = _ekGroq;       console.log('[Server] ✅ Groq key loaded from encrypted store'); }
+        if (_ekDeepgram)   { env.DEEPGRAM_API_KEY   = _ekDeepgram;   console.log('[Server] ✅ Deepgram key loaded from encrypted store'); }
+        if (_ekGemini)     { env.GEMINI_API_KEY     = _ekGemini;     console.log('[Server] ✅ Gemini key loaded from encrypted store'); }
+        if (_ekXAI)        { env.XAI_API_KEY        = _ekXAI;        console.log('[Server] ✅ xAI key loaded from encrypted store'); }
+
+        // AI provider / model from electron-store
+        const _storedAi = settingsStore.get('ai') || {};
+        if (_storedAi.model && _storedAi.model.trim()) {
+          env.DEFAULT_LLM = _storedAi.model;
+          console.log(`[Server] ✅ DEFAULT_LLM = ${_storedAi.model} (from store)`);
+        }
+        const _providerBaseUrls = {
+          openrouter: 'https://openrouter.ai/api/v1',
+          groq:       'https://api.groq.com/openai/v1',
+          anthropic:  'https://api.anthropic.com/v1',
+          gemini:     'https://generativelanguage.googleapis.com/v1beta/openai',
+          openai:     'https://api.openai.com/v1',
+        };
+        if (_providerBaseUrls[_storedAi.provider]) {
+          env.OPENAI_BASE_URL = _providerBaseUrls[_storedAi.provider];
+        } else if (_storedAi.provider === 'ollama') {
+          env.OLLAMA_BASE_URL = _storedAi.baseUrl || 'http://localhost:11434';
+          if (!env.DEFAULT_LLM) env.DEFAULT_LLM = _storedAi.model || 'llama3';
+        } else if (_storedAi.provider === 'custom' && _storedAi.baseUrl) {
+          env.OPENAI_BASE_URL = _storedAi.baseUrl;
+        }
+
         // Log final status
         console.log('[Server] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('[Server] Environment Variables Status:');
@@ -674,8 +771,8 @@ function startPythonServer() {
           }
         });
         console.log('[Server] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        
-        const hasAIKey = env.OPENROUTER_API_KEY || env.OPENAI_API_KEY || 
+
+        const hasAIKey = env.OPENROUTER_API_KEY || env.OPENAI_API_KEY ||
                          env.ANTHROPIC_API_KEY || env.GROQ_API_KEY || env.XAI_API_KEY;
         if (!hasAIKey) {
           console.warn('[Server] ⚠️ WARNING: No AI API keys configured! Add keys in Settings.');
@@ -683,7 +780,7 @@ function startPythonServer() {
       } catch (e) {
         console.error('[Server] ❌ Could not load settings:', e.message);
       }
-      
+
       serverProcess = spawn(standaloneExe, [], { env });
       attachServerIO();
       return;
@@ -696,9 +793,14 @@ function startPythonServer() {
       return;
     }
     let py = null;
-    
-    // DEVELOPMENT MODE: Prefer venv with updated code over embedded Python
-    console.log('[Server] Checking for venv Python (preferred for development)...');
+
+    // Check if venv already exists (returning user → show window right away)
+    const venvAlreadyExists = fs.existsSync(getVenvPythonExe(getUserVenvDir()));
+    if (venvAlreadyExists && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
+
+    console.log('[Server] Checking for venv Python...');
     const prep = await ensureVenvReady('[Server.Setup]');
     if (prep && prep.error === 'python-missing') {
       const { dialog, shell } = require('electron');
@@ -714,6 +816,7 @@ function startPythonServer() {
       return;
     }
     if (!prep || !prep.venvPy) {
+      sendSetupProgress(0, 'Setup failed', 'Failed to prepare backend environment', 'err');
       console.error('[Server] Failed to prepare backend environment');
       return;
     }
@@ -740,7 +843,7 @@ function startPythonServer() {
     if (!env.USE_STREAMING_TRANSCRIPTION) env.USE_STREAMING_TRANSCRIPTION = 'true';
     if (!env.OPENAI_BASE_URL) env.OPENAI_BASE_URL = 'https://openrouter.ai/api/v1';
     if (!env.STREAMING_PROVIDER) env.STREAMING_PROVIDER = 'deepgram';
-    if (!env.AUTO_COACH_ENABLED) env.AUTO_COACH_ENABLED = 'false';
+    if (!env.AUTO_COACH_ENABLED) env.AUTO_COACH_ENABLED = 'true';
     if (!env.AI_TEMPERATURE) env.AI_TEMPERATURE = '0.7';
     if (!env.USE_PADDLEOCR) env.USE_PADDLEOCR = '1';  // Enable PaddleOCR for superior OCR accuracy
     
@@ -792,12 +895,51 @@ function startPythonServer() {
       
       // Apply other settings
       if (settings.defaultLLM) env.DEFAULT_LLM = settings.defaultLLM;
-      
+
+      // BYOK: Read encrypted API keys from electron-store (set via Settings/Onboarding UI).
+      // These always take priority over .env and settings.json.
+      const _ekOpenAI     = getApiKey('openai');
+      const _ekOpenRouter = getApiKey('openrouter');
+      const _ekAnthropic  = getApiKey('anthropic');
+      const _ekGroq       = getApiKey('groq');
+      const _ekDeepgram   = getApiKey('deepgram');
+      const _ekGemini     = getApiKey('gemini');
+      const _ekXAI        = getApiKey('xai');
+      if (_ekOpenAI)     { env.OPENAI_API_KEY     = _ekOpenAI;     console.log('[Server] ✅ OpenAI key loaded from encrypted store'); }
+      if (_ekOpenRouter) { env.OPENROUTER_API_KEY = _ekOpenRouter; console.log('[Server] ✅ OpenRouter key loaded from encrypted store'); }
+      if (_ekAnthropic)  { env.ANTHROPIC_API_KEY  = _ekAnthropic;  console.log('[Server] ✅ Anthropic key loaded from encrypted store'); }
+      if (_ekGroq)       { env.GROQ_API_KEY       = _ekGroq;       console.log('[Server] ✅ Groq key loaded from encrypted store'); }
+      if (_ekDeepgram)   { env.DEEPGRAM_API_KEY   = _ekDeepgram;   console.log('[Server] ✅ Deepgram key loaded from encrypted store'); }
+      if (_ekGemini)     { env.GEMINI_API_KEY     = _ekGemini;     console.log('[Server] ✅ Gemini key loaded from encrypted store'); }
+      if (_ekXAI)        { env.XAI_API_KEY        = _ekXAI;        console.log('[Server] ✅ xAI key loaded from encrypted store'); }
+
+      // Apply AI provider / model from electron-store
+      const _storedAi = settingsStore.get('ai') || {};
+      if (_storedAi.model && _storedAi.model.trim()) {
+        env.DEFAULT_LLM = _storedAi.model;
+        console.log(`[Server] ✅ DEFAULT_LLM = ${_storedAi.model} (from store)`);
+      }
+      const providerBaseUrls = {
+        openrouter: 'https://openrouter.ai/api/v1',
+        groq:       'https://api.groq.com/openai/v1',
+        anthropic:  'https://api.anthropic.com/v1',
+        gemini:     'https://generativelanguage.googleapis.com/v1beta/openai',
+        openai:     'https://api.openai.com/v1',
+      };
+      if (providerBaseUrls[_storedAi.provider]) {
+        env.OPENAI_BASE_URL = providerBaseUrls[_storedAi.provider];
+      } else if (_storedAi.provider === 'ollama') {
+        env.OLLAMA_BASE_URL = _storedAi.baseUrl || 'http://localhost:11434';
+        if (!env.DEFAULT_LLM) env.DEFAULT_LLM = _storedAi.model || 'llama3';
+      } else if (_storedAi.provider === 'custom' && _storedAi.baseUrl) {
+        env.OPENAI_BASE_URL = _storedAi.baseUrl;
+      }
+
       // Log final status of critical environment variables
       console.log('[Server] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log('[Server] Environment Variables Status:');
       const keys = [
-        'OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'DEEPGRAM_API_KEY', 
+        'OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'DEEPGRAM_API_KEY',
         'ANTHROPIC_API_KEY', 'GROQ_API_KEY', 'XAI_API_KEY',
         'OPENAI_BASE_URL', 'DEFAULT_LLM', 'USE_STREAMING_TRANSCRIPTION',
         'STREAMING_PROVIDER', 'AI_TEMPERATURE', 'AUTO_COACH_ENABLED'
@@ -844,6 +986,7 @@ function startPythonServer() {
 }
 
 function attachServerIO() {
+  let serverReady = false;
   serverProcess.stdout.setEncoding('utf8');
   serverProcess.stdout.on('data', (data) => {
     const lines = data.toString().split(/\r?\n/).filter(Boolean);
@@ -853,6 +996,15 @@ function attachServerIO() {
       if (m) {
         serverPort = parseInt(m[1], 10) || serverPort;
         try { fs.writeFileSync(path.join(__dirname, '..', '.server-port'), String(serverPort)); } catch {}
+        if (!serverReady) {
+          serverReady = true;
+          sendSetupProgress(100, 'Ready!', `Server started on port ${serverPort}`, 'ok');
+          // Show main window and close setup window after brief delay
+          setTimeout(() => {
+            closeSetupWindow();
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+          }, 600);
+        }
       }
     });
   });
@@ -861,12 +1013,19 @@ function attachServerIO() {
     const lines = data.toString().split(/\r?\n/).filter(Boolean);
     lines.forEach(l => {
       console.error(`[py.err] ${l}`);
-      // Also check stderr for port info since Python logging goes to stderr
       const m = l.match(/listening on ws:\/\/[^:]+:(\d+)/i);
       if (m) {
         serverPort = parseInt(m[1], 10) || serverPort;
         try { fs.writeFileSync(path.join(__dirname, '..', '.server-port'), String(serverPort)); } catch {}
         console.log(`[Server] Detected port ${serverPort}, wrote to .server-port`);
+        if (!serverReady) {
+          serverReady = true;
+          sendSetupProgress(100, 'Ready!', `Server started on port ${serverPort}`, 'ok');
+          setTimeout(() => {
+            closeSetupWindow();
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+          }, 600);
+        }
       }
     });
   });
@@ -892,21 +1051,18 @@ function createMainWindow() {
   });
 
   // Load the main UI
-  mainWindow.loadFile(path.join(__dirname, '../public/index.html'));
+  mainWindow.loadFile(path.join(__dirname, '../renderer/app.html'));
 
-  // Don't automatically show window
   mainWindow.once('ready-to-show', () => {
-    // Window will be shown only when explicitly requested
     if (process.env.NODE_ENV === 'development') {
       mainWindow.webContents.openDevTools();
+      mainWindow.show(); // always show in dev
     }
+    // In production: window stays hidden until server is ready (setup window shown instead)
+    // startPythonServer / attachServerIO call mainWindow.show() once port is detected
 
-  // DON'T auto-open toolbar - only create if user is authenticated with credits
-  // The toolbar will be created after login or when user presses Ctrl+Shift+T
-  // try { toggleToolbarWindow(); } catch {}
-  
-  // Kick off server auto-start shortly after UI shown to let output stream
-  setTimeout(() => { try { startPythonServer(); } catch (e) { console.error('Failed to auto-start server', e); } }, 300);
+    // Kick off server auto-start shortly after UI is ready
+    setTimeout(() => { try { startPythonServer(); } catch (e) { console.error('Failed to auto-start server', e); } }, 300);
   });
 
   // Prevent this window from appearing in screen recordings/shares
@@ -1023,210 +1179,15 @@ function createStealthOverlay() {
 }
 
 // ==========================================
-// CREDIT GATE SYSTEM
+// (Credits/Activation system removed in open-source BYOK mode)
 // ==========================================
 
-/**
- * Check if user has credits available
- * Returns: { hasCredits: boolean, remaining: number, total: number }
- */
-function checkCreditsAvailable() {
-  if (!creditsManager) {
-    console.log('[Credits] Credits manager not initialized');
-    return { hasCredits: false, remaining: 0, total: 0, error: 'Credits manager not initialized' };
-  }
-
-  const creditsInfo = creditsManager.getCreditsInfo();
-  const hasCredits = creditsInfo.remaining > 0;
-  
-  console.log(`[Credits] Check: ${creditsInfo.remaining} remaining out of ${creditsInfo.total}`);
-  
-  return {
-    hasCredits,
-    remaining: creditsInfo.remaining,
-    used: creditsInfo.used,
-    total: creditsInfo.total,
-    planType: creditsInfo.planType
-  };
-}
 
 /**
- * Show activation window for desktop app
- */
-function showActivationWindow() {
-  // Don't create if already exists
-  if (activationWindow && !activationWindow.isDestroyed()) {
-    activationWindow.focus();
-    return activationWindow;
-  }
-
-  activationWindow = new BrowserWindow({
-    width: 500,
-    height: 650,
-    resizable: false,
-    center: true,
-    title: 'Activate - Interview AI',
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
-    }
-  });
-
-  activationWindow.loadFile(path.join(__dirname, 'activation.html'));
-
-  activationWindow.on('closed', () => {
-    activationWindow = null;
-  });
-
-  console.log('[Activation] Showed activation window');
-  return activationWindow;
-}
-
-/**
- * Show no-credits window when user has 0 credits
- */
-function showNoCreditsWindow() {
-  // Close toolbar if it exists
-  if (toolbarWindow && !toolbarWindow.isDestroyed()) {
-    toolbarWindow.close();
-    toolbarWindow = null;
-  }
-
-  // Don't create if already exists
-  if (noCreditsWindow && !noCreditsWindow.isDestroyed()) {
-    noCreditsWindow.focus();
-    return noCreditsWindow;
-  }
-
-  noCreditsWindow = new BrowserWindow({
-    width: 520,
-    height: 700,
-    resizable: false,
-    center: true,
-    title: 'No Credits - Interview AI',
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
-    }
-  });
-
-  noCreditsWindow.loadFile(path.join(__dirname, 'no-credits.html'));
-
-  noCreditsWindow.on('closed', () => {
-    noCreditsWindow = null;
-  });
-
-  console.log('[Credits] Showed no-credits window');
-  return noCreditsWindow;
-}
-
-/**
- * Start periodic credit synchronization
- */
-function startCreditSync() {
-  // Clear any existing interval
-  if (creditSyncInterval) {
-    clearInterval(creditSyncInterval);
-    creditSyncInterval = null;
-  }
-
-  // Only start if activated
-  if (!activationManager || !activationManager.isActivated()) {
-    console.log('[CreditSync] Not starting - desktop not activated');
-    return;
-  }
-
-  console.log('[CreditSync] Starting periodic credit sync (every 30 seconds)');
-
-  // Sync immediately
-  syncCreditsNow();
-
-  // Then sync every 30 seconds
-  creditSyncInterval = setInterval(() => {
-    syncCreditsNow();
-  }, 30000); // 30 seconds
-}
-
-/**
- * Stop periodic credit synchronization
- */
-function stopCreditSync() {
-  if (creditSyncInterval) {
-    clearInterval(creditSyncInterval);
-    creditSyncInterval = null;
-    console.log('[CreditSync] Stopped periodic credit sync');
-  }
-}
-
-/**
- * Sync credits immediately from server
- */
-async function syncCreditsNow() {
-  try {
-    if (!activationManager || !activationManager.isActivated()) {
-      console.log('[CreditSync] Skipping - not activated');
-      return;
-    }
-
-    if (!creditsManager) {
-      console.log('[CreditSync] Skipping - credits manager not initialized');
-      return;
-    }
-
-    console.log('[CreditSync] Syncing credits...');
-    const result = await creditsManager.syncWithActivation(activationManager);
-
-    if (result.success) {
-      console.log('[CreditSync] ✅ Credits synced successfully:', result.credits);
-
-      // Broadcast to all windows
-      const allWindows = [mainWindow, toolbarWindow, noCreditsWindow].filter(w => w && !w.isDestroyed());
-      allWindows.forEach(win => {
-        win.webContents.send('credits-updated', result.credits);
-      });
-
-      // Check if credits ran out
-      if (result.credits.remaining <= 0 && toolbarWindow && !toolbarWindow.isDestroyed()) {
-        console.log('[CreditSync] ⚠️ Credits depleted - showing no-credits window');
-        showNoCreditsWindow();
-      }
-
-      // Check if credits restored (close no-credits window if open)
-      if (result.credits.remaining > 0 && noCreditsWindow && !noCreditsWindow.isDestroyed()) {
-        console.log('[CreditSync] ✅ Credits restored - closing no-credits window');
-        noCreditsWindow.close();
-        noCreditsWindow = null;
-      }
-    } else {
-      console.log('[CreditSync] ⚠️ Sync failed (using cached):', result.error);
-    }
-  } catch (error) {
-    console.error('[CreditSync] Error during sync:', error);
-  }
-}
-
-/**
- * Check credits and create toolbar only if credits available
- * Returns: true if toolbar created, false if no credits
+ * CHANGED: Open-source BYOK mode — always create toolbar without credit/activation checks.
  */
 function createToolbarWithCreditCheck() {
-  // Check activation first
-  if (!activationManager || !activationManager.isActivated()) {
-    console.log('[Credits] Cannot check credits - desktop not activated');
-    return false;
-  }
-
-  const creditsCheck = checkCreditsAvailable();
-  
-  if (!creditsCheck.hasCredits) {
-    console.log('[Credits] ❌ No credits available - showing no-credits window');
-    showNoCreditsWindow();
-    return false;
-  }
-
-  console.log('[Credits] ✅ Credits available - creating toolbar');
+  console.log('[BYOK] ✅ Open-source mode - creating toolbar without credit/activation check');
   createToolbarWindow();
   return true;
 }
@@ -1285,18 +1246,6 @@ function createToolbarWindow() {
     try {
       const settings = readJSON(settingsPath, {});
       toolbarWindow.webContents.send('settings-loaded', settings);
-      
-      // Send initial credits if available
-      if (creditsManager) {
-        const creditsInfo = creditsManager.getCreditsInfo();
-        toolbarWindow.webContents.send('credits-updated', {
-          creditsRemaining: creditsInfo.remaining,
-          creditsUsed: creditsInfo.used,
-          creditsTotal: creditsInfo.total,
-          planType: creditsInfo.planType || 'free'
-        });
-        console.log('[Toolbar] Sent initial credits on load:', creditsInfo);
-      }
       
       // Measure actual bar content and shrink window to snug fit (+8px padding for shadow)
       setTimeout(() => {
@@ -1385,17 +1334,178 @@ function createToolbarWindow() {
   return toolbarWindow;
 }
 
+// CHANGED: Onboarding window for first-run (open-source BYOK mode)
+let onboardingWindow = null;
+function createOnboardingWindow() {
+  if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+    onboardingWindow.focus();
+    return onboardingWindow;
+  }
+  onboardingWindow = new BrowserWindow({
+    width: 640,
+    height: 700,
+    resizable: false,
+    center: true,
+    title: 'Welcome to Interview AI',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
+    }
+  });
+  onboardingWindow.loadFile(path.join(__dirname, '../renderer/onboarding.html'));
+  onboardingWindow.on('closed', () => { onboardingWindow = null; });
+  return onboardingWindow;
+}
+
+// CHANGED: Settings window
+let settingsWindow = null;
+function createSettingsWindow() {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.focus();
+    return settingsWindow;
+  }
+  settingsWindow = new BrowserWindow({
+    width: 700,
+    height: 760,
+    resizable: true,
+    center: true,
+    title: 'Settings — Interview AI',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
+    }
+  });
+  settingsWindow.loadFile(path.join(__dirname, '../renderer/settings.html'));
+  settingsWindow.on('closed', () => { settingsWindow = null; });
+  return settingsWindow;
+}
+
+// CHANGED: Settings IPC handlers (BYOK mode)
+ipcMain.handle('settings:get', (_event, key) => settingsStore.get(key));
+ipcMain.handle('settings:set', (_event, key, value) => { settingsStore.set(key, value); return true; });
+ipcMain.handle('settings:save-api-key', (_event, provider, key) => { saveApiKey(provider, key); return true; });
+ipcMain.handle('settings:get-api-key', (_event, provider) => getApiKey(provider));
+ipcMain.handle('settings:clear-all', () => { settingsStore.clear(); clearAllKeys(); return true; });
+ipcMain.handle('settings:get-all', () => settingsStore.store);
+ipcMain.handle('settings:has-ai-key', () => hasAnyAiKey());
+ipcMain.handle('settings:has-deepgram-key', () => hasDeepgramKey());
+ipcMain.handle('settings:open-window', () => { createSettingsWindow(); return true; });
+
+// ── Claude Account sign-in — opens system browser (Chrome) ──────────────────
+const CLAUDE_OAUTH = {
+  CLIENT_ID:    '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
+  AUTHORIZE_URL: 'https://claude.ai/oauth/authorize',
+  TOKEN_URL:     'https://claude.ai/oauth/token',
+  API_KEY_URL:   'https://api.anthropic.com/api/oauth/claude_cli/create_api_key',
+  SCOPES:        'org:create_api_key user:profile',
+};
+
+// Small waiting window shown while the user authorises in Chrome.
+let claudeAccountWindow = null;
+
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = require('net').createServer();
+    srv.listen(0, 'localhost', () => { const p = srv.address().port; srv.close(() => resolve(p)); });
+    srv.on('error', reject);
+  });
+}
+
+ipcMain.handle('claude-account:sign-in', async (_event, apiKey) => {
+  if (!apiKey || !apiKey.startsWith('sk-ant-')) {
+    return { ok: false, error: 'Invalid API key format' };
+  }
+
+  // Validate the key with a lightweight models list call
+  try {
+    const testRes = await fetch('https://api.anthropic.com/v1/models', {
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+    });
+    if (!testRes.ok) {
+      const body = await testRes.text();
+      return { ok: false, error: `Invalid API key (${testRes.status}): ${body.slice(0, 120)}` };
+    }
+  } catch (e) {
+    return { ok: false, error: `Could not reach Anthropic API: ${e.message}` };
+  }
+
+  // Persist and restart Python server
+  saveApiKey('claude_account', apiKey);
+  saveApiKey('anthropic', apiKey);
+  settingsStore.set('ai', {
+    ...(settingsStore.get('ai') || {}),
+    provider: 'anthropic',
+    model: settingsStore.get('ai.model') || 'claude-sonnet-4-6',
+  });
+  try { if (serverProcess) serverProcess.kill(); } catch {}
+  setTimeout(() => startServer().catch(() => {}), 800);
+
+  return { ok: true };
+});
+
+ipcMain.handle('shell:open-external', (_event, url) => {
+  if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+    shell.openExternal(url);
+  }
+});
+
+ipcMain.handle('claude-account:get-status', () => {
+  const hasAccount = hasClaudeAccount();
+  const key = hasAccount ? getApiKey('claude_account') : null;
+  return {
+    connected: hasAccount,
+    maskedKey: key ? `sk-ant-...${key.slice(-6)}` : null,
+  };
+});
+
+ipcMain.handle('claude-account:sign-out', () => {
+  // Get the account key before deleting so we can also clear it from 'anthropic'
+  const accountKey = getApiKey('claude_account');
+  settingsStore.delete('keys.claude_account');
+  // If the active anthropic key was the one we generated via OAuth, clear it too
+  const anthropicKey = getApiKey('anthropic');
+  if (accountKey && anthropicKey === accountKey) {
+    settingsStore.delete('keys.anthropic');
+    settingsStore.set('ai', { ...(settingsStore.get('ai') || {}), provider: null });
+  }
+  return { ok: true };
+});
+ipcMain.handle('onboarding:complete', () => {
+  settingsStore.set('onboardingComplete', true);
+  if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+    onboardingWindow.close();
+    onboardingWindow = null;
+  }
+  // Restart Python server so it picks up the API keys saved during onboarding
+  if (serverProcess) {
+    try { serverProcess.kill('SIGTERM'); } catch {}
+    serverProcess = null;
+  }
+  setTimeout(() => {
+    startPythonServer();
+    setTimeout(() => createToolbarWindow(), 800);
+  }, 400);
+  return true;
+});
+
+// Ctrl+, shortcut to open settings (registered after window focus)
+function registerSettingsShortcut() {
+  try {
+    globalShortcut.register('CommandOrControl+,', () => {
+      createSettingsWindow();
+    });
+  } catch (e) {
+    console.warn('[Settings] Could not register Ctrl+, shortcut:', e.message);
+  }
+}
+
 function toggleToolbarWindow() {
   if (!toolbarWindow || toolbarWindow.isDestroyed()) {
-    // Check credits before creating toolbar
-    if (authManager && authManager.isAuthenticated()) {
-      const creditsCheck = checkCreditsAvailable();
-      if (!creditsCheck.hasCredits) {
-        console.log('[Credits] Cannot create toolbar - no credits');
-        showNoCreditsWindow();
-        return false;
-      }
-    }
     createToolbarWindow();
     return true;
   }
@@ -1608,6 +1718,34 @@ ipcMain.handle('server-start', async () => {
   }
 });
 
+// Allow renderer to restart the Python backend (e.g., after settings change)
+ipcMain.handle('server-restart', async () => {
+  try {
+    console.log('[Server] Restart requested...');
+    
+    // Stop existing server if running
+    if (serverProcess) {
+      console.log('[Server] Stopping existing server...');
+      serverProcess.kill('SIGTERM');
+      serverProcess = null;
+      serverPort = null;
+      await new Promise(r => setTimeout(r, 500));
+    }
+    
+    // Start fresh server with new settings
+    console.log('[Server] Starting new server with updated settings...');
+    startPythonServer();
+    
+    // Wait for server to be ready
+    await new Promise(r => setTimeout(r, 1500));
+    
+    return { ok: true, running: !!serverProcess, port: serverPort };
+  } catch (e) {
+    console.error('[Server] Restart failed:', e);
+    return { ok: false, error: e.message };
+  }
+});
+
 ipcMain.handle('capture-screen', async () => {
   try {
     const result = await captureScreen();
@@ -1715,6 +1853,23 @@ ipcMain.handle('list-windows', async () => {
   }
 });
 
+ipcMain.handle('get-stealth-status', () => {
+  const toolbarProtected = !!(toolbarWindow && !toolbarWindow.isDestroyed());
+  return {
+    contentProtection: toolbarProtected,
+    stealthOverlay: overlayWindows.length > 0,
+    platform: process.platform,
+    // On Windows, WDA_EXCLUDEFROMCAPTURE hides window from screen captures.
+    // On macOS, setContentProtection hides from screen recordings.
+    // On Linux, this is a best-effort no-op.
+    effectiveProtection: process.platform !== 'linux',
+  };
+});
+
+ipcMain.handle('toggle-toolbar', () => {
+  return toggleToolbarWindow();
+});
+
 ipcMain.handle('toggle-stealth', () => {
   if (overlayWindows.length > 0) {
     // Disable stealth mode
@@ -1764,10 +1919,15 @@ ipcMain.handle('toolbar-resize', (_event, height) => {
 ipcMain.handle('toolbar-resize-dimensions', (_event, dims) => {
   try {
     if (!toolbarWindow || toolbarWindow.isDestroyed()) return false;
-    const { width: curW, height: curH } = toolbarWindow.getBounds();
+    const { x: curX, y: curY, width: curW, height: curH } = toolbarWindow.getBounds();
     const targetW = Math.max(220, Math.min(1600, Math.round(dims && dims.width ? dims.width : curW)));
     const targetH = Math.max(40, Math.min(800, Math.round(dims && dims.height ? dims.height : curH)));
-    toolbarWindow.setBounds({ ...toolbarWindow.getBounds(), width: targetW, height: targetH });
+    // Keep the pill's horizontal center fixed by adjusting x when width changes
+    const pillCenterX = curX + Math.floor(curW / 2);
+    let newX = pillCenterX - Math.floor(targetW / 2);
+    const { width: screenW } = screen.getPrimaryDisplay().workAreaSize;
+    newX = Math.max(0, Math.min(screenW - targetW, newX));
+    toolbarWindow.setBounds({ x: newX, y: curY, width: targetW, height: targetH });
     return true;
   } catch (e) {
     console.error('toolbar-resize-dimensions failed', e.message);
@@ -2030,7 +2190,28 @@ ipcMain.handle('resume-search', (_event, query, limit=5) => {
 
 // ---------------- Settings IPC -----------------
 ipcMain.handle('settings-load', () => {
-  try { ensureDataPaths(); return readJSON(settingsPath, {}); } catch (e) { return { error: e.message }; }
+  try {
+    ensureDataPaths();
+    const base = readJSON(settingsPath, {});
+    // Merge masked representations from the encrypted store so the Settings
+    // modal can show that a key exists (without revealing the full value).
+    const storeToField = {
+      openrouter: 'openrouterApiKey',
+      openai:     'openaiApiKey',
+      anthropic:  'anthropicApiKey',
+      groq:       'groqApiKey',
+      xai:        'xaiApiKey',
+      deepgram:   'deepgramApiKey',
+      assemblyai: 'assemblyaiApiKey',
+    };
+    for (const [provider, field] of Object.entries(storeToField)) {
+      if (!base[field]) {
+        const stored = getApiKey(provider);
+        if (stored) base[field] = stored; // return actual key so form can show it's set
+      }
+    }
+    return base;
+  } catch (e) { return { error: e.message }; }
 });
 
 ipcMain.handle('settings-save', (_event, patch) => {
@@ -2039,6 +2220,36 @@ ipcMain.handle('settings-save', (_event, patch) => {
     const cur = readJSON(settingsPath, {});
     const merged = { ...cur, ...patch, updatedAt: new Date().toISOString() };
     writeJSON(settingsPath, merged);
+
+    // CRITICAL: Mirror API keys into the encrypted electron-store so that
+    // toolbar.js BYOK flow (settings:get-api-key / settings:get-all) can
+    // read them. The two storage systems must stay in sync.
+    const keyMap = {
+      openrouterApiKey: 'openrouter',
+      openaiApiKey:     'openai',
+      anthropicApiKey:  'anthropic',
+      groqApiKey:       'groq',
+      xaiApiKey:        'xai',
+      deepgramApiKey:   'deepgram',
+      assemblyaiApiKey: 'assemblyai',
+    };
+    let detectedProvider = null;
+    for (const [patchKey, storeProvider] of Object.entries(keyMap)) {
+      if (patch[patchKey]) {
+        saveApiKey(storeProvider, patch[patchKey]);
+        if (!detectedProvider && storeProvider !== 'deepgram' && storeProvider !== 'assemblyai') {
+          detectedProvider = storeProvider;
+        }
+      }
+    }
+    // Update the ai.provider in electron-store so settings:get-all returns it
+    if (detectedProvider) {
+      settingsStore.set('ai.provider', detectedProvider);
+    }
+    if (patch.defaultLLM) {
+      settingsStore.set('ai.model', patch.defaultLLM);
+    }
+
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('settings-updated');
     logActivity('settings.save', { keys: Object.keys(patch||{}) });
     return { ok: true, settings: merged };
@@ -2178,9 +2389,8 @@ ipcMain.handle('dashboard-stats', () => {
 });
 
 // ---------------- Interview Live Session (simple timer) -----------------
-let activeInterviewSession = null; // { id, startedAt, elapsedSec, creditsCheckInterval }
+let activeInterviewSession = null; // { id, startedAt, elapsedSec }
 let interviewTickInterval = null;
-let creditMonitorInterval = null; // NEW: Monitor credits during session
 
 ipcMain.handle('interview-start-session', async (_event, id) => {
   try {
@@ -2190,41 +2400,9 @@ ipcMain.handle('interview-start-session', async (_event, id) => {
     if (activeInterviewSession && activeInterviewSession.id !== id) {
       // Auto-stop previous
       clearInterval(interviewTickInterval); interviewTickInterval = null;
-      clearInterval(creditMonitorInterval); creditMonitorInterval = null;
       activeInterviewSession = null;
     }
     if (it.status === 'completed') return { ok:false, error:'Already completed' };
-    
-    // Check authentication first
-    if (authManager && !authManager.isAuthenticated()) {
-      return { ok: false, error: 'Please login to use the desktop app. Credits are required for interview sessions.', requiresAuth: true };
-    }
-    
-    // Sync credits from server before starting session
-    if (authManager && authManager.isAuthenticated() && creditsManager) {
-      try {
-        const syncResult = await authManager.getCredits();
-        if (syncResult.success) {
-          const credits = {
-            total: syncResult.credits.total,
-            used: syncResult.credits.used,
-            remaining: syncResult.credits.remaining,
-            lastSynced: new Date().toISOString(),
-            syncedWithServer: true,
-            planType: syncResult.credits.planType
-          };
-          creditsManager.saveCredits(credits);
-          console.log('[Session] Credits synced before session start:', credits);
-        }
-      } catch (syncError) {
-        console.error('[Session] Error syncing credits:', syncError);
-      }
-    }
-    
-    // Check credits before starting session
-    if (creditsManager && !creditsManager.hasCredits()) {
-      return { ok: false, error: 'No credits remaining. Please purchase more credits to continue.', requiresCredits: true };
-    }
     
     activeInterviewSession = { id, startedAt: Date.now(), elapsedSec:0 };
     
@@ -2236,83 +2414,6 @@ ipcMain.handle('interview-start-session', async (_event, id) => {
       try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('interview-session-tick', { id, elapsedSec: activeInterviewSession.elapsedSec }); } catch {}
     }, 1000);
     
-    // NEW: Credit monitoring interval - checks every hour (3600 seconds)
-    if (creditMonitorInterval) { clearInterval(creditMonitorInterval); }
-    creditMonitorInterval = setInterval(async () => {
-      if (!activeInterviewSession || !creditsManager) return;
-      
-      const elapsedHours = activeInterviewSession.elapsedSec / 3600;
-      console.log(`[CreditMonitor] Checking credits at ${elapsedHours.toFixed(2)} hours elapsed`);
-      
-      // Get current credits
-      const creditsInfo = creditsManager.getCreditsInfo();
-      const hoursRemaining = creditsInfo.remaining;
-      
-      console.log(`[CreditMonitor] Credits remaining: ${hoursRemaining.toFixed(2)} hours`);
-      
-      // If no credits remaining, auto-stop the session
-      if (hoursRemaining <= 0) {
-        console.log('[CreditMonitor] ⚠️ Credits depleted during session - auto-stopping interview');
-        
-        // End the session automatically
-        const sessionId = activeInterviewSession.id;
-        const durationSec = activeInterviewSession.elapsedSec;
-        
-        // Clear intervals
-        clearInterval(interviewTickInterval); interviewTickInterval = null;
-        clearInterval(creditMonitorInterval); creditMonitorInterval = null;
-        
-        // End session in interview data
-        const data = readInterviews();
-        const interview = data.interviews.find(i => i.id === sessionId);
-        if (interview) {
-          interview.status = 'completed';
-          interview.completedAt = new Date().toISOString();
-          interview.actualDurationSec = durationSec;
-          interview.notes = (interview.notes || '') + '\\n[Auto-stopped: Credits depleted]';
-          writeInterviews(data);
-        }
-        
-        // End credits session
-        const creditsResult = creditsManager.endSession(sessionId, durationSec);
-        
-        // Sync to server
-        if (activationManager && activationManager.isActivated() && creditsResult.success) {
-          try {
-            await creditsManager.updateViaActivation(activationManager, creditsInfo.used);
-          } catch (err) {
-            console.error('[CreditMonitor] Error syncing credits:', err);
-          }
-        }
-        
-        // Clear active session
-        activeInterviewSession = null;
-        
-        // Notify UI that session ended due to no credits
-        try {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('interview-session-ended', { 
-              id: sessionId, 
-              reason: 'credits-depleted',
-              durationSec 
-            });
-          }
-        } catch (err) {
-          console.error('[CreditMonitor] Error notifying UI:', err);
-        }
-        
-        // Show no credits window
-        showNoCreditsWindow();
-        
-        console.log('[CreditMonitor] ✅ Session auto-stopped successfully');
-      }
-    }, 3600000); // Check every hour (3600000ms = 1 hour)
-    
-    // Start credits session
-    if (creditsManager) {
-      creditsManager.startSession(id);
-    }
-    
     logActivity('interview.session.start', { id });
     return { ok:true, session: activeInterviewSession };
   } catch (e) { return { ok:false, error:e.message }; }
@@ -2322,10 +2423,8 @@ ipcMain.handle('interview-end-session', async (_event, id, options) => {
   try {
     if (!activeInterviewSession || activeInterviewSession.id !== id) return { ok:false, error:'No active session' };
     
-    // Clear all intervals
     clearInterval(interviewTickInterval); interviewTickInterval = null;
-    clearInterval(creditMonitorInterval); creditMonitorInterval = null; // NEW: Clear credit monitor
-    
+
     const durationSec = activeInterviewSession.elapsedSec;
     activeInterviewSession = null;
     const data = readInterviews();
@@ -2341,54 +2440,12 @@ ipcMain.handle('interview-end-session', async (_event, id, options) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('interviews-updated');
     }
     
-    // End credits session and deduct credits
-    let creditsResult = null;
-    if (creditsManager) {
-      creditsResult = creditsManager.endSession(id, durationSec);
-      
-      // Sync credits to server via activation manager
-      if (activationManager && activationManager.isActivated() && creditsResult.success) {
-        try {
-          const creditsInfo = creditsManager.getCreditsInfo();
-          const updateResult = await creditsManager.updateViaActivation(activationManager, creditsInfo.used);
-          
-          if (updateResult.success) {
-            console.log('[Session] ✅ Credits synced to server after session end:', updateResult.credits);
-            
-            // Update creditsResult with server response
-            creditsResult.creditsRemaining = updateResult.credits.remaining;
-            creditsResult.creditsUsed = updateResult.credits.used;
-            
-            // Check if credits depleted
-            if (updateResult.credits.remaining <= 0) {
-              console.log('[Session] ⚠️ Credits depleted after session');
-              showNoCreditsWindow();
-            }
-          } else {
-            console.warn('[Session] ⚠️ Credits sync failed (using cached):', updateResult.error);
-          }
-        } catch (syncError) {
-          console.error('[Session] Error syncing credits to server:', syncError);
-        }
-      }
-      
-      // Notify all windows about credits update
-      const creditsUpdateData = {
-        creditsRemaining: creditsResult.creditsRemaining,
-        creditsUsed: creditsResult.creditsUsed,
-        sessionCredits: creditsResult.session.creditsDeducted
-      };
-      
-      const allWindows = [mainWindow, toolbarWindow].filter(w => w && !w.isDestroyed());
-      allWindows.forEach(win => {
-        win.webContents.send('credits-updated', creditsUpdateData);
-      });
-    }
-    
-    logActivity('interview.session.end', { id, durationSec, creditsDeducted: creditsResult?.session?.creditsDeducted });
-    return { ok:true, durationSec, credits: creditsResult };
+    logActivity('interview.session.end', { id, durationSec });
+    return { ok:true, durationSec };
   } catch (e) { return { ok:false, error:e.message }; }
 });
+
+
 
 ipcMain.handle('interview-append-note', (_event, id, note) => {
   try {
@@ -2425,375 +2482,31 @@ ipcMain.handle('activity-list', (_event, limit=50) => {
   } catch (e) { return { ok:false, error:e.message }; }
 });
 
-// -------------- Credits System IPC --------------
-ipcMain.handle('credits-load', () => {
-  try {
-    ensureDataPaths();
-    if (!creditsManager) {
-      return { ok: false, error: 'Credits manager not initialized' };
-    }
-    const info = creditsManager.getCreditsInfo();
-    return { ok: true, credits: info };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
+// -------------- Credits System IPC (open-source stubs) --------------
+const OPEN_SOURCE_CREDITS = { remaining: 9999, used: 0, total: 9999, planType: 'open-source' };
+ipcMain.handle('credits-load', () => ({ ok: true, credits: OPEN_SOURCE_CREDITS }));
+ipcMain.handle('credits-sync', async () => ({ ok: true, credits: OPEN_SOURCE_CREDITS }));
+ipcMain.handle('credits-check', () => ({ ok: true, hasCredits: true, credits: OPEN_SOURCE_CREDITS }));
+ipcMain.handle('credits-start-session', () => ({ ok: true }));
+ipcMain.handle('credits-end-session', () => ({ ok: true, success: true }));
+ipcMain.handle('credits-get-active-session', () => ({ ok: true, session: null }));
 
-ipcMain.handle('credits-sync', async (_event, userId) => {
-  try {
-    ensureDataPaths();
-    if (!creditsManager) {
-      return { ok: false, error: 'Credits manager not initialized' };
-    }
-    
-    // Note: In a full implementation, you'd pass the Supabase client here
-    // For now, return current local credits
-    const info = creditsManager.getCreditsInfo();
-    return { ok: true, credits: info, message: 'Credits loaded from local storage' };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-ipcMain.handle('credits-check', (_event, hoursNeeded = 0) => {
-  try {
-    ensureDataPaths();
-    if (!creditsManager) {
-      return { ok: false, error: 'Credits manager not initialized' };
-    }
-    const hasCredits = creditsManager.hasCredits(hoursNeeded);
-    const info = creditsManager.getCreditsInfo();
-    return { ok: true, hasCredits, credits: info };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-ipcMain.handle('credits-start-session', (_event, sessionId) => {
-  try {
-    ensureDataPaths();
-    if (!creditsManager) {
-      return { ok: false, error: 'Credits manager not initialized' };
-    }
-    return creditsManager.startSession(sessionId);
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-ipcMain.handle('credits-end-session', (_event, sessionId, durationSeconds) => {
-  try {
-    ensureDataPaths();
-    if (!creditsManager) {
-      return { ok: false, error: 'Credits manager not initialized' };
-    }
-    const result = creditsManager.endSession(sessionId, durationSeconds);
-    
-    // Log activity
-    if (result.success) {
-      logActivity('credits.session.end', {
-        sessionId,
-        durationSeconds,
-        creditsDeducted: result.session.creditsDeducted,
-        creditsRemaining: result.creditsRemaining
-      });
-    }
-    
-    return result;
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-ipcMain.handle('credits-get-active-session', () => {
-  try {
-    ensureDataPaths();
-    if (!creditsManager) {
-      return { ok: false, error: 'Credits manager not initialized' };
-    }
-    const session = creditsManager.getActiveSession();
-    return { ok: true, session };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-ipcMain.handle('credits-add', (_event, amount) => {
-  try {
-    ensureDataPaths();
-    if (!creditsManager) {
-      return { ok: false, error: 'Credits manager not initialized' };
-    }
-    const credits = creditsManager.addCredits(amount);
-    logActivity('credits.add', { amount, newTotal: credits.total });
-    return { ok: true, credits };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-// -------------- Desktop Activation IPC (Simplified Authentication) --------------
-
-// Check if desktop is activated
-ipcMain.handle('desktop-is-activated', () => {
-  try {
-    if (!activationManager) {
-      return { activated: false, error: 'Activation manager not initialized' };
-    }
-    return { activated: activationManager.isActivated() };
-  } catch (e) {
-    return { activated: false, error: e.message };
-  }
-});
-
-// Get activation status and user data
-ipcMain.handle('desktop-get-activation-status', () => {
-  try {
-    if (!activationManager) {
-      return { ok: false, error: 'Activation manager not initialized' };
-    }
-    const status = activationManager.getActivationStatus();
-    return { ok: true, ...status };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-// Get user data
-ipcMain.handle('desktop-get-user', () => {
-  try {
-    if (!activationManager) {
-      return { ok: false, error: 'Activation manager not initialized' };
-    }
-    const userData = activationManager.getUserData();
-    return { ok: true, user: userData };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-// Activate desktop app with code
-ipcMain.handle('desktop-activate', async (_event, activationCode) => {
-  try {
-    if (!activationManager) {
-      return { success: false, error: 'Activation manager not initialized' };
-    }
-    
-    const result = await activationManager.activate(activationCode);
-    
-    if (result.success) {
-      console.log('[Activation] ✅ Activation successful, processing...');
-      
-      // Sync credits after successful activation
-      const credits = {
-        total: result.credits.total,
-        used: result.credits.used,
-        remaining: result.credits.remaining,
-        lastSynced: new Date().toISOString(),
-        syncedWithServer: true,
-        planType: result.planType
-      };
-      
-      if (creditsManager) {
-        creditsManager.saveCredits(credits);
-        console.log('[Activation] Credits synced after activation:', credits);
-      } else {
-        console.warn('[Activation] ⚠️ creditsManager not initialized, but continuing...');
-      }
-      
-      // CHECK CREDITS - Show no-credits window if 0
-      if (credits.remaining <= 0) {
-        console.log('[Credits] ❌ No credits available after activation');
-        if (activationWindow && !activationWindow.isDestroyed()) {
-          activationWindow.close();
-        }
-        showNoCreditsWindow();
-        return {
-          success: true,
-          hasCredits: false,
-          credits: credits,
-          message: 'Activation successful but no credits available'
-        };
-      }
-      
-      console.log('[Credits] ✅ Activation successful with credits');
-      
-      // Close activation window
-      if (activationWindow && !activationWindow.isDestroyed()) {
-        console.log('[Activation] Closing activation window...');
-        activationWindow.close();
-        activationWindow = null;
-      }
-      
-      // Launch toolbar window with credits
-      console.log('[Activation] Launching toolbar window...');
-      try {
-        createToolbarWindow();
-        console.log('[Activation] ✅ Toolbar window created');
-      } catch (toolbarError) {
-        console.error('[Activation] ❌ Error creating toolbar:', toolbarError);
-      }
-      
-      // Start periodic credit sync
-      try {
-        startCreditSync();
-        console.log('[Activation] ✅ Credit sync started');
-      } catch (syncError) {
-        console.error('[Activation] ⚠️ Error starting credit sync:', syncError);
-      }
-      
-      // Notify toolbar window about credits update
-      if (toolbarWindow && !toolbarWindow.isDestroyed()) {
-        toolbarWindow.webContents.send('credits-updated', {
-          creditsRemaining: credits.remaining,
-          creditsUsed: credits.used,
-          creditsTotal: credits.total,
-          planType: credits.planType
-        });
-        console.log('[Activation] ✅ Notified toolbar about credits update');
-      } else {
-        console.warn('[Activation] ⚠️ Toolbar window not ready for notification');
-      }
-      
-      logActivity('activation.success', { email: result.user.email });
-    }
-    
-    return { ...result, hasCredits: true };
-  } catch (e) {
-    console.error('[Activation] Activation IPC error:', e);
-    return { success: false, error: e.message };
-  }
-});
-
-// Deactivate desktop app
-ipcMain.handle('desktop-deactivate', () => {
-  try {
-    if (!activationManager) {
-      return { ok: false, error: 'Activation manager not initialized' };
-    }
-    
-    // Stop credit sync
-    stopCreditSync();
-    
-    // Clear credits on deactivation
-    if (creditsManager) {
-      const emptyCredits = {
-        total: 0,
-        used: 0,
-        remaining: 0,
-        lastSynced: null,
-        syncedWithServer: false,
-        planType: 'free'
-      };
-      creditsManager.saveCredits(emptyCredits);
-      console.log('[Activation] Cleared credits on deactivation');
-    }
-    
-    // Close toolbar if it exists
-    if (toolbarWindow && !toolbarWindow.isDestroyed()) {
-      toolbarWindow.close();
-      toolbarWindow = null;
-    }
-    
-    // Close no-credits window if it exists
-    if (noCreditsWindow && !noCreditsWindow.isDestroyed()) {
-      noCreditsWindow.close();
-      noCreditsWindow = null;
-    }
-    
-    activationManager.deactivate();
-    logActivity('activation.deactivate', {});
-    
-    console.log('[Activation] Deactivation complete - all windows closed, credits cleared');
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-// Open activation window
-ipcMain.handle('desktop-open-activation', () => {
-  try {
-    showActivationWindow();
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-// Close activation window
-ipcMain.handle('close-activation-window', () => {
-  try {
-    if (activationWindow && !activationWindow.isDestroyed()) {
-      activationWindow.close();
-    }
-    // Refresh credits in main window
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('credits-updated');
-    }
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-// Get current credits
-ipcMain.handle('desktop-get-credits', async () => {
-  try {
-    if (!activationManager || !activationManager.isActivated()) {
-      return { success: false, error: 'Desktop not activated' };
-    }
-    
-    if (!creditsManager) {
-      return { success: false, error: 'Credits manager not initialized' };
-    }
-    
-    const creditsInfo = creditsManager.getCreditsInfo();
-    return { success: true, credits: creditsInfo };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
-});
-
-// Manually sync credits from server
-ipcMain.handle('desktop-sync-credits', async () => {
-  try {
-    await syncCreditsNow();
-    
-    if (!creditsManager) {
-      return { success: false, error: 'Credits manager not initialized' };
-    }
-    
-    const creditsInfo = creditsManager.getCreditsInfo();
-    return { success: true, credits: creditsInfo };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
-});
-
-// Credits available - close no-credits window and allow app usage
-ipcMain.handle('credits-available', () => {
-  try {
-    if (noCreditsWindow && !noCreditsWindow.isDestroyed()) {
-      noCreditsWindow.close();
-      noCreditsWindow = null;
-    }
-    console.log('[Credits] Credits now available - user can use the app');
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
+// Open-source stubs — activation handlers return safe defaults
+ipcMain.handle('desktop-is-activated', () => ({ activated: true }));
+ipcMain.handle('desktop-get-activation-status', () => ({ ok: true, activated: true, planType: 'open-source' }));
+ipcMain.handle('desktop-get-user', () => ({ ok: true, user: null }));
+ipcMain.handle('desktop-activate', async () => ({ success: true, hasCredits: true }));
+ipcMain.handle('desktop-deactivate', () => ({ ok: true }));
+ipcMain.handle('desktop-open-activation', () => { createSettingsWindow(); return { ok: true }; });
+ipcMain.handle('close-activation-window', () => ({ ok: true }));
+ipcMain.handle('desktop-get-credits', async () => ({ success: true, credits: OPEN_SOURCE_CREDITS }));
+ipcMain.handle('desktop-sync-credits', async () => ({ success: true, credits: OPEN_SOURCE_CREDITS }));
+ipcMain.handle('credits-available', () => ({ ok: true }));
+ipcMain.handle('credits-add', () => ({ ok: true }));
 
 // Relaunch app
 ipcMain.handle('app-relaunch', () => {
-  try {
-    app.relaunch();
-    app.exit(0);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
+  try { app.relaunch(); app.exit(0); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; }
 });
 
 // -------------- Compact Bar Download IPC --------------
@@ -3024,20 +2737,6 @@ function registerGlobalShortcuts() {
     // Toggle compact toolbar - Ctrl+/ (hide/unhide)
     const toolbarToggleRegistered = globalShortcut.register('CommandOrControl+/', () => {
       console.log('🔥 [Shortcut] Toolbar toggle triggered (Ctrl+/)');
-      // Check if user has activated before showing toolbar
-      if (!activationManager || !activationManager.isActivated()) {
-        console.log('🔒 Cannot toggle toolbar - user not activated');
-        showActivationWindow();
-        return;
-      }
-      
-      const creditsCheck = checkCreditsAvailable();
-      if (!creditsCheck.hasCredits) {
-        console.log('❌ Cannot show toolbar - no credits available');
-        showNoCreditsWindow();
-        return;
-      }
-      
       const visible = toggleToolbarWindow();
       console.log(`🧰 Compact toolbar ${visible ? 'shown' : 'hidden'} via shortcut`);
     });
@@ -3088,21 +2787,6 @@ function registerGlobalShortcuts() {
     const askAIRegistered = globalShortcut.register('CommandOrControl+Q', async () => {
       console.log('🔥 [Shortcut] Ask AI triggered (Ctrl+Q)');
       try {
-        // Check if user is activated
-        if (!activationManager || !activationManager.isActivated()) {
-          console.log('🔒 Cannot use Ask AI - user not activated');
-          showActivationWindow();
-          return;
-        }
-        
-        // Check credits
-        const creditsCheck = checkCreditsAvailable();
-        if (!creditsCheck.hasCredits) {
-          console.log('❌ Cannot use Ask AI - no credits available');
-          showNoCreditsWindow();
-          return;
-        }
-        
         // Ensure toolbar exists
         if (!toolbarWindow || toolbarWindow.isDestroyed()) {
           console.log('Creating toolbar window for Ask AI...');
@@ -3134,20 +2818,6 @@ function registerGlobalShortcuts() {
       const registeredDev = globalShortcut.register('CommandOrControl+Alt+D', () => {
         console.log('🔥 [Shortcut] DevTools toggle triggered (Ctrl+Alt+D)');
         try {
-          // Check activation and credits before creating toolbar
-          if (!activationManager || !activationManager.isActivated()) {
-            console.log('🔒 Cannot open DevTools - user not activated');
-            showActivationWindow();
-            return;
-          }
-          
-          const creditsCheck = checkCreditsAvailable();
-          if (!creditsCheck.hasCredits) {
-            console.log('❌ Cannot open DevTools - no credits available');
-            showNoCreditsWindow();
-            return;
-          }
-          
           if (!toolbarWindow || toolbarWindow.isDestroyed()) {
             console.log('Toolbar window missing; creating before opening DevTools');
             createToolbarWindow();
@@ -3174,7 +2844,10 @@ function registerGlobalShortcuts() {
       console.error('Failed to register Ctrl+Alt+D shortcut:', e.message);
     }
     
-    // Summary of registered shortcuts
+    // CHANGED: Register settings shortcut (Ctrl+,)
+  registerSettingsShortcut();
+  
+  // Summary of registered shortcuts
     console.log('\n📋 [Shortcuts] Registration Summary:');
     console.log('   Global shortcuts are registered and will work system-wide');
     console.log('   If a shortcut doesn\'t work, it may be captured by Windows or another app');
@@ -3187,25 +2860,28 @@ function registerGlobalShortcuts() {
 
 // Enhanced app event handlers
 app.whenReady().then(async () => {
-  // Initialize activation manager
-  activationManager = new DesktopActivationManager();
-  console.log('[Activation] Desktop activation manager initialized');
-  console.log('[Activation] ⚠️ SESSION-ONLY MODE: Activation required on every launch');
+  // CHANGED: No activation manager in open-source BYOK mode
+  // CHANGED: Check if onboarding is complete; if not, show onboarding window first
+  const onboardingComplete = settingsStore.get('onboardingComplete', false);
   
   createMainWindow();
   
-  // Check if we should skip activation (for cloud/testing mode)
-  const skipActivation = process.env.SKIP_ACTIVATION === 'true' || process.env.NODE_ENV === 'production';
+  // OPEN-SOURCE MODE: Always run in BYOK (Bring Your Own Keys) mode
+  console.log('[BYOK] ✅ Open-source mode — running locally with user-provided API keys');
+  console.log('[BYOK] Configure your API keys in Settings (⚙️) to enable AI features');
   
-  if (skipActivation) {
-    console.log('[Activation] ⚠️ Skipping activation (SKIP_ACTIVATION=true or NODE_ENV=production)');
-    console.log('[Activation] App will run in cloud mode without activation checks');
-  } else {
-    // ALWAYS show activation window on startup (no persistent activation)
-    console.log('[Activation] Showing activation dialog (required on every launch)');
+  if (!onboardingComplete) {
+    // Show onboarding window on first launch
     setTimeout(() => {
-      showActivationWindow();
-    }, 1000);
+      console.log('[Onboarding] First launch detected - showing onboarding window');
+      createOnboardingWindow();
+    }, 800);
+  } else {
+    // Create toolbar directly for returning users
+    setTimeout(() => {
+      console.log('[BYOK] Returning user - creating toolbar...');
+      createToolbarWindow();
+    }, 1500);
   }
   
   startHeartbeat();
@@ -3267,16 +2943,6 @@ app.whenReady().then(async () => {
   try {
     ipcMain.handle('toolbar-open-devtools', () => {
       try {
-        // Check activation and credits
-        if (!activationManager || !activationManager.isActivated()) {
-          return { ok: false, error: 'Not activated' };
-        }
-        
-        const creditsCheck = checkCreditsAvailable();
-        if (!creditsCheck.hasCredits) {
-          return { ok: false, error: 'No credits available' };
-        }
-        
         if (!toolbarWindow || toolbarWindow.isDestroyed()) createToolbarWindow();
         if (toolbarWindow && !toolbarWindow.webContents.isDevToolsOpened()) {
           toolbarWindow.webContents.openDevTools({ mode: 'detach' });
@@ -3388,9 +3054,6 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   console.log('Application quitting...');
-  
-  // Stop credit sync
-  stopCreditSync();
   
   // Clean up resources
   globalShortcut.unregisterAll();

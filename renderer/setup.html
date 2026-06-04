@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interview AI — Setting Up</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f1117;
+      color: #e1e4e8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      user-select: none;
+    }
+
+    .logo {
+      font-size: 36px;
+      margin-bottom: 10px;
+    }
+
+    .title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: #8b949e;
+      margin-bottom: 40px;
+    }
+
+    .progress-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 28px 36px;
+      width: 460px;
+      max-width: 90vw;
+    }
+
+    .step-label {
+      font-size: 14px;
+      color: #c9d1d9;
+      margin-bottom: 12px;
+      min-height: 20px;
+    }
+
+    .progress-bar-track {
+      background: #21262d;
+      border-radius: 8px;
+      height: 8px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+
+    .progress-bar-fill {
+      background: linear-gradient(90deg, #238636, #3fb950);
+      height: 100%;
+      border-radius: 8px;
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+
+    .log-box {
+      background: #0d1117;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      padding: 12px;
+      height: 160px;
+      overflow-y: auto;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 11px;
+      color: #7d8590;
+    }
+
+    .log-box .line { margin-bottom: 2px; }
+    .log-box .line.ok  { color: #3fb950; }
+    .log-box .line.err { color: #f85149; }
+    .log-box .line.inf { color: #58a6ff; }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid #30363d;
+      border-top-color: #3fb950;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .status-text {
+      font-size: 13px;
+      color: #8b949e;
+    }
+
+    .done-icon {
+      display: none;
+      font-size: 18px;
+    }
+
+    .eta-label {
+      font-size: 11px;
+      color: #484f58;
+      margin-top: 8px;
+      text-align: right;
+    }
+
+    .error-box {
+      display: none;
+      background: rgba(248, 81, 73, 0.1);
+      border: 1px solid rgba(248, 81, 73, 0.3);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-top: 16px;
+      font-size: 12px;
+      color: #f85149;
+    }
+
+    .retry-btn {
+      display: none;
+      margin-top: 16px;
+      padding: 8px 20px;
+      background: #238636;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      width: 100%;
+    }
+    .retry-btn:hover { background: #2ea043; }
+  </style>
+</head>
+<body>
+  <div class="logo">⚡</div>
+  <div class="title">Interview AI Assistant</div>
+  <div class="subtitle">First-time setup — installing AI backend components</div>
+
+  <div class="progress-card">
+    <div class="step-label" id="stepLabel">Preparing installation…</div>
+
+    <div class="progress-bar-track">
+      <div class="progress-bar-fill" id="progressFill"></div>
+    </div>
+
+    <div class="log-box" id="logBox"></div>
+
+    <div class="status-row">
+      <div class="spinner" id="spinner"></div>
+      <div class="done-icon" id="doneIcon">✅</div>
+      <div class="status-text" id="statusText">Initializing…</div>
+    </div>
+
+    <div class="eta-label" id="etaLabel">This usually takes 2–5 minutes depending on your connection</div>
+
+    <div class="error-box" id="errorBox"></div>
+    <button class="retry-btn" id="retryBtn" onclick="retry()">Retry Installation</button>
+  </div>
+
+  <script>
+    const api = window.electronAPI;
+
+    function addLog(text, type = '') {
+      const box = document.getElementById('logBox');
+      const line = document.createElement('div');
+      line.className = 'line ' + type;
+      line.textContent = text;
+      box.appendChild(line);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function setProgress(pct, label) {
+      document.getElementById('progressFill').style.width = pct + '%';
+      if (label) document.getElementById('stepLabel').textContent = label;
+    }
+
+    function setStatus(text) {
+      document.getElementById('statusText').textContent = text;
+    }
+
+    function showDone() {
+      document.getElementById('spinner').style.display = 'none';
+      document.getElementById('doneIcon').style.display = 'block';
+      document.getElementById('etaLabel').style.display = 'none';
+      setStatus('Setup complete — launching app…');
+      setProgress(100, 'All components installed successfully!');
+    }
+
+    function showError(msg) {
+      document.getElementById('spinner').style.display = 'none';
+      const eb = document.getElementById('errorBox');
+      eb.style.display = 'block';
+      eb.textContent = 'Error: ' + msg;
+      document.getElementById('retryBtn').style.display = 'block';
+      document.getElementById('etaLabel').style.display = 'none';
+      setStatus('Setup failed — see error above');
+    }
+
+    function retry() {
+      document.getElementById('errorBox').style.display = 'none';
+      document.getElementById('retryBtn').style.display = 'none';
+      document.getElementById('spinner').style.display = 'block';
+      document.getElementById('logBox').innerHTML = '';
+      setProgress(0, 'Retrying installation…');
+      if (api) api.invoke('setup:retry');
+    }
+
+    // Listen for progress events from main process
+    if (api && api.invoke) {
+      // Use generic ipcRenderer.on via the exposed invoke bridge
+      // The main process sends these via webContents.send
+    }
+
+    // Wire up IPC → UI via the preload bridge
+    if (api && api.onSetupProgress) {
+      api.onSetupProgress(({ pct, label, log: logMsg, logType, done, error }) => {
+        if (pct !== undefined && pct !== null) setProgress(pct, label);
+        if (logMsg) addLog(logMsg, logType || '');
+        if (done) showDone();
+        if (error) showError(error);
+      });
+      addLog('Starting first-time setup…', 'inf');
+    } else {
+      // Fallback: listen as a DOM custom event (dev mode injection)
+      window.addEventListener('setup-progress', (e) => {
+        const { pct, label, log: logMsg, logType, done, error } = e.detail || {};
+        if (pct !== undefined && pct !== null) setProgress(pct, label);
+        if (logMsg) addLog(logMsg, logType || '');
+        if (done) showDone();
+        if (error) showError(error);
+      });
+      addLog('Running standalone — setup managed externally', 'inf');
+      setProgress(50, 'Waiting for backend…');
+    }
+  </script>
+</body>
+</html>

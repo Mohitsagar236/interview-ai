@@ -18,28 +18,24 @@ class InterviewAssistant {
   this.currentSpeaker = 'user1';
   this.userNames = { user1: 'User 1', user2: 'User 2' };
   this.lastTranscript = '';
-  // Buffer for accumulating interim (partial) transcriptions between final results
-  this.interimBuffer = '';
   this.streamBuffer = '';
   this.streamComplete = true;
-  // Sequence and length tracking for defensive rendering
+  // Transcript accumulation state (defensive guards)
   this.lastTranscriptSeq = 0;
   this.lastRenderedLength = 0;
+  this.interimBuffer = '';
   // Math rendering state
   this.mathReady = false;
   this.mathQueue = [];
   // Math rendering performance controls
   this.mathEnabledPanels = new Set(['stream','coach']); // selective panels
   this.mathTimers = new Map(); // key -> timeout id
-  this.mathDebounceMs = 200; // Increased debounce for better performance
-  // UI update throttling
-  this.updateThrottles = new Map();
-  this.throttleDelay = 100; // ms between UI updates
-  // Smart auto-scroll state
-  this.autoScrollEnabled = new Map(); // element -> boolean
-  this.scrollTimeouts = new Map(); // element -> timeout id
-
-    this.init();
+    this.mathDebounceMs = 50; // Optimized from 100ms for faster updates
+    // UI update throttling
+    this.updateThrottles = new Map();
+    this.throttleDelay = 25; // Optimized from 50ms for snappier UI
+    this.autoScrollEnabled = new Map();
+    this.sessionId = null;
   }
 
   init() {
@@ -124,7 +120,8 @@ class InterviewAssistant {
     return new Promise(async (resolve, reject) => {
       const tryOpen = (port) => new Promise((res) => {
         try {
-          const ws = new WebSocket(`ws://localhost:${port}/audio`);
+          const sid = this.sessionId ? `?session_id=${encodeURIComponent(this.sessionId)}` : '';
+          const ws = new WebSocket(`ws://localhost:${port}/audio${sid}`);
           ws.binaryType = 'arraybuffer';
           ws.onopen = () => { this.audioWs = ws; res(true); };
           ws.onerror = () => { try { ws.close(); } catch {} res(false); };
@@ -195,18 +192,35 @@ class InterviewAssistant {
           this.updateCoach(message, message.text || message.data || '');
           break;
         case 'transcript_cleared':
-          this.showNotification('Transcript cleared', 'info');
-          // Also clear UI transcript if present
-          const tEl = document.getElementById('transcript');
-          if (tEl) tEl.innerHTML = '';
+          // Server confirmed transcript was cleared
+          console.log('[Transcript] Server confirmed clear');
           this.lastTranscript = '';
+          this.lastTranscriptSeq = 0;
+          this.lastRenderedLength = 0;
           this.interimBuffer = '';
+          const transcriptEl = document.getElementById('transcript');
+          if (transcriptEl) transcriptEl.innerHTML = '';
+          this.showNotification('Transcript cleared', 'info');
           break;
         case 'error':
           this.showNotification(message.text || message.data || 'Error', 'error');
           break;
         case 'status':
           this.updateStatus(message.data);
+          break;
+        case 'session_init':
+          this.sessionId = message.session_id || null;
+          console.log('[Session] Received session_id:', this.sessionId);
+          break;
+        case 'ai_status':
+        case 'question_classified':
+        case 'answer_confidence':
+        case 'meta':
+        case 'ocr_status':
+        case 'ocr_result':
+        case 'context_ack':
+        case 'resume_parsed':
+        case 'pong':
           break;
         default:
           console.log('Unknown message type:', message.type);
@@ -320,120 +334,179 @@ class InterviewAssistant {
   }
 
   updateTranscript(message) {
-    this.throttleUpdate('transcript', () => {
-      const transcriptEl = document.getElementById('transcript');
-      if (!transcriptEl) return;
-      // Normalize incoming message
-      let text = '';
-      let full = '';
-      let isFinal = undefined;
-      try {
-        if (message && typeof message === 'object') {
-          text = String(message.text || message.data || '');
-          full = String(message.full || '');
-          // Prefer explicit is_final where available; otherwise infer from interim
-          if (message.hasOwnProperty('is_final')) {
-            isFinal = Boolean(message.is_final);
-          } else if (message.hasOwnProperty('interim')) {
-            isFinal = !Boolean(message.interim);
-          }
-        } else {
-          text = String(message || '');
-          isFinal = true; // legacy string caller - treat as final
-        }
-      } catch (e) {
-        console.warn('[Transcript] Failed to normalize message', e);
-      }
+    // CRITICAL FIX: Use immediate execution for transcript updates to prevent race conditions
+    // Only throttle the DOM rendering, not the state accumulation
+    const transcriptEl = document.getElementById('transcript');
+    if (!transcriptEl) return;
 
-      // Debug logging
-      try { console.debug('[Transcript] incoming', { seq: message && (message.seq || message.results_count || 0), isFinal, fullPresent: !!full, textPreview: (text||'').slice(0,80) }); } catch {}
-
-      // Ignore interim (non-final) messages entirely for persistent transcript to prevent flicker
-      if (isFinal === false) return;
-
-      // Defensive: ignore invalid/no-op payloads
-      if (!full && !text) return;
-
-      const seq = Number(message && (message.seq || message.results_count) || 0) || 0;
-
-      // If full is present, prefer it but ensure it doesn't shrink or arrive out-of-order
-      if (full) {
-        if (seq && seq < this.lastTranscriptSeq) {
-          console.warn('[Transcript] Ignoring out-of-order full', { seq, lastSeq: this.lastTranscriptSeq });
-          return;
-        }
-        const lastLen = this.lastRenderedLength || 0;
-        if (lastLen && full.length < Math.max(0, lastLen - 50)) {
-          console.warn('[Transcript] Rejecting shrinking full text', { lastLen, newLen: full.length, seq });
-          return;
-        }
-        this.lastTranscript = full.trim();
-        this.lastRenderedLength = this.lastTranscript.length;
-        if (seq) this.lastTranscriptSeq = seq;
+    // Normalize incoming message
+    let text = '';
+    let isInterim = false;
+    let full = '';
+    let seq = 0;
+    try {
+      if (message && typeof message === 'object') {
+        text = String(message.text || message.data || '');
+        isInterim = Boolean(message.interim);
+        full = String(message.full || '');
+        seq = Number(message.seq || message.results_count || 0) || 0;
       } else {
-        // Append final segment safely
-        const t = (text || '').trim();
-        if (!t) return;
-        const tailCheckLen = Math.max(200, t.length + 10);
-        const tail = (this.lastTranscript || '').slice(-tailCheckLen);
-        if (!tail.includes(t)) {
-          const sep = this.lastTranscript && /\S$/.test(this.lastTranscript) ? ' ' : '';
-          this.lastTranscript = ((this.lastTranscript || '') + sep + t).trim();
-          this.lastRenderedLength = this.lastTranscript.length;
-          if (seq && seq > this.lastTranscriptSeq) this.lastTranscriptSeq = seq;
-          console.debug('[Transcript] Appended final segment', { added: t.slice(0,80), newLen: this.lastRenderedLength, seq: this.lastTranscriptSeq });
-        } else {
-          console.debug('[Transcript] Duplicate final segment ignored');
-        }
+        text = String(message || '');
+      }
+    } catch (e) {
+      console.warn('[Transcript] Failed to normalize message', e);
+      return;
+    }
+
+    // Debug logging for troubleshooting
+    console.debug('[Transcript] incoming', { 
+      seq, 
+      isInterim, 
+      fullPresent: !!full, 
+      fullLen: full.length,
+      textPreview: (text || '').slice(0, 80),
+      currentLen: this.lastTranscript.length 
+    });
+
+    // GUARD 1: Ignore pure interim messages to prevent flicker
+    // Interim results are unstable and get replaced - only show finals
+    if (isInterim && !full) {
+      this.interimBuffer = text; // Store for potential display
+      console.debug('[Transcript] Ignoring interim (no full)');
+      return;
+    }
+
+    // GUARD 2: Reject empty/invalid payloads
+    if (!full && !text) {
+      console.debug('[Transcript] Ignoring empty payload');
+      return;
+    }
+
+    // GUARD 3: Process full cumulative transcript from server
+    if (full) {
+      // Reject out-of-order messages (older sequence)
+      if (seq && seq < this.lastTranscriptSeq) {
+        console.warn('[Transcript] Ignoring out-of-order full', { 
+          seq, 
+          lastSeq: this.lastTranscriptSeq 
+        });
+        return;
       }
 
-      // Update DOM only when we have non-empty transcript. Do not clear existing DOM
-      if (this.lastTranscript && this.lastTranscript.trim()) {
-        const fragment = document.createDocumentFragment();
-        const container = document.createElement('div');
-        container.className = 'chat-log';
-        const parts = String(this.lastTranscript).split(/([\.!?]\s+)/);
-        let speaker = this.currentSpeaker;
-        let buffer = '';
-        const name1 = (document.getElementById('user1Name')?.value || this.userNames.user1).trim() || 'User 1';
-        const name2 = (document.getElementById('user2Name')?.value || this.userNames.user2).trim() || 'User 2';
-        for (let i = 0; i < parts.length; i++) {
-          buffer += parts[i] || '';
-          if (i % 2 === 1) {
-            const content = buffer.trim();
-            buffer = '';
-            if (!content) continue;
-            const bubble = document.createElement('div');
-            bubble.className = `bubble ${speaker}`;
-            const name = document.createElement('span');
-            name.className = 'name';
-            name.textContent = speaker === 'user1' ? name1 : name2;
-            bubble.appendChild(name);
-            bubble.appendChild(document.createTextNode(content));
-            container.appendChild(bubble);
-            if (/[?]$/.test(content) || /[.!]$/.test(content)) speaker = speaker === 'user1' ? 'user2' : 'user1';
-          }
-        }
-        const tail = buffer.trim();
-        if (tail) {
+      // CRITICAL GUARD 4: Prevent shrinking transcript
+      // Server should never send shorter text unless explicitly cleared
+      const lastLen = this.lastRenderedLength || 0;
+      const newLen = full.trim().length;
+      // Allow up to 50 chars shrinkage for minor normalization, reject more
+      if (lastLen > 0 && newLen < Math.max(0, lastLen - 50)) {
+        console.warn('[Transcript] REJECTING shrinking full text!', { 
+          lastLen, 
+          newLen, 
+          diff: lastLen - newLen,
+          seq 
+        });
+        return;
+      }
+
+      // Accept the full transcript
+      this.lastTranscript = full.trim();
+      this.lastRenderedLength = this.lastTranscript.length;
+      if (seq) this.lastTranscriptSeq = seq;
+      console.debug('[Transcript] Accepted full transcript', { 
+        len: this.lastRenderedLength, 
+        seq: this.lastTranscriptSeq 
+      });
+
+    } else {
+      // GUARD 5: Append final segment with duplicate detection
+      const t = (text || '').trim();
+      if (!t) return;
+
+      // Check if this segment already exists in recent transcript (avoid duplicates)
+      const tailCheckLen = Math.max(200, t.length + 20);
+      const tail = (this.lastTranscript || '').slice(-tailCheckLen);
+      
+      if (tail.includes(t)) {
+        console.debug('[Transcript] Duplicate final segment ignored', { text: t.slice(0, 50) });
+        return;
+      }
+
+      // Append with proper spacing
+      const sep = this.lastTranscript && /\S$/.test(this.lastTranscript) ? ' ' : '';
+      this.lastTranscript = ((this.lastTranscript || '') + sep + t).trim();
+      this.lastRenderedLength = this.lastTranscript.length;
+      if (seq && seq > this.lastTranscriptSeq) this.lastTranscriptSeq = seq;
+      
+      console.debug('[Transcript] Appended final segment', { 
+        added: t.slice(0, 80), 
+        newLen: this.lastRenderedLength, 
+        seq: this.lastTranscriptSeq 
+      });
+    }
+
+    // Clear interim buffer after accepting final
+    this.interimBuffer = '';
+
+    // THROTTLED DOM RENDERING - only update DOM periodically for performance
+    this.throttleUpdate('transcript-render', () => {
+      // Only render if we have actual content
+      if (!this.lastTranscript || !this.lastTranscript.trim()) {
+        this.adjustContainerHeight(transcriptEl);
+        return;
+      }
+
+      const name1 = (document.getElementById('user1Name')?.value || this.userNames.user1).trim() || 'User 1';
+      const name2 = (document.getElementById('user2Name')?.value || this.userNames.user2).trim() || 'User 2';
+      
+      // Use DocumentFragment for better performance
+      const fragment = document.createDocumentFragment();
+      const container = document.createElement('div');
+      container.className = 'chat-log';
+      
+      // Split by sentence endings for speaker alternation
+      const parts = String(this.lastTranscript).split(/([\.!?]\s+)/);
+      let speaker = this.currentSpeaker;
+      let buffer = '';
+      
+      for (let i = 0; i < parts.length; i++) {
+        buffer += parts[i] || '';
+        if (i % 2 === 1) { // end of sentence delim captured
+          const content = buffer.trim();
+          buffer = '';
+          if (!content) continue;
           const bubble = document.createElement('div');
           bubble.className = `bubble ${speaker}`;
           const name = document.createElement('span');
           name.className = 'name';
           name.textContent = speaker === 'user1' ? name1 : name2;
           bubble.appendChild(name);
-          bubble.appendChild(document.createTextNode(tail));
+          bubble.appendChild(document.createTextNode(content));
           container.appendChild(bubble);
+          // Heuristic: switch speaker after a question or end of sentence
+          if (/[?]$/.test(content) || /[.!]$/.test(content)) {
+            speaker = speaker === 'user1' ? 'user2' : 'user1';
+          }
         }
-        fragment.appendChild(container);
-        transcriptEl.innerHTML = '';
-        transcriptEl.appendChild(fragment);
-        this.smartScrollToBottom(transcriptEl);
-        this.adjustContainerHeight(transcriptEl);
-      } else {
-        this.adjustContainerHeight(transcriptEl);
       }
-    });
+      // If any remaining buffer (incomplete sentence)
+      const tail = buffer.trim();
+      if (tail) {
+        const bubble = document.createElement('div');
+        bubble.className = `bubble ${speaker}`;
+        const name = document.createElement('span');
+        name.className = 'name';
+        name.textContent = speaker === 'user1' ? name1 : name2;
+        bubble.appendChild(name);
+        bubble.appendChild(document.createTextNode(tail));
+        container.appendChild(bubble);
+      }
+      
+      fragment.appendChild(container);
+      transcriptEl.innerHTML = '';
+      transcriptEl.appendChild(fragment);
+      this.smartScrollToBottom(transcriptEl);
+      this.adjustContainerHeight(transcriptEl);
+    }, 50); // 50ms throttle for smoother updates
   }
 
   updateStream(message = {}) {
@@ -979,6 +1052,9 @@ class InterviewAssistant {
     }
     const facts = document.getElementById('facts').value;
     
+    // Use transcript as context if no explicit facts provided
+    const sendText = (facts && facts.trim()) ? facts.trim() : (this.lastTranscript || '').trim();
+    
     // Display the question in the stream panel
     const streamEl = document.getElementById('stream');
     
@@ -988,50 +1064,50 @@ class InterviewAssistant {
       placeholder.remove();
     }
     
-    // Determine which text to send: prefer user 'facts', fall back to accumulated transcript
-    const factsInput = document.getElementById('facts');
-    const factsText = (factsInput?.value || '').trim();
-    let sendText = factsText;
-    let contextType = 'general';
-
-    if (!sendText && this.lastTranscript) {
-      // No manual facts provided — use the accumulated transcript
-      sendText = this.lastTranscript.trim();
-      contextType = 'transcription';
-    } else if (sendText && this.lastTranscript) {
-      // Both manual facts and transcript exist — include both, mark as transcription context
-      sendText = sendText + '\n\n[Transcript]:\n' + this.lastTranscript.trim();
-      contextType = 'transcription';
-    }
-
-    // Create question bubble (from combined text if available)
-    if (sendText && sendText.trim()) {
+    // Create question bubble
+    if (sendText) {
       const questionBubble = document.createElement('div');
       questionBubble.className = 'question-bubble';
       
       const label = document.createElement('div');
       label.className = 'question-label';
-      label.textContent = contextType === 'transcription' ? '🎤 Transcript Sent' : '❓ Your Question';
+      label.textContent = '❓ Your Question';
       questionBubble.appendChild(label);
       
       const content = document.createElement('div');
       content.className = 'question-content';
-      content.textContent = sendText.trim();
+      content.textContent = sendText;
       questionBubble.appendChild(content);
       
       streamEl.appendChild(questionBubble);
     }
-
-    // Send message to AI with context type and the selected text (facts/transcript)
+    
+    // Detect question context to help AI focus on the right data
+    const questionLower = sendText.toLowerCase();
+    let contextType = 'general';
+    
+    // Check if question is about transcription/conversation/speech
+    if (questionLower.match(/transcri(pt|ption|be)|conversation|speech|said|audio|record|mic|listen|talk|spoke/)) {
+      contextType = 'transcription';
+    }
+    // Check if question is about screen capture/OCR/visual content
+    else if (questionLower.match(/screen|capture|image|ocr|see|visual|display|show|code|error|picture/)) {
+      contextType = 'capture';
+    }
+    
+    // Send message to AI with context type
     this.sendMessage({
       type: 'ask',
       facts: sendText,
-      contextType: contextType
+      contextType: contextType  // New field to help server focus on relevant data
     });
 
     // Clear accumulated transcript NOW that user explicitly sent it
     if (this.lastTranscript) {
+      console.log('[Transcript] Clearing after Ask AI - was:', this.lastTranscript.length, 'chars');
       this.lastTranscript = '';
+      this.lastTranscriptSeq = 0;
+      this.lastRenderedLength = 0;
       this.interimBuffer = '';
       const transcriptEl = document.getElementById('transcript');
       if (transcriptEl) transcriptEl.innerHTML = '';
@@ -1039,7 +1115,7 @@ class InterviewAssistant {
       // Instruct server to clear its partial_text as well
       this.sendMessage({ type: 'clear_transcript' });
     }
-
+    
     // Prepare for answer
     this.streamBuffer = '';
     this.streamComplete = false;
@@ -1322,10 +1398,13 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Initialize the main application
   const app = new InterviewAssistant();
-  
+
   // Make app globally available for debugging
   window.interviewApp = app;
-  
+
+  // Start the app (sets up event listeners, connects WebSocket, etc.)
+  app.init();
+
   console.log('✅ Interview AI Assistant ready!');
   console.log('💡 Keyboard shortcuts:');
   console.log('   Ctrl/Cmd + R: Start/Stop Recording');

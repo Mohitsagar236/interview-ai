@@ -109,12 +109,14 @@ class AudioLevelProcessor extends AudioWorkletProcessor {
     // Adaptive gain update (slow smoothing)
     let processed = inputBuffer;
     if (this.enableGain) {
-      // Avoid division by zero
-      const desiredGain = rms > 1e-7 ? this.targetRMS / rms : this.maxGain;
-      // Clamp target gain
-      const clampedDesired = Math.min(this.maxGain, Math.max(this.minGain, desiredGain));
-      // Exponential smoothing
-      this.currentGain = this.currentGain + this.gainSmooth * (clampedDesired - this.currentGain);
+      // Freeze gain during silence to prevent runaway amplification
+      if (rms > 0.001) {
+        const desiredGain = this.targetRMS / rms;
+        const clampedDesired = Math.min(this.maxGain, Math.max(this.minGain, desiredGain));
+        // Reduce faster when gain needs to come down (loud audio), slower when boosting
+        const alpha = clampedDesired < this.currentGain ? this.gainSmooth * 4 : this.gainSmooth;
+        this.currentGain = this.currentGain + alpha * (clampedDesired - this.currentGain);
+      }
       if (Math.abs(this.currentGain - this.lastPostedGain) / this.lastPostedGain > 0.15) {
         this.lastPostedGain = this.currentGain;
         this.port.postMessage({ type: 'gain_update', gain: this.currentGain });

@@ -94,6 +94,7 @@
     .status-dot{ width:6px; height:6px; border-radius:50%; box-shadow:0 0 4px rgba(255,255,255,0.2); }
     .status-dot.inactive{ opacity:.3; }
 
+
     /* Listening/recording indicators */
     @keyframes pulse {
       0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(29,185,84,0.6); }
@@ -572,13 +573,13 @@
       font-size: 15px;
       letter-spacing: 0.01em;
     }
-    .chat-content.ai pre.ai-code { 
-      background:#0d1117; border:1px solid #2b3445; border-radius:8px; padding:14px 16px; overflow-x: auto; overflow-y: auto; max-height:50vh; font-size:14px; line-height:1.5; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; margin:12px 0 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.04); white-space: pre; 
+    .chat-content.ai pre.ai-code {
+      background:#0d1117; border:1px solid #2b3445; border-radius:8px; padding:14px 16px; overflow-x: auto; overflow-y: auto; max-height:50vh; font-size:14px; line-height:1.5; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; margin:12px 0 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.04); white-space: pre; max-width: 100%; box-sizing: border-box;
     }
     .chat-content.ai pre.ai-code::-webkit-scrollbar { height: 6px; width: 6px; }
     .chat-content.ai pre.ai-code::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
     .chat-content.ai pre.ai-code::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
-    .chat-content.ai code { color:#e6edf3; font-size: 14px; white-space: pre; }
+    .chat-content.ai code { color:#e6edf3; font-size: 14px; white-space: pre-wrap; }
     .chat-content.ai strong { color:#ffffff; font-weight:600; letter-spacing: 0.01em; }
     .chat-content.ai em { color:#d1d9e0; font-style:italic; }
     .chat-content.ai p + ul, .chat-content.ai p + ol { margin-top:-4px; }
@@ -644,9 +645,11 @@
     }
     
     /* Enhanced code block with language label */
-    .chat-content.ai pre.ai-code { 
+    .chat-content.ai pre.ai-code {
       position: relative;
       white-space: pre;
+      max-width: 100%;
+      box-sizing: border-box;
     }
     .chat-content.ai pre.ai-code[data-language]:before {
       content: attr(data-language);
@@ -956,6 +959,419 @@
       background: rgba(255, 80, 80, 0.3);
       color: #ff5050;
     }
+    
+    /* Live Transcription Display */
+    .transcription-display {
+      display: none;
+      background: rgba(18, 24, 39, 0.95);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 10px 16px;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .transcription-display.active {
+      display: block;
+    }
+    .transcription-content {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--fg);
+    }
+    .transcription-label {
+      font-size: 20px;
+      flex-shrink: 0;
+      opacity: 0.8;
+    }
+    .transcription-text {
+      flex: 1;
+      word-wrap: break-word;
+    }
+    .transcription-display::-webkit-scrollbar {
+      width: 6px;
+    }
+    .transcription-display::-webkit-scrollbar-track {
+      background: rgba(12, 18, 32, 0.6);
+    }
+    .transcription-display::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, rgba(16, 185, 129, 0.55), rgba(20, 184, 166, 0.45));
+      border-radius: 3px;
+    }
+    .transcription-display::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(180deg, rgba(16, 185, 129, 0.7), rgba(20, 184, 166, 0.6));
+    }
+
+    /* ========== Extracted Text Panel ========== */
+    .extracted-panel {
+      display: none;
+      background: rgba(9, 14, 23, 0.98);
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      padding: 10px 14px 14px;
+      font-size: 13.5px;
+      line-height: 1.6;
+      color: #d1d9e0;
+      max-height: 380px;
+      overflow-y: auto;
+    }
+    .extracted-panel.visible { display: block; }
+    .extracted-panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .extracted-nav { display: flex; gap: 4px; }
+    .extracted-nav-btn {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #e6edf3;
+      width: 26px; height: 26px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 17px;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0;
+      transition: background 0.15s;
+    }
+    .extracted-nav-btn:hover { background: rgba(255,255,255,0.15); }
+    .extracted-nav-btn:disabled { opacity: 0.3; cursor: default; }
+    .extracted-close-btn {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.4);
+      font-size: 17px;
+      cursor: pointer;
+      padding: 2px 5px;
+      border-radius: 4px;
+      transition: color 0.15s;
+      line-height: 1;
+    }
+    .extracted-close-btn:hover { color: #fff; }
+    .extracted-section-label {
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 3px;
+      font-size: 13.5px;
+    }
+    .extracted-question-block { margin-bottom: 12px; }
+    .extracted-question-text { color: #c3cdd8; }
+    .extracted-answer-body { color: #d1d9e0; }
+    .extracted-answer-body strong, .extracted-answer-body b { color: #fff; font-weight: 600; }
+    .extracted-answer-body em { color: #d1d9e0; font-style: italic; }
+    .extracted-answer-body p { margin: 3px 0 7px; }
+    .extracted-answer-body p:first-child { margin-top: 0; }
+    .extracted-answer-thinking { color: rgba(255,255,255,0.35); font-style: italic; font-size: 13px; }
+    .extracted-panel::-webkit-scrollbar { width: 5px; }
+    .extracted-panel::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+    .extracted-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+
+    /* ========== Settings Modal Styles ========== */
+    .settings-overlay {
+      position: fixed;
+      top: 96px;
+      left: 50%;
+      transform: translate(-50%, -16px);
+      width: min(620px, 95vw);
+      max-height: calc(100vh - 120px);
+      display: flex;
+      flex-direction: column;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: linear-gradient(145deg, rgba(18,24,39,0.96), rgba(25,32,48,0.94));
+      box-shadow: 0 20px 40px -18px rgba(0,0,0,0.65), 0 4px 18px -6px rgba(0,0,0,0.5);
+      backdrop-filter: blur(14px) saturate(160%);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s ease;
+      z-index: 10002;
+      -webkit-app-region: none;
+    }
+    .settings-overlay.show {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translate(-50%, 0);
+    }
+    .settings-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .settings-header h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--fg);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .settings-header h2 svg {
+      width: 22px;
+      height: 22px;
+      color: var(--primary);
+    }
+    .settings-close {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+      -webkit-app-region: no-drag;
+    }
+    .settings-close:hover {
+      background: rgba(255,255,255,0.1);
+      color: var(--fg);
+    }
+    .settings-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(180,190,200,0.45) transparent;
+    }
+    .settings-content::-webkit-scrollbar {
+      width: 6px;
+    }
+    .settings-content::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.3);
+      border-radius: 3px;
+    }
+    .settings-section {
+      margin-bottom: 24px;
+    }
+    .settings-section:last-child {
+      margin-bottom: 0;
+    }
+    .settings-section-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--primary);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .settings-section-title svg {
+      width: 16px;
+      height: 16px;
+    }
+    .settings-field {
+      margin-bottom: 14px;
+    }
+    .settings-field:last-child {
+      margin-bottom: 0;
+    }
+    .settings-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--fg);
+      margin-bottom: 6px;
+    }
+    .settings-label .hint {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+    .settings-input {
+      width: 100%;
+      padding: 10px 12px;
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--fg);
+      font-size: 13px;
+      font-family: 'Monaco', 'Consolas', monospace;
+      transition: all 0.2s ease;
+      -webkit-app-region: no-drag;
+    }
+    .settings-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+    }
+    .settings-input::placeholder {
+      color: var(--muted);
+      font-family: inherit;
+    }
+    .settings-input.has-value {
+      border-color: var(--success);
+    }
+    .settings-select {
+      width: 100%;
+      padding: 10px 12px;
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--fg);
+      font-size: 13px;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+    }
+    .settings-select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    .settings-help {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+    .settings-help a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+    .settings-help a:hover {
+      text-decoration: underline;
+    }
+    .settings-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 20px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+    }
+    .settings-status {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .settings-status.success {
+      color: var(--success);
+    }
+    .settings-status.error {
+      color: var(--error);
+    }
+    .settings-buttons {
+      display: flex;
+      gap: 10px;
+    }
+    .settings-btn {
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+      -webkit-app-region: no-drag;
+    }
+    .settings-btn.secondary {
+      background: transparent;
+      border-color: var(--border);
+      color: var(--muted);
+    }
+    .settings-btn.secondary:hover {
+      background: rgba(255,255,255,0.05);
+      color: var(--fg);
+      border-color: var(--border-hover);
+    }
+    .settings-btn.primary {
+      background: var(--primary);
+      color: #fff;
+    }
+    .settings-btn.primary:hover {
+      background: var(--primary-light);
+    }
+    .settings-divider {
+      height: 1px;
+      background: rgba(255,255,255,0.08);
+      margin: 20px 0;
+    }
+    .key-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    .key-status.configured {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--success);
+    }
+    .key-status.missing {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--error);
+    }
+    /* ========== Resume Upload Area ========== */
+    .resume-upload-area {
+      border: 2px dashed rgba(255,255,255,0.15);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      background: rgba(255,255,255,0.03);
+      overflow: hidden;
+    }
+    .resume-upload-area:hover, .resume-upload-area.dragover {
+      border-color: var(--primary);
+      background: rgba(37,99,235,0.06);
+    }
+    .resume-upload-area.has-file {
+      border-style: solid;
+      border-color: var(--success);
+      background: rgba(34,197,94,0.05);
+    }
+    .resume-upload-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 22px 16px;
+      gap: 5px;
+      color: rgba(255,255,255,0.45);
+      font-size: 13px;
+    }
+    .resume-upload-content svg { color: rgba(255,255,255,0.25); margin-bottom: 4px; }
+    .resume-upload-content .hint { font-size: 11px; color: rgba(255,255,255,0.25); }
+    .resume-upload-file {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px;
+    }
+    .resume-upload-file svg { flex-shrink: 0; color: var(--success); }
+    #resumeFileName {
+      flex: 1;
+      font-size: 13px;
+      color: #e6edf3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .resume-remove-btn {
+      flex-shrink: 0;
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.35);
+      cursor: pointer;
+      padding: 3px 7px;
+      border-radius: 4px;
+      font-size: 13px;
+      line-height: 1;
+      transition: color 0.15s, background 0.15s;
+    }
+    .resume-remove-btn:hover { color: var(--error); background: rgba(239,68,68,0.1); }
+    /* ========== End Settings Modal Styles ========== */
+    
     .chat-input button.send-btn {
       background: var(--primary);
       color: #fff;
@@ -1014,6 +1430,20 @@
     .chat-transcript-preview { font-size:14px; line-height:1.5; }
     .chat-transcript-preview .bubble { background:rgba(255,255,255,0.08); padding:6px 10px; border-radius:10px; margin:4px 0; }
     
+    /* Loading indicator animation */
+    .loading-indicator .loading-dots {
+      color: rgba(255, 255, 255, 0.8);
+    }
+    .loading-indicator .dot-animation {
+      display: inline-block;
+      animation: dotPulse 1.5s infinite;
+    }
+    @keyframes dotPulse {
+      0%, 20% { opacity: 0.3; }
+      50% { opacity: 1; }
+      80%, 100% { opacity: 0.3; }
+    }
+
     @keyframes slideInMessage {
       from {
         opacity: 0;
@@ -1043,6 +1473,7 @@
     .chat-avatar.ai { background: var(--primary-light); }
     .chat-content {
       flex: 1;
+      min-width: 0;
       background: linear-gradient(145deg, rgba(255,255,255,0.09), rgba(255,255,255,0.04));
       color: var(--fg);
       padding: 14px 16px 16px;
@@ -1052,6 +1483,7 @@
       word-wrap: break-word;
       font-size: 15px;
       max-width: 100%;
+      overflow: hidden;
       overflow-wrap: anywhere;
       word-break: break-word;
     }
@@ -1224,6 +1656,7 @@
         </svg>
         <span class="btn-label">Listen</span>
       </button>
+
     </div>
 
     <!-- Screen Capture Control -->
@@ -1236,34 +1669,8 @@
       <span class="btn-label">Capture</span>
     </button>
 
-    <!-- Company brief + resume upload -->
+    <!-- Chat toggle (Company & Resume moved to web profile) -->
     <div class="button-group">
-      <button class="icon-button no-drag" id="companyBrief" title="Company Brief" aria-label="Add company details for the AI" role="button">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M3 21V7a2 2 0 0 1 2-2h4V3h6v2h4a2 2 0 0 1 2 2v14" />
-          <path d="M3 21h18" />
-          <path d="M7 13h2" />
-          <path d="M7 17h2" />
-          <path d="M11 13h2" />
-          <path d="M11 17h2" />
-          <path d="M15 13h2" />
-          <path d="M15 17h2" />
-        </svg>
-        <span class="btn-label">Company</span>
-      </button>
-
-      <!-- Resume Upload Button (replaces Settings) -->
-      <button class="icon-button no-drag" id="resumeUpload" title="Upload Resume" aria-label="Upload resume for personalized answers" role="button">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M4 4h10l6 6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
-          <polyline points="14 2 14 8 20 8" />
-          <path d="M12 12v6" />
-          <path d="M9 15l3-3 3 3" />
-        </svg>
-        <span class="btn-label">Resume</span>
-      </button>
-      <input type="file" id="resumeFileInput" accept=".pdf,.doc,.docx,.txt" style="display:none" />
-
       <button class="icon-button no-drag" id="toggleChat" title="Toggle Chat" aria-label="Toggle chat panel visibility" role="button">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -1282,7 +1689,7 @@
     </div>
 
     <!-- Credits Display -->
-    <div class="credits-display no-drag" id="creditsDisplay" title="Available credits · Click to purchase more" style="display: none;">
+    <div class="credits-display no-drag" id="creditsDisplay" title="API usage (BYOK mode)" style="display: none;">
       <svg class="credits-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
         <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM9 7a.75.75 0 000 1.5h1.5c.98 0 1.813.626 2.122 1.5H9A.75.75 0 009 11.25h3.622a2.251 2.251 0 01-2.122 1.5H9a.75.75 0 00-.53 1.28l3 3a.75.75 0 001.06-1.06L10.8 14.24c1.399-.232 2.467-1.383 2.467-2.74a3.75 3.75 0 00-3.75-3.75H9zm6 4.5a.75.75 0 000 1.5h.008a.75.75 0 000-1.5H15z" clip-rule="evenodd"/>
       </svg>
@@ -1291,6 +1698,15 @@
         <span class="credits-label">credits</span>
       </div>
     </div>
+
+    <!-- Settings Button - API Keys Configuration -->
+    <button class="icon-button no-drag" id="openSettings" title="Settings - Configure API Keys" aria-label="Open settings to configure API keys" role="button">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+      <span class="btn-label">Settings</span>
+    </button>
 
     <!-- Ask AI Button -->
     <button class="action-button no-drag" id="askAI" title="Ask AI for assistance" aria-label="Ask AI for assistance with captured content" role="button">
@@ -1309,25 +1725,55 @@
       <span class="btn-label">Close</span>
     </button>
 
-    <!-- Hidden compatibility controls expected by toolbar.js -->
-    <div class="hidden">
-      <div class="status" id="status"><span class="dot" id="dot"></span><span id="statusText">Disconnected</span></div>
-      <textarea id="prompt" aria-label="Enter your question for AI assistance" placeholder="Ask AI..." rows="1"></textarea>
-      <input id="uploadScreenshots" type="file" accept="image/*" multiple />
-      <button id="send" aria-label="Send question to AI" role="button"></button>
-      <button id="clear" aria-label="Clear input field" role="button"></button>
-      <button id="copyAnswer" aria-label="Copy answer to clipboard" role="button"></button>
-      <button id="compact" aria-label="Toggle compact view" role="button"></button>
-      <button id="hide" aria-label="Hide toolbar" role="button"></button>
-      <!-- Legacy controls for compatibility -->
-      <button id="toggleRecord" aria-label="Legacy record button"></button>
-      <button id="capture" aria-label="Legacy capture button"></button>
-      <button id="toggleStudent" aria-label="Legacy student button"></button>
-      <button id="visibility" aria-label="Legacy visibility button"></button>
-      <div id="speakerToggle">
-        <button id="speakerUser1" title="Switch to User 1" aria-label="Switch to User 1 speaker" role="button">1</button>
-        <button id="speakerUser2" title="Switch to User 2" aria-label="Switch to User 2 speaker" role="button">2</button>
+  <!-- Hidden compatibility elements (Company & Resume functionality moved to web profile) -->
+  <div class="hidden">
+    <div class="status" id="status"><span class="dot" id="dot"></span><span id="statusText">Disconnected</span></div>
+    <textarea id="prompt" aria-label="Enter your question for AI assistance" placeholder="Ask AI..." rows="1"></textarea>
+    <input id="uploadScreenshots" type="file" accept="image/*" multiple />
+    <input type="file" id="resumeFileInput" accept=".pdf,.doc,.docx,.txt" style="display:none" />
+    <button id="send" aria-label="Send question to AI" role="button"></button>
+    <button id="clear" aria-label="Clear input field" role="button"></button>
+    <button id="copyAnswer" aria-label="Copy answer to clipboard" role="button"></button>
+    <button id="compact" aria-label="Toggle compact view" role="button"></button>
+    <button id="hide" aria-label="Hide toolbar" role="button"></button>
+    <!-- Legacy controls for compatibility -->
+    <button id="toggleRecord" aria-label="Legacy record button"></button>
+    <button id="capture" aria-label="Legacy capture button"></button>
+    <button id="toggleStudent" aria-label="Legacy student button"></button>
+    <button id="visibility" aria-label="Legacy visibility button"></button>
+    <button id="companyBrief" aria-label="Company brief button (deprecated)"></button>
+    <button id="resumeUpload" aria-label="Resume upload button (deprecated)"></button>
+    <div id="speakerToggle">
+      <button id="speakerUser1" title="Switch to User 1" aria-label="Switch to User 1 speaker" role="button">1</button>
+      <button id="speakerUser2" title="Switch to User 2" aria-label="Switch to User 2 speaker" role="button">2</button>
+    </div>
+  </div>
+  </div>
+
+  <!-- Extracted Text Panel (hidden - answers shown in chat only) -->
+  <div id="extractedPanel" class="extracted-panel" style="display:none!important">
+    <div class="extracted-panel-header">
+      <div class="extracted-nav">
+        <button id="extractedPrev" class="extracted-nav-btn no-drag" title="Previous capture">&#8249;</button>
+        <button id="extractedNext" class="extracted-nav-btn no-drag" title="Next capture">&#8250;</button>
       </div>
+      <button id="extractedClose" class="extracted-close-btn no-drag" title="Close">&#x2715;</button>
+    </div>
+    <div class="extracted-question-block">
+      <div class="extracted-section-label">&#128172; Summarized question:</div>
+      <div id="extractedQuestion" class="extracted-question-text"></div>
+    </div>
+    <div class="extracted-answer-block">
+      <div class="extracted-section-label">&#11088; Answer:</div>
+      <div id="extractedAnswer" class="extracted-answer-body"><span class="extracted-answer-thinking">Thinking...</span></div>
+    </div>
+  </div>
+
+  <!-- Live Transcription Display -->
+  <div id="transcriptionDisplay" class="transcription-display" role="region" aria-label="Live transcription" aria-live="polite">
+    <div class="transcription-content">
+      <span class="transcription-label">🎤</span>
+      <span id="transcriptionText" class="transcription-text">Waiting for audio...</span>
     </div>
   </div>
 
@@ -1366,6 +1812,225 @@
   <!-- Highlight.js for syntax highlighting -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+
+  <!-- Settings Modal - API Keys Configuration -->
+  <div id="settingsOverlay" class="settings-overlay" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true" tabindex="-1">
+    <div class="settings-header">
+      <h2 id="settingsTitle">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        API Keys Settings
+      </h2>
+      <button class="settings-close" id="settingsClose" type="button" aria-label="Close settings">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    
+    <div class="settings-content">
+      <!-- AI Provider Section -->
+      <div class="settings-section">
+        <div class="settings-section-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+            <path d="M2 17l10 5 10-5"></path>
+            <path d="M2 12l10 5 10-5"></path>
+          </svg>
+          AI Provider (Required)
+        </div>
+        
+        <div class="settings-field">
+          <label class="settings-label">
+            OpenRouter API Key
+            <span id="openrouterKeyStatus" class="key-status missing">Not Set</span>
+          </label>
+          <input type="password" class="settings-input" id="openrouterApiKey" placeholder="sk-or-v1-..." autocomplete="off">
+          <div class="settings-help">
+            Recommended for access to multiple AI models. 
+            <a href="https://openrouter.ai/keys" target="_blank">Get your key →</a>
+          </div>
+        </div>
+        
+        <div class="settings-field">
+          <label class="settings-label">
+            Default AI Model
+            <span class="hint">Used for all AI responses</span>
+          </label>
+          <select class="settings-select" id="defaultLLM">
+            <option value="openai/gpt-4o-mini">GPT-4o Mini (Fast & Recommended)</option>
+            <option value="openai/gpt-4o">GPT-4o (Most Capable)</option>
+            <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+            <option value="anthropic/claude-3-haiku">Claude 3 Haiku (Fast)</option>
+            <option value="google/gemini-pro-1.5">Gemini Pro 1.5</option>
+            <option value="meta-llama/llama-3.1-70b-instruct">Llama 3.1 70B</option>
+            <option value="mistralai/mistral-large">Mistral Large</option>
+          </select>
+        </div>
+      </div>
+      
+      <div class="settings-divider"></div>
+      
+      <!-- Transcription Section -->
+      <div class="settings-section">
+        <div class="settings-section-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+          </svg>
+          Speech Transcription (Required)
+        </div>
+        
+        <div class="settings-field">
+          <label class="settings-label">
+            Deepgram API Key
+            <span id="deepgramKeyStatus" class="key-status missing">Not Set</span>
+          </label>
+          <input type="password" class="settings-input" id="deepgramApiKey" placeholder="Your Deepgram API key" autocomplete="off">
+          <div class="settings-help">
+            Required for real-time speech transcription. Free tier available.
+            <a href="https://console.deepgram.com/signup" target="_blank">Get your key →</a>
+          </div>
+        </div>
+      </div>
+      
+      <div class="settings-divider"></div>
+      
+      <!-- Alternative AI Providers Section -->
+      <div class="settings-section">
+        <div class="settings-section-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="3" y1="9" x2="21" y2="9"></line>
+            <line x1="9" y1="21" x2="9" y2="9"></line>
+          </svg>
+          Alternative AI Providers (Optional)
+        </div>
+        
+        <div class="settings-field">
+          <label class="settings-label">
+            OpenAI API Key
+            <span id="openaiKeyStatus" class="key-status missing">Not Set</span>
+          </label>
+          <input type="password" class="settings-input" id="openaiApiKey" placeholder="sk-proj-..." autocomplete="off">
+          <div class="settings-help">
+            Direct OpenAI access. <a href="https://platform.openai.com/api-keys" target="_blank">Get key →</a>
+          </div>
+        </div>
+        
+        <div class="settings-field">
+          <label class="settings-label">
+            Anthropic API Key
+            <span id="anthropicKeyStatus" class="key-status missing">Not Set</span>
+          </label>
+          <input type="password" class="settings-input" id="anthropicApiKey" placeholder="sk-ant-..." autocomplete="off">
+          <div class="settings-help">
+            For Claude models directly. <a href="https://console.anthropic.com/" target="_blank">Get key →</a>
+          </div>
+        </div>
+        
+        <div class="settings-field">
+          <label class="settings-label">
+            Groq API Key
+            <span id="groqKeyStatus" class="key-status missing">Not Set</span>
+          </label>
+          <input type="password" class="settings-input" id="groqApiKey" placeholder="gsk_..." autocomplete="off">
+          <div class="settings-help">
+            Ultra-fast inference. <a href="https://console.groq.com/keys" target="_blank">Get key →</a>
+          </div>
+        </div>
+        
+        <div class="settings-field">
+          <label class="settings-label">
+            X.AI (Grok) API Key
+            <span id="xaiKeyStatus" class="key-status missing">Not Set</span>
+          </label>
+          <input type="password" class="settings-input" id="xaiApiKey" placeholder="xai-..." autocomplete="off">
+          <div class="settings-help">
+            For Grok models. <a href="https://x.ai/" target="_blank">Get key →</a>
+          </div>
+        </div>
+      </div>
+      
+      <div class="settings-divider"></div>
+      
+      <!-- Alternative Transcription Section -->
+      <div class="settings-section">
+        <div class="settings-section-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+          Alternative Transcription (Optional)
+        </div>
+        
+        <div class="settings-field">
+          <label class="settings-label">
+            AssemblyAI API Key
+            <span id="assemblyaiKeyStatus" class="key-status missing">Not Set</span>
+          </label>
+          <input type="password" class="settings-input" id="assemblyaiApiKey" placeholder="Your AssemblyAI API key" autocomplete="off">
+          <div class="settings-help">
+            Alternative transcription provider. <a href="https://www.assemblyai.com/dashboard/signup" target="_blank">Get key →</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-divider"></div>
+
+      <!-- Resume Section -->
+      <div class="settings-section">
+        <div class="settings-section-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+          Resume (Optional)
+        </div>
+
+        <div class="settings-field">
+          <label class="settings-label">
+            Your Resume
+            <span id="resumeStatus" class="key-status missing">Not Uploaded</span>
+          </label>
+          <div id="settingsResumeUploadArea" class="resume-upload-area">
+            <input type="file" id="settingsResumeFileInput" accept=".pdf,.doc,.docx,.txt" style="display:none">
+            <div id="resumeUploadContent" class="resume-upload-content">
+              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <span>Click to upload your resume</span>
+              <span class="hint">PDF, DOCX, or TXT · Max 10MB</span>
+            </div>
+            <div id="resumeUploadFile" class="resume-upload-file" style="display:none">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+              </svg>
+              <span id="resumeFileName"></span>
+              <button id="resumeRemoveBtn" class="resume-remove-btn" type="button" title="Remove resume">✕</button>
+            </div>
+          </div>
+          <div class="settings-help">AI will automatically use your resume to answer questions about your background, experience, and skills.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-actions">
+      <span class="settings-status" id="settingsStatus"></span>
+      <div class="settings-buttons">
+        <button class="settings-btn secondary" id="settingsCancel">Cancel</button>
+        <button class="settings-btn primary" id="settingsSave">Save & Restart</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Time breakdown overlay -->
   <div id="timeBreakdownOverlay" class="time-breakdown-modal" role="dialog" aria-modal="true" aria-labelledby="timeBreakdownTitle" aria-hidden="true" tabindex="-1">
@@ -1424,39 +2089,39 @@
     </div>
   </div>
 
-  <!-- Company brief overlay -->
-  <div id="companyBriefOverlay" class="company-brief-overlay" role="dialog" aria-modal="true" aria-labelledby="companyBriefTitle" aria-hidden="true" tabindex="-1">
+  <!-- Company brief overlay - Removed, functionality moved to web profile -->
+  <div id="companyBriefOverlay" class="company-brief-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="companyBriefTitle" aria-hidden="true" tabindex="-1" style="display:none;">
     <div class="company-brief-card" role="document">
-      <h2 id="companyBriefTitle">Company Brief</h2>
-      <p class="description">Fill in quick facts so the AI can lean on company context during the interview.</p>
+      <h2 id="companyBriefTitle">Company Brief (Moved to Web Profile)</h2>
+      <p class="description">This feature has been moved to your web profile at interviewai.app/profile.html</p>
       <form id="companyBriefForm">
         <div class="company-brief-form-content">
           <div>
-            <label for="companyNameInput">Company Name *</label>
-            <input id="companyNameInput" name="companyName" placeholder="e.g. Atlassian" required />
+            <label for="companyNameInput">Company Name</label>
+            <input id="companyNameInput" name="companyName" placeholder="Visit web profile" disabled />
           </div>
           <div>
             <label for="companyRoleInput">Role / Team</label>
-            <input id="companyRoleInput" name="companyRole" placeholder="e.g. Senior Frontend Engineer" />
+            <input id="companyRoleInput" name="companyRole" placeholder="Visit web profile" disabled />
           </div>
           <div>
             <label for="companyWebsiteInput">Website</label>
-            <input id="companyWebsiteInput" name="companyWebsite" placeholder="https://company.com" inputmode="url" />
+            <input id="companyWebsiteInput" name="companyWebsite" placeholder="Visit web profile" disabled />
           </div>
           <div>
-            <label for="companyOverviewInput">Overview *</label>
-            <textarea id="companyOverviewInput" name="companyOverview" placeholder="Industry, products, mission, recent news..." required></textarea>
+            <label for="companyOverviewInput">Overview</label>
+            <textarea id="companyOverviewInput" name="companyOverview" placeholder="Visit web profile" disabled></textarea>
           </div>
           <div>
             <label for="companyNotesInput">Key Notes</label>
-            <textarea id="companyNotesInput" name="companyNotes" placeholder="Hiring manager tips, culture points, standout projects, competitors..."></textarea>
+            <textarea id="companyNotesInput" name="companyNotes" placeholder="Visit web profile" disabled></textarea>
           </div>
         </div>
         <div class="company-brief-actions">
           <small id="companyBriefStatus" class="company-brief-status" aria-live="polite" data-state="muted"></small>
           <div class="company-brief-buttons">
-            <button type="button" class="secondary no-drag" id="companyBriefCancel">Cancel</button>
-            <button type="submit" class="primary no-drag" id="companyBriefSave">Save &amp; Share</button>
+            <button type="button" class="secondary no-drag" id="companyBriefCancel">Close</button>
+            <button type="submit" class="primary no-drag" id="companyBriefSave" disabled>Save</button>
           </div>
         </div>
       </form>

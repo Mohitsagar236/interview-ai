@@ -250,13 +250,12 @@
             <h2>1. Information We Collect</h2>
             
             <h3>Personal Information</h3>
-            <p>We collect information that you provide directly to us, including:</p>
+            <p>Interview AI is a local desktop application. We collect minimal information:</p>
             <ul>
-                <li>Name and email address during account registration</li>
-                <li>Payment information for subscription processing</li>
-                <li>Profile information and preferences</li>
-                <li>Communication data when you contact our support team</li>
+                <li>Communication data when you contact our support team (email only)</li>
+                <li>App settings and API key preferences — stored <strong>locally on your device only</strong>, never on our servers</li>
             </ul>
+            <p><strong>We do not collect, store, or have access to your API keys, interview content, or any data processed by the app.</strong></p>
 
             <h3>Audio Data</h3>
             <div class="highlight-box">
@@ -274,31 +273,26 @@
 
             <h2>2. How We Use Your Information</h2>
             
-            <p>We use the information we collect to:</p>
+            <p>We use the minimal information we collect to:</p>
             <ul>
-                <li><strong>Provide Services:</strong> Deliver interview assistance, transcription, and AI-powered responses</li>
-                <li><strong>Process Payments:</strong> Handle subscription billing and payment transactions</li>
-                <li><strong>Improve Features:</strong> Analyze usage patterns to enhance our application</li>
                 <li><strong>Customer Support:</strong> Respond to your questions and provide technical assistance</li>
                 <li><strong>Security:</strong> Detect and prevent fraud, abuse, and security incidents</li>
                 <li><strong>Communications:</strong> Send service updates, security alerts, and support messages</li>
                 <li><strong>Legal Compliance:</strong> Comply with applicable laws and regulations</li>
             </ul>
+            <p>All AI processing, transcription, OCR, and interview data handling occurs entirely on your local machine and is sent only to your chosen AI provider using your own API key.</p>
 
             <h2>3. Data Sharing and Disclosure</h2>
             
             <p>We do not sell your personal information. We may share your information only in the following circumstances:</p>
 
             <h3>Service Providers</h3>
-            <p>We work with third-party service providers who help us operate our business:</p>
+            <p>Interview AI itself does not transmit your data to third parties. However, since you bring your own API key, data you process is sent directly from your machine to your chosen provider:</p>
             <ul>
-                <li><strong>OpenAI:</strong> For AI-powered response generation</li>
-                <li><strong>Deepgram:</strong> For real-time audio transcription</li>
-                <li><strong>Razorpay:</strong> For secure payment processing</li>
-                <li><strong>Supabase:</strong> For user authentication and data storage</li>
-                <li><strong>Cloud Hosting:</strong> For application infrastructure</li>
+                <li><strong>Your AI Provider</strong> (OpenAI / Anthropic / Groq / OpenRouter etc.) — receives your interview questions and context to generate answers. Governed by their own privacy policies.</li>
+                <li><strong>Deepgram / AssemblyAI</strong> (if you provide a key) — receives audio for transcription. Governed by their privacy policies.</li>
             </ul>
-            <p>These providers are bound by confidentiality agreements and only process data as necessary to perform their services.</p>
+            <p>We never receive, store, or process your interview data. All communication goes directly from your device to your chosen provider.</p>
 
             <h3>Legal Requirements</h3>
             <p>We may disclose your information if required by law or in response to valid legal requests.</p>
@@ -315,7 +309,7 @@
                     <li>Secure storage with encryption at rest</li>
                     <li>Regular security audits and updates</li>
                     <li>Access controls and authentication requirements</li>
-                    <li>PCI-DSS compliance for payment processing</li>
+                    <li>API keys stored with OS-level encryption on your local device</li>
                 </ul>
             </div>
 
@@ -323,24 +317,20 @@
             
             <p>We retain your information for as long as necessary to provide our services and comply with legal obligations:</p>
             <ul>
-                <li><strong>Account Data:</strong> Retained while your account is active, plus 90 days after deletion</li>
-                <li><strong>Audio Data:</strong> Not stored; processed in real-time only</li>
-                <li><strong>Usage Statistics:</strong> Aggregated and retained for analytical purposes</li>
-                <li><strong>Payment Records:</strong> Retained as required by tax and accounting regulations</li>
+                <li><strong>App Settings &amp; API Keys:</strong> Stored locally on your device only; deleted when you uninstall the app or clear settings</li>
+                <li><strong>Audio &amp; Interview Data:</strong> Never stored; processed in real-time on your machine only</li>
+                <li><strong>Support Emails:</strong> Retained for as long as needed to resolve your issue</li>
             </ul>
 
             <h2>6. Your Rights and Choices</h2>
             
             <p>You have the following rights regarding your personal information:</p>
 
-            <h3>Access and Portability</h3>
-            <p>You can access, download, and export your personal data from your account settings.</p>
+            <h3>Local Data Control</h3>
+            <p>Since all data is stored locally, you are in full control. You can clear your API keys and settings at any time from the app's Settings page, or by uninstalling the application.</p>
 
-            <h3>Correction</h3>
-            <p>You can update your account information at any time through the profile settings.</p>
-
-            <h3>Deletion</h3>
-            <p>You can request deletion of your account and associated data by contacting us at <a href="mailto:privacy@interview-ai.app">privacy@interview-ai.app</a></p>
+            <h3>Support Data</h3>
+            <p>If you contact us, you can request deletion of your support emails at any time by emailing <a href="mailto:privacy@interview-ai.app">privacy@interview-ai.app</a>.</p>
 
             <h3>Marketing Communications</h3>
             <p>You can opt out of promotional emails by clicking the unsubscribe link in any marketing email.</p>

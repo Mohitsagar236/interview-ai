@@ -1,46 +1,103 @@
 # Interview AI Assistant
 
-Privacy-first interview coach with real-time streaming transcription via Deepgram, multi-LLM streaming (OpenAI, Anthropic, Groq), resume embeddings, OCR for coding problems, and stealth overlay.
+**100% Open Source & Free** — Privacy-first interview coach that runs entirely on your machine. Bring your own AI API key (OpenAI, OpenRouter, Groq, xAI) and Deepgram key for real-time transcription.
+
+Features: real-time streaming transcription, multi-LLM AI coaching (GPT-4o, Claude, Llama, Gemini), screen capture with OCR for coding problems, resume parsing, and stealth overlay.
+
+> **No account, no subscription, no cloud dependency.** Just add your API keys and go.
 
 ## 📚 Documentation
-
-**All documentation has been consolidated into the [`docs/`](./docs/) folder:**
 
 | Section | Description |
 |---------|-------------|
 | **[Quick Start](./docs/getting-started/quick-start.md)** | Get running in 10 minutes |
 | **[Environment Setup](./docs/getting-started/environment-configuration.md)** | Configure API keys |
-| **[Cloud Deployment](./docs/deployment/cloud-deployment.md)** | Deploy to Koyeb, Render, etc. |
-| **[Credits System](./docs/features/credits-system.md)** | How credits work |
-| **[Payment Integration](./docs/features/payment-integration.md)** | Razorpay setup |
 | **[Troubleshooting](./docs/troubleshooting/common-issues.md)** | Common issues & solutions |
 | **[Architecture](./docs/architecture/system-architecture.md)** | System design overview |
 
+## 🔑 API Keys - Bring Your Own!
+
+This app requires you to provide your own API keys. **Your keys stay on your machine and are never sent anywhere except directly to the API providers.**
+
+### Required Keys
+
+| Service | Purpose | Get Your Key |
+|---------|---------|--------------|
+| **OpenRouter** (Recommended) | AI responses (access to 100+ models) | [openrouter.ai/keys](https://openrouter.ai/keys) |
+| **Deepgram** | Real-time speech transcription | [console.deepgram.com](https://console.deepgram.com/signup) |
+
+### Alternative AI Providers (Optional)
+
+| Service | Purpose | Get Your Key |
+|---------|---------|--------------|
+| OpenAI | Direct GPT access | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| Anthropic | Claude models | [console.anthropic.com](https://console.anthropic.com/) |
+| Groq | Ultra-fast inference | [console.groq.com/keys](https://console.groq.com/keys) |
+| X.AI | Grok models | [x.ai](https://x.ai/) |
+
+### How to Configure API Keys
+
+**Option 1: In-App Settings (Easiest)**
+1. Launch the application
+2. Click the ⚙️ **Settings** button in the toolbar
+3. Enter your API keys
+4. Click **Save & Restart**
+
+**Option 2: Environment File**
+Create a `.env` file in the project root:
+```bash
+# Required - Choose one AI provider
+OPENROUTER_API_KEY=sk-or-v1-your-key-here
+# OR
+OPENAI_API_KEY=sk-your-key-here
+
+# Required for transcription
+DEEPGRAM_API_KEY=your-deepgram-key
+
+# Optional settings
+DEFAULT_LLM=openai/gpt-4o-mini
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+```
+
 ## 🚀 Quick Start
 
-### Option 1: Pre-built Desktop App
-1. Download installer from releases
-2. Run installer
-3. Enter your activation code
-4. Start interviewing!
+### Prerequisites
+- **Node.js 18+** — [nodejs.org](https://nodejs.org)
+- **Python 3.10+** — [python.org](https://www.python.org/downloads/)
+- **Git** — [git-scm.com](https://git-scm.com)
 
-### Option 2: Build from Source
+### 1. Clone and install
 ```bash
 git clone https://github.com/Mohitsagar236/interview-ai.git
 cd interview-ai
 npm install
-cp .env.example .env  # Edit with your API keys
-npm run build
+pip install -r python/requirements.txt
 ```
 
-### Option 3: Development Mode
+### 2. Configure API keys
 ```bash
-npm install
-pip install -r python/requirements.txt
+cp .env.example .env
+```
+Edit `.env` and add your API keys (at minimum, one AI key):
+```bash
+OPENROUTER_API_KEY=sk-or-v1-your-key-here   # or use OPENAI_API_KEY, GROQ_API_KEY
+DEEPGRAM_API_KEY=your-deepgram-key-here      # for voice transcription
+```
+
+### 3. Run the app
+```bash
 npm run dev
 ```
+This starts the Python backend and launches the Electron desktop app.
 
-> **See [Quick Start Guide](./docs/getting-started/quick-start.md) for detailed instructions.**
+### Alternative: Configure keys in the app
+1. Run `npm run dev` (app will start without AI features)
+2. Click the **⚙️ Settings** button in the toolbar
+3. Enter your API keys
+4. Click **Save & Restart**
+
+### Pre-built Desktop App
+Download from [Releases](https://github.com/Mohitsagar236/interview-ai/releases), install, then configure API keys in Settings.
 
 ## Features
 

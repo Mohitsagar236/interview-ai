@@ -3,6 +3,8 @@
   const state = {
     ws: null,
     connected: false,
+    connectedToCloud: false, // Track if connected to cloud backend (not local)
+    cloudServerUrl: null, // Store cloud server URL when connected to cloud
     recording: false,
     recordingMode: null, // 'interviewer' or 'student'
     audioWs: null,
@@ -32,6 +34,7 @@
     companyBriefPendingAction: null, // Deferred action awaiting company brief completion
     companyBriefConfirmationPending: false, // Awaiting server ack for submitted brief
     isCompanyBriefOpen: false, // Track if company brief overlay is open
+    isSettingsOpen: false, // Track if settings overlay is open
   };
 
   const COMPANY_BRIEF_STORAGE_KEY = "company_brief_context";
@@ -105,12 +108,12 @@
   // 4. CONNECTION HEALTH MONITORING
   const connectionHealth = {
     pingInterval: null,
-    lastPongTime: 0,
+    lastActivityTime: 0, // reset on ANY message received, not just pong
     missedPongs: 0,
-    maxMissedPongs: 3,
+    maxMissedPongs: 5,   // was 3 — AI responses can take 30+ s, server can't reply to pings during that
     start() {
       this.stop();
-      this.lastPongTime = Date.now();
+      this.lastActivityTime = Date.now();
       this.missedPongs = 0;
       this.pingInterval = setInterval(() => {
         if (
@@ -119,17 +122,22 @@
           state.ws.readyState !== WebSocket.OPEN
         )
           return;
-        const timeSinceLastPong = Date.now() - this.lastPongTime;
-        if (timeSinceLastPong > 35000) {
+        const timeSinceActivity = Date.now() - this.lastActivityTime;
+        // Only count a miss if we've heard nothing at all for >60s (was 35s)
+        if (timeSinceActivity > 60000) {
           this.missedPongs++;
           log.warn(
-            `Missed pong #${this.missedPongs}. Connection may be unstable.`,
+            `Missed pong #${this.missedPongs} (${Math.round(timeSinceActivity/1000)}s since last activity).`,
           );
           if (this.missedPongs >= this.maxMissedPongs) {
             log.error("Too many missed pongs. Reconnecting...");
+            this.missedPongs = 0;
             state.ws.close();
             return;
           }
+        } else {
+          // Any recent activity resets the miss counter
+          this.missedPongs = 0;
         }
         try {
           send({ type: "ping", timestamp: Date.now() });
@@ -145,10 +153,16 @@
         this.pingInterval = null;
       }
     },
+    // Call on pong responses
     receivedPong() {
-      this.lastPongTime = Date.now();
+      this.lastActivityTime = Date.now();
       this.missedPongs = 0;
       log.debug("Received pong");
+    },
+    // Call on ANY message from server — proves the connection is alive
+    receivedMessage() {
+      this.lastActivityTime = Date.now();
+      this.missedPongs = 0;
     },
   };
 
@@ -348,6 +362,108 @@
   const chatContainer = $("chatContainer");
   const chatMessages = $("chatMessages");
   const clearChatBtn = $("clearChat");
+  const transcriptionDisplay = $("transcriptionDisplay");
+  const transcriptionText = $("transcriptionText");
+  const extractedPanel = $("extractedPanel");
+  const extractedQuestion = $("extractedQuestion");
+  const extractedAnswer = $("extractedAnswer");
+  const extractedPrev = $("extractedPrev");
+  const extractedNext = $("extractedNext");
+  const extractedClose = $("extractedClose");
+
+  // Extracted panel state
+  const extractedCaptures = []; // [{question, answer}]
+  let extractedIndex = -1;
+
+  function showExtractedPanel(questionText) {
+    extractedCaptures.push({ question: questionText, answer: "" });
+    extractedIndex = extractedCaptures.length - 1;
+    renderExtractedCapture(extractedIndex);
+    if (extractedPanel) extractedPanel.classList.add("visible");
+    updateExtractedNav();
+  }
+
+  function renderExtractedCapture(idx) {
+    const cap = extractedCaptures[idx];
+    if (!cap || !extractedQuestion || !extractedAnswer) return;
+    extractedQuestion.textContent = cap.question;
+    extractedAnswer.innerHTML = cap.answer
+      ? formatExtractedAnswer(cap.answer)
+      : '<span class="extracted-answer-thinking">Thinking...</span>';
+    if (extractedPanel) extractedPanel.scrollTop = 0;
+  }
+
+  function formatExtractedAnswer(raw) {
+    if (!raw) return "";
+    let t = raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    // Bold **word** or headers like "Word:"
+    t = t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    t = t.replace(/^([A-Z][A-Za-z ]{1,30}):$/gm, "<strong>$1:</strong>");
+    // Paragraphs
+    t = t.split(/\n\n+/).map(p => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("");
+    return t;
+  }
+
+  function appendExtractedAnswerChunk(chunk) {
+    if (extractedIndex < 0 || !extractedCaptures[extractedIndex]) return;
+    extractedCaptures[extractedIndex].answer += chunk;
+    if (extractedIndex === extractedCaptures.length - 1 && extractedAnswer) {
+      extractedAnswer.innerHTML = formatExtractedAnswer(extractedCaptures[extractedIndex].answer);
+      if (extractedPanel) extractedPanel.scrollTop = extractedPanel.scrollHeight;
+    }
+  }
+
+  function updateExtractedNav() {
+    if (extractedPrev) extractedPrev.disabled = extractedIndex <= 0;
+    if (extractedNext) extractedNext.disabled = extractedIndex >= extractedCaptures.length - 1;
+  }
+
+  if (extractedClose) extractedClose.addEventListener("click", () => {
+    if (extractedPanel) extractedPanel.classList.remove("visible");
+  });
+  if (extractedPrev) extractedPrev.addEventListener("click", () => {
+    if (extractedIndex > 0) { extractedIndex--; renderExtractedCapture(extractedIndex); updateExtractedNav(); }
+  });
+  if (extractedNext) extractedNext.addEventListener("click", () => {
+    if (extractedIndex < extractedCaptures.length - 1) { extractedIndex++; renderExtractedCapture(extractedIndex); updateExtractedNav(); }
+  });
+
+  // Settings Modal element references
+  const openSettingsBtn = $("openSettings");
+  const settingsOverlay = $("settingsOverlay");
+  const settingsClose = $("settingsClose");
+  const settingsCancel = $("settingsCancel");
+  const settingsSave = $("settingsSave");
+  const settingsStatus = $("settingsStatus");
+  // API Key inputs
+  const openrouterApiKeyInput = $("openrouterApiKey");
+  const deepgramApiKeyInput = $("deepgramApiKey");
+  const openaiApiKeyInput = $("openaiApiKey");
+  const anthropicApiKeyInput = $("anthropicApiKey");
+  const groqApiKeyInput = $("groqApiKey");
+  const xaiApiKeyInput = $("xaiApiKey");
+  const assemblyaiApiKeyInput = $("assemblyaiApiKey");
+  const defaultLLMSelect = $("defaultLLM");
+  // Key status indicators
+  const openrouterKeyStatus = $("openrouterKeyStatus");
+  const deepgramKeyStatus = $("deepgramKeyStatus");
+  const openaiKeyStatus = $("openaiKeyStatus");
+  const anthropicKeyStatus = $("anthropicKeyStatus");
+  const groqKeyStatus = $("groqKeyStatus");
+  const xaiKeyStatus = $("xaiKeyStatus");
+  const assemblyaiKeyStatus = $("assemblyaiKeyStatus");
+  // Settings language and resume elements
+  const settingsLanguageSelect = $("settingsLanguageSelect");
+  const settingsResumeUploadArea = $("settingsResumeUploadArea");
+  const settingsResumeFileInput = $("settingsResumeFileInput");
+  const resumeUploadContent = $("resumeUploadContent");
+  const resumeUploadFile = $("resumeUploadFile");
+  const resumeFileName = $("resumeFileName");
+  const resumeRemoveBtn = $("resumeRemoveBtn");
+  const resumeStatus = $("resumeStatus");
+
+  // Track resume file pending upload
+  let pendingResumeFile = null;
 
   function populateCompanyBriefFormFromState() {
     if (!state.companyBrief) return;
@@ -438,9 +554,23 @@
   // Initialize enhancements
   usageStats.load();
   hydrateCompanyBriefFromStorage();
-  
-  // Load credits on startup
-  loadCredits();
+
+  // Open settings if no API keys configured
+  if (window.electronAPI && window.electronAPI.settings) {
+    window.electronAPI.settings.hasAiKey().then(hasKey => {
+      if (!hasKey) window.electronAPI.settings.openWindow();
+    }).catch(() => {});
+  }
+
+  // Gear / settings button
+  const settingsGearBtn = document.getElementById('settingsGear');
+  if (settingsGearBtn) {
+    settingsGearBtn.addEventListener('click', () => {
+      if (window.electronAPI && window.electronAPI.settings) {
+        window.electronAPI.settings.openWindow();
+      }
+    });
+  }
   
   log.info("Toolbar initialized with enhancements enabled");
   log.debug("UI Elements found:", {
@@ -467,13 +597,11 @@
   }
   function performResize() {
     try {
-      // If company brief is open, do NOT auto-shrink the window
-      if (state.isCompanyBriefOpen) {
-        // Ensure window is large enough for the brief
+      // If company brief or settings is open, do NOT auto-shrink the window
+      if (state.isCompanyBriefOpen || state.isSettingsOpen) {
+        // Ensure window is large enough for the overlay
         if (window.electronAPI && window.electronAPI.resizeToolbarDimensions) {
-           // We already set this in toggleCompanyBrief, but enforce it here to prevent fighting
-           // Use a fixed large size when brief is open
-           // Don't call resizeToolbarDimensions here to avoid loop, just return
+           // We already set the size in toggleCompanyBrief/showSettingsModal, just return
            return;
         }
       }
@@ -483,6 +611,18 @@
       const barRect = bar.getBoundingClientRect();
       let targetW = barRect.width + 12; // padding
       let targetH = barRect.height + 12; // base height
+      // Include extracted panel if visible
+      if (extractedPanel && extractedPanel.classList.contains("visible")) {
+        const epRect = extractedPanel.getBoundingClientRect();
+        targetW = Math.max(targetW, epRect.width + 12);
+        targetH = Math.max(targetH, epRect.bottom - barRect.top + 12);
+      }
+      // Include transcription display if active
+      if (transcriptionDisplay && transcriptionDisplay.classList.contains("active")) {
+        const tdRect = transcriptionDisplay.getBoundingClientRect();
+        targetW = Math.max(targetW, tdRect.width + 12);
+        targetH = Math.max(targetH, tdRect.bottom - barRect.top + 12);
+      }
       if (chatContainer && chatContainer.classList.contains("expanded")) {
         const chatRect = chatContainer.getBoundingClientRect();
         // Increase width if chat wider
@@ -506,6 +646,8 @@
     const ro = new ResizeObserver(() => queueResize());
     if (barEl) ro.observe(barEl);
     if (chatContainer) ro.observe(chatContainer);
+    if (transcriptionDisplay) ro.observe(transcriptionDisplay);
+    if (extractedPanel) ro.observe(extractedPanel);
   } catch (e) {
     console.log("ResizeObserver not available", e);
   }
@@ -537,6 +679,12 @@
   function addChatMessage(type, content, timestamp = null) {
     console.log("Adding chat message:", type, content.substring(0, 50) + "...");
 
+    // Show transcriptions in BOTH chat area AND bottom transcription bar
+    if (type === "interviewer" || type === "student") {
+      updateTranscriptionDisplay(content);
+      // Also add to chat so the text is permanently visible
+    }
+
     if (!timestamp) timestamp = new Date();
 
     const message = {
@@ -549,14 +697,14 @@
     state.chatHistory.push(message);
 
     // Update last context for AI queries
-    if (type === "interviewer" || type === "analysis") {
+    if (type === "analysis") {
       state.lastContext = content;
     }
 
     renderChatMessage(message);
     // Always update last activity when any message arrives (even if user recently collapsed)
     state.lastChatActivity = Date.now();
-    // Only expand automatically if not AI OR user hasn't just collapsed, AI gets forced expansion below
+    // Only expand automatically for AI responses
     if (type === "ai") {
       console.log("AI response received - forcing chat expansion");
       if (chatContainer) {
@@ -571,147 +719,87 @@
     queueResize();
   }
 
+  // Transcription shown only in chat — no separate floating bar
+  function updateTranscriptionDisplay(text) {
+    // no-op: transcription is displayed in the chat panel only
+  }
+
   // Maintain a single live transcript (all speakers) until AI button pressed
   let liveTranscriptMsgId = null;
   let liveTranscriptAccumulated = "";
-  // Defensive seq/length tracking for toolbar live transcript
-  window._lastTranscriptSeq = window._lastTranscriptSeq || 0;
-  window._lastRenderedLength = window._lastRenderedLength || 0;
-  function appendToLiveTranscript(content, opts = {}) {
+  function appendToLiveTranscript(content) {
     if (!content) return;
-    const seq = Number(opts.seq || 0) || 0;
-    const full = opts.full || '';
-    console.log("[appendToLiveTranscript] Adding:", content.substring(0, 50), { seq, fullPresent: !!full });
-
-    // If server sent a full cumulative, prefer it (with guards)
-    if (full) {
-      if (seq && seq < window._lastTranscriptSeq) {
-        console.warn('[appendToLiveTranscript] Ignoring out-of-order full', { seq, lastSeq: window._lastTranscriptSeq });
-        return;
-      }
-      if (window._lastRenderedLength && full.length < Math.max(0, window._lastRenderedLength - 50)) {
-        console.warn('[appendToLiveTranscript] Rejecting shrinking full text from server', { lastLen: window._lastRenderedLength, newLen: full.length, seq });
-        return;
-      }
-      // Accept full as authoritative
-      liveTranscriptAccumulated = String(full || '').trim();
-      window._lastRenderedLength = liveTranscriptAccumulated.length;
-      if (seq) window._lastTranscriptSeq = seq;
+    console.log("[appendToLiveTranscript] Adding:", content.substring(0, 50));
+    
+    // Single paragraph: normalize whitespace and append with a space
+    const cleaned = content.replace(/\s+/g, " ").trim();
+    if (cleaned) {
+      if (liveTranscriptAccumulated && !liveTranscriptAccumulated.endsWith(" "))
+        liveTranscriptAccumulated += " ";
+      liveTranscriptAccumulated += cleaned;
+    }
+    
+    // Update bottom transcription bar
+    updateTranscriptionDisplay(liveTranscriptAccumulated.trim());
+    
+    // Also keep a persistent chat message so text doesn't vanish
+    if (!liveTranscriptMsgId) {
+      const msg = {
+        type: "interviewer",
+        content: liveTranscriptAccumulated.trim(),
+        timestamp: new Date(),
+        id: Date.now() + Math.random(),
+      };
+      liveTranscriptMsgId = msg.id;
+      state.chatHistory.push(msg);
+      renderChatMessage(msg);
+      smartExpandChat();
     } else {
-      if (!liveTranscriptMsgId) {
-        console.log("[appendToLiveTranscript] Creating new transcript message");
-        const msg = {
-          type: "interviewer",
-          content: "",
-          timestamp: new Date(),
-          id: Date.now() + Math.random(),
-        };
-        state.chatHistory.push(msg);
-        liveTranscriptMsgId = msg.id;
-        renderChatMessage(msg);
-        liveTranscriptAccumulated = "";
-      }
-      // Single paragraph: normalize whitespace and append with a space
-      const cleaned = content.replace(/\s+/g, " ").trim();
-      if (cleaned) {
-        if (liveTranscriptAccumulated && !liveTranscriptAccumulated.endsWith(" "))
-          liveTranscriptAccumulated += " ";
-        liveTranscriptAccumulated += cleaned;
-        // update length/seq heuristics
-        window._lastRenderedLength = liveTranscriptAccumulated.length;
-        if (seq && seq > window._lastTranscriptSeq) window._lastTranscriptSeq = seq;
-      }
-    }
-
-    const target = state.chatHistory.find((m) => m.id === liveTranscriptMsgId);
-    if (target) target.content = liveTranscriptAccumulated;
-    if (chatMessages) {
-      const el = chatMessages.querySelector(
-        `.chat-message[data-id="${liveTranscriptMsgId}"] .chat-content div:last-child`,
-      );
+      // Update existing message in-place
+      const existing = state.chatHistory.find(m => m.id === liveTranscriptMsgId);
+      if (existing) existing.content = liveTranscriptAccumulated.trim();
+      const el = chatMessages ? chatMessages.querySelector(`[data-msg-id="${liveTranscriptMsgId}"] .chat-bubble-content`) : null;
       if (el) {
-        el.innerHTML = preserveUserFormatting(liveTranscriptAccumulated.trim());
-        console.log(
-          "[appendToLiveTranscript] Updated DOM, total length:",
-          liveTranscriptAccumulated.length,
-        );
-      } else {
-        console.warn(
-          "[appendToLiveTranscript] Could not find DOM element for message",
-          liveTranscriptMsgId,
-        );
+        el.textContent = liveTranscriptAccumulated.trim();
       }
     }
-    smartExpandChat();
     requestScrollBottom();
-    queueResize();
   }
 
   // Update the live transcript with an interim (partial) string without
   // permanently appending it. We render: accumulated finals + current interim.
-  function updateLiveTranscriptInterim(content, opts = {}) {
+  function updateLiveTranscriptInterim(content) {
     const cleaned = (content || "").replace(/\s+/g, " ").trim();
-    const seq = Number(opts.seq || 0) || 0;
-    const full = opts.full || '';
-    if (!cleaned && !full) return;
+    if (!cleaned) return;
 
-    // If server provided a full transcript with interim, be cautious and prefer full if consistent
-    if (full) {
-      if (seq && seq < window._lastTranscriptSeq) {
-        console.warn('[Transcript] Ignoring out-of-order full (interim)', { seq, lastSeq: window._lastTranscriptSeq });
-        return;
-      }
-      if (window._lastRenderedLength && full.length < Math.max(0, window._lastRenderedLength - 50)) {
-        console.warn('[Transcript] Rejecting shrinking full (interim)', { lastLen: window._lastRenderedLength, newLen: full.length, seq });
-        return;
-      }
-      // Use full as the interim base (will still show as interim until final confirmed)
-      liveTranscriptAccumulated = String(full || '').trim();
-      if (seq) window._lastTranscriptSeq = seq;
-      window._lastRenderedLength = liveTranscriptAccumulated.length;
-    }
+    const combined =
+      (liveTranscriptAccumulated
+        ? liveTranscriptAccumulated.trim() + " "
+        : "") + cleaned;
+    console.log(
+      "[Transcript] Updating live transcript (interim), new length:",
+      combined.length,
+    );
 
+    // Show interim in the live chat message (create one if not yet present)
     if (!liveTranscriptMsgId) {
-      console.log("[Transcript] Creating new live transcript message");
       const msg = {
         type: "interviewer",
-        content: "",
+        content: combined,
         timestamp: new Date(),
         id: Date.now() + Math.random(),
       };
-      state.chatHistory.push(msg);
       liveTranscriptMsgId = msg.id;
+      state.chatHistory.push(msg);
       renderChatMessage(msg);
-      liveTranscriptAccumulated = liveTranscriptAccumulated || "";
+      smartExpandChat();
+    } else {
+      const el = chatMessages
+        ? chatMessages.querySelector(`[data-msg-id="${liveTranscriptMsgId}"] .chat-bubble-content`)
+        : null;
+      if (el) el.textContent = combined;
     }
-    const combined =
-      (liveTranscriptAccumulated && liveTranscriptAccumulated.trim() ? liveTranscriptAccumulated.trim() + " " : "") + cleaned;
-    console.log(
-      "[Transcript] Updating live transcript, new length:",
-      combined.length,
-    );
-    const target = state.chatHistory.find((m) => m.id === liveTranscriptMsgId);
-    if (target) target.content = combined;
-    if (chatMessages) {
-      const el = chatMessages.querySelector(
-        `.chat-message[data-id="${liveTranscriptMsgId}"] .chat-content div:last-child`,
-      );
-      if (el) {
-        el.innerHTML = preserveUserFormatting(combined);
-        console.log(
-          "[Transcript] Updated DOM element for message ID:",
-          liveTranscriptMsgId,
-        );
-      } else {
-        console.warn(
-          "[Transcript] Could not find DOM element for message ID:",
-          liveTranscriptMsgId,
-        );
-      }
-    }
-    smartExpandChat();
     requestScrollBottom();
-    queueResize();
   }
 
   function finalizeLiveTranscript() {
@@ -740,6 +828,7 @@
     const messageEl = document.createElement("div");
     messageEl.className = "chat-message";
     messageEl.setAttribute("data-id", message.id);
+    messageEl.setAttribute("data-msg-id", message.id);
 
     const avatarEl = document.createElement("div");
     avatarEl.className = `chat-avatar ${message.type}`;
@@ -755,6 +844,7 @@
     });
 
     const textEl = document.createElement("div");
+    textEl.className = "chat-bubble-content";
     // Apply formatting for AI messages; for questions/analysis preserve basic structure
     if (message.type === "ai") {
       textEl.innerHTML = formatAIResponse(message.content);
@@ -1569,110 +1659,18 @@
   }
 
   // ==========================================
-  // CREDITS MANAGEMENT
+  // CREDITS MANAGEMENT (open-source stub)
   // ==========================================
   
   async function loadCredits() {
-    try {
-      if (!window.electronAPI || !window.electronAPI.invoke) {
-        log.warn('electronAPI not available, credits feature disabled');
-        return;
-      }
-      
-      const result = await window.electronAPI.invoke('credits-load');
-      if (result.ok && result.credits) {
-        updateCreditsUI(result.credits);
-      } else {
-        log.warn('Failed to load credits:', result.error);
-      }
-    } catch (error) {
-      log.error('Error loading credits:', error);
-    }
+    // No-op in open-source/BYOK mode — credits are unlimited
   }
   
   function updateCreditsUI(credits) {
-    if (!creditsDisplay || !creditsAmount) {
-      return;
-    }
-    
-    const remaining = credits.remaining || 0;
-    
-    // Update amount display
-    creditsAmount.textContent = remaining.toFixed(1);
-    
-    // Update styling based on remaining credits
-    creditsDisplay.classList.remove('low-credits', 'no-credits');
-    
-    if (remaining <= 0) {
-      creditsDisplay.classList.add('no-credits');
-    } else if (remaining < 1) {
-      creditsDisplay.classList.add('low-credits');
-    }
-    
-    // Show the credits display
-    creditsDisplay.style.display = 'flex';
-    
-    // Update tooltip
-    const hours = remaining.toFixed(1);
-    const planType = credits.planType || 'free';
-    creditsDisplay.title = `${hours} hours remaining (${planType} plan)\\nClick to view details`;
-    
-    log.info(`Credits updated: ${remaining.toFixed(1)} remaining (${credits.used.toFixed(1)}/${credits.total} used)`);
+    // No-op in open-source/BYOK mode
   }
   
-  // Credits display click handler - show details
-  if (creditsDisplay) {
-    creditsDisplay.addEventListener("click", async () => {
-      if (timeBreakdownOverlay && timeBreakdownOverlay.classList.contains("show")) {
-        hideTimeBreakdownModal();
-        return;
-      }
-
-      try {
-        let creditsData = null;
-
-        if (window.electronAPI && window.electronAPI.invoke) {
-          const result = await window.electronAPI.invoke("credits-load");
-          if (result.ok && result.credits) {
-            creditsData = result.credits;
-          }
-        }
-
-        if (!creditsData) {
-          log.warn("Credits data unavailable, falling back to defaults");
-          creditsData = {
-            planType: "Free",
-            total: 0,
-            used: 0,
-            remaining: 0,
-            sessionsCount: 0,
-            totalTimeHours: 0,
-          };
-        }
-
-        const remainingHours = Math.max(creditsData.remaining || 0, 0);
-        const totalSeconds = Math.floor(remainingHours * 3600);
-        const breakdown = {
-          hours: Math.floor(totalSeconds / 3600),
-          minutes: Math.floor((totalSeconds % 3600) / 60),
-          seconds: totalSeconds % 60,
-        };
-
-        showTimeBreakdownModal(creditsData, breakdown);
-      } catch (error) {
-        log.error("Error showing credits details:", error);
-        const fallbackCredits = {
-          planType: "Free",
-          total: 0,
-          used: 0,
-          remaining: 0,
-          sessionsCount: 0,
-          totalTimeHours: 0,
-        };
-        showTimeBreakdownModal(fallbackCredits, { hours: 0, minutes: 0, seconds: 0 });
-      }
-    });
-  }
+  // Credits display click handler (no-op in open-source mode)
 
   function showTimeBreakdownModal(credits, breakdown) {
     if (!timeBreakdownOverlay) {
@@ -1764,7 +1762,359 @@
     if (event.key === "Escape" && timeBreakdownOverlay?.classList.contains("show")) {
       hideTimeBreakdownModal();
     }
+    // Also handle Escape for settings modal
+    if (event.key === "Escape" && settingsOverlay?.classList.contains("show")) {
+      hideSettingsModal();
+    }
   });
+  
+  // ========== Settings Modal Functions ==========
+  
+  // Update key status indicator
+  function updateKeyStatus(statusEl, hasKey) {
+    if (!statusEl) return;
+    if (hasKey) {
+      statusEl.textContent = "✓ Configured";
+      statusEl.className = "key-status configured";
+    } else {
+      statusEl.textContent = "Not Set";
+      statusEl.className = "key-status missing";
+    }
+  }
+  
+  // Update input visual state
+  function updateInputState(inputEl, hasValue) {
+    if (!inputEl) return;
+    if (hasValue) {
+      inputEl.classList.add("has-value");
+    } else {
+      inputEl.classList.remove("has-value");
+    }
+  }
+  
+  // Load settings into the modal
+  async function loadSettingsIntoModal() {
+    try {
+      let settings = {};
+      if (window.electronAPI && window.electronAPI.loadSettings) {
+        settings = await window.electronAPI.loadSettings() || {};
+      }
+      
+      // Populate input fields (show masked values if keys exist)
+      if (openrouterApiKeyInput) {
+        openrouterApiKeyInput.value = settings.openrouterApiKey || "";
+        updateInputState(openrouterApiKeyInput, !!settings.openrouterApiKey);
+        updateKeyStatus(openrouterKeyStatus, !!settings.openrouterApiKey);
+      }
+      if (deepgramApiKeyInput) {
+        deepgramApiKeyInput.value = settings.deepgramApiKey || "";
+        updateInputState(deepgramApiKeyInput, !!settings.deepgramApiKey);
+        updateKeyStatus(deepgramKeyStatus, !!settings.deepgramApiKey);
+      }
+      if (openaiApiKeyInput) {
+        openaiApiKeyInput.value = settings.openaiApiKey || "";
+        updateInputState(openaiApiKeyInput, !!settings.openaiApiKey);
+        updateKeyStatus(openaiKeyStatus, !!settings.openaiApiKey);
+      }
+      if (anthropicApiKeyInput) {
+        anthropicApiKeyInput.value = settings.anthropicApiKey || "";
+        updateInputState(anthropicApiKeyInput, !!settings.anthropicApiKey);
+        updateKeyStatus(anthropicKeyStatus, !!settings.anthropicApiKey);
+      }
+      if (groqApiKeyInput) {
+        groqApiKeyInput.value = settings.groqApiKey || "";
+        updateInputState(groqApiKeyInput, !!settings.groqApiKey);
+        updateKeyStatus(groqKeyStatus, !!settings.groqApiKey);
+      }
+      if (xaiApiKeyInput) {
+        xaiApiKeyInput.value = settings.xaiApiKey || "";
+        updateInputState(xaiApiKeyInput, !!settings.xaiApiKey);
+        updateKeyStatus(xaiKeyStatus, !!settings.xaiApiKey);
+      }
+      if (assemblyaiApiKeyInput) {
+        assemblyaiApiKeyInput.value = settings.assemblyaiApiKey || "";
+        updateInputState(assemblyaiApiKeyInput, !!settings.assemblyaiApiKey);
+        updateKeyStatus(assemblyaiKeyStatus, !!settings.assemblyaiApiKey);
+      }
+      if (defaultLLMSelect) {
+        defaultLLMSelect.value = settings.defaultLLM || "openai/gpt-4o-mini";
+      }
+      
+      // Show current resume status
+      const savedResumeName = localStorage.getItem("uploaded_resume_name");
+      if (savedResumeName && resumeStatus) {
+        resumeStatus.textContent = "Uploaded";
+        resumeStatus.className = "key-status configured";
+        if (resumeUploadContent) resumeUploadContent.style.display = "none";
+        if (resumeUploadFile) {
+          resumeUploadFile.style.display = "flex";
+          if (resumeFileName) resumeFileName.textContent = savedResumeName;
+        }
+        if (settingsResumeUploadArea) settingsResumeUploadArea.classList.add("has-file");
+      } else if (resumeStatus) {
+        resumeStatus.textContent = "Not Uploaded";
+        resumeStatus.className = "key-status missing";
+        if (resumeUploadContent) resumeUploadContent.style.display = "flex";
+        if (resumeUploadFile) resumeUploadFile.style.display = "none";
+        if (settingsResumeUploadArea) settingsResumeUploadArea.classList.remove("has-file");
+      }
+      pendingResumeFile = null;
+      
+      log.info("Settings loaded into modal");
+    } catch (e) {
+      log.error("Failed to load settings:", e);
+    }
+  }
+  
+  // Save settings from modal
+  async function saveSettingsFromModal() {
+    try {
+      const newSettings = {};
+      
+      // Only save non-empty values
+      if (openrouterApiKeyInput?.value?.trim()) {
+        newSettings.openrouterApiKey = openrouterApiKeyInput.value.trim();
+      }
+      if (deepgramApiKeyInput?.value?.trim()) {
+        newSettings.deepgramApiKey = deepgramApiKeyInput.value.trim();
+      }
+      if (openaiApiKeyInput?.value?.trim()) {
+        newSettings.openaiApiKey = openaiApiKeyInput.value.trim();
+      }
+      if (anthropicApiKeyInput?.value?.trim()) {
+        newSettings.anthropicApiKey = anthropicApiKeyInput.value.trim();
+      }
+      if (groqApiKeyInput?.value?.trim()) {
+        newSettings.groqApiKey = groqApiKeyInput.value.trim();
+      }
+      if (xaiApiKeyInput?.value?.trim()) {
+        newSettings.xaiApiKey = xaiApiKeyInput.value.trim();
+      }
+      if (assemblyaiApiKeyInput?.value?.trim()) {
+        newSettings.assemblyaiApiKey = assemblyaiApiKeyInput.value.trim();
+      }
+      if (defaultLLMSelect?.value) {
+        newSettings.defaultLLM = defaultLLMSelect.value;
+      }
+      
+      
+      // Upload resume file if pending
+      if (pendingResumeFile) {
+        try {
+          await ingestResume(pendingResumeFile);
+          localStorage.setItem("uploaded_resume_name", pendingResumeFile.name);
+          pendingResumeFile = null;
+        } catch (resumeErr) {
+          console.error("Resume upload error during save:", resumeErr);
+        }
+      }
+      
+      // Check if at least one AI key is provided
+      const hasAIKey = newSettings.openrouterApiKey || newSettings.openaiApiKey || 
+                       newSettings.anthropicApiKey || newSettings.groqApiKey || newSettings.xaiApiKey;
+      
+      if (!hasAIKey) {
+        if (settingsStatus) {
+          settingsStatus.textContent = "⚠️ Please add at least one AI provider key";
+          settingsStatus.className = "settings-status error";
+        }
+        return false;
+      }
+      
+      // Save settings
+      if (window.electronAPI && window.electronAPI.saveSettings) {
+        const result = await window.electronAPI.saveSettings(newSettings);
+        if (result.ok) {
+          if (settingsStatus) {
+            settingsStatus.textContent = "✓ Settings saved! Restarting server...";
+            settingsStatus.className = "settings-status success";
+          }
+          
+          // Restart the Python server to pick up new keys
+          setTimeout(async () => {
+            if (window.electronAPI && window.electronAPI.restartServer) {
+              await window.electronAPI.restartServer();
+            }
+            hideSettingsModal();
+            showNotification("Settings saved! Server restarted.", "success");
+          }, 1000);
+          
+          return true;
+        } else {
+          throw new Error(result.error || "Failed to save settings");
+        }
+      }
+    } catch (e) {
+      log.error("Failed to save settings:", e);
+      if (settingsStatus) {
+        settingsStatus.textContent = "❌ Error: " + e.message;
+        settingsStatus.className = "settings-status error";
+      }
+      return false;
+    }
+  }
+  
+  // Show settings modal
+  function showSettingsModal() {
+    if (!settingsOverlay) return;
+    
+    state.isSettingsOpen = true; // Lock auto-resize
+    
+    // Load current settings
+    loadSettingsIntoModal();
+    
+    // Clear status
+    if (settingsStatus) {
+      settingsStatus.textContent = "";
+      settingsStatus.className = "settings-status";
+    }
+    
+    // FIRST: Resize the window to make room for the settings overlay
+    if (window.electronAPI && window.electronAPI.resizeToolbarDimensions) {
+      try {
+        const barRect = barEl ? barEl.getBoundingClientRect() : { width: 360 };
+        const targetW = Math.max(Math.round(barRect.width + 80), 640);
+        const targetH = 700;
+        window.electronAPI.resizeToolbarDimensions(targetW, targetH);
+      } catch (resizeErr) {
+        console.error("[Settings] Failed to resize window:", resizeErr);
+      }
+    }
+    
+    // THEN: Show the overlay after a brief delay for window resize
+    setTimeout(() => {
+      settingsOverlay.classList.add("show");
+      settingsOverlay.setAttribute("aria-hidden", "false");
+      
+      // Focus first input
+      setTimeout(() => {
+        if (openrouterApiKeyInput) {
+          openrouterApiKeyInput.focus();
+        }
+      }, 50);
+    }, 100);
+  }
+  
+  // Hide settings modal
+  function hideSettingsModal() {
+    if (!settingsOverlay) return;
+    settingsOverlay.classList.remove("show");
+    settingsOverlay.setAttribute("aria-hidden", "true");
+    state.isSettingsOpen = false; // Unlock auto-resize
+    queueResize();
+  }
+  
+  // Settings modal event listeners
+  if (openSettingsBtn) {
+    openSettingsBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (window.electronAPI?.settings?.openWindow) {
+        window.electronAPI.settings.openWindow();
+      }
+    });
+  }
+  
+  if (settingsClose) {
+    settingsClose.addEventListener("click", (e) => {
+      e.preventDefault();
+      hideSettingsModal();
+    });
+  }
+  
+  if (settingsCancel) {
+    settingsCancel.addEventListener("click", (e) => {
+      e.preventDefault();
+      hideSettingsModal();
+    });
+  }
+  
+  if (settingsSave) {
+    settingsSave.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await saveSettingsFromModal();
+    });
+  }
+  
+  // Close modal when clicking outside
+  if (settingsOverlay) {
+    settingsOverlay.addEventListener("click", (e) => {
+      if (e.target === settingsOverlay) {
+        hideSettingsModal();
+      }
+    });
+  }
+  
+  // Update input states on change
+  const settingsInputs = [
+    { input: openrouterApiKeyInput, status: openrouterKeyStatus },
+    { input: deepgramApiKeyInput, status: deepgramKeyStatus },
+    { input: openaiApiKeyInput, status: openaiKeyStatus },
+    { input: anthropicApiKeyInput, status: anthropicKeyStatus },
+    { input: groqApiKeyInput, status: groqKeyStatus },
+    { input: xaiApiKeyInput, status: xaiKeyStatus },
+    { input: assemblyaiApiKeyInput, status: assemblyaiKeyStatus }
+  ];
+  
+  settingsInputs.forEach(({ input, status }) => {
+    if (input) {
+      input.addEventListener("input", () => {
+        updateInputState(input, !!input.value?.trim());
+        updateKeyStatus(status, !!input.value?.trim());
+      });
+    }
+  });
+  
+  // Check for missing API keys on startup and prompt user
+  async function checkApiKeysOnStartup() {
+    try {
+      let settings = {};
+      if (window.electronAPI && window.electronAPI.loadSettings) {
+        settings = await window.electronAPI.loadSettings() || {};
+      }
+      
+      const hasAIKey = settings.openrouterApiKey || settings.openaiApiKey || 
+                       settings.anthropicApiKey || settings.groqApiKey || settings.xaiApiKey;
+      const hasTranscriptionKey = settings.deepgramApiKey || settings.assemblyaiApiKey;
+      
+      if (!hasAIKey || !hasTranscriptionKey) {
+        // Show a welcome notification after a short delay
+        setTimeout(() => {
+          const missingKeys = [];
+          if (!hasAIKey) missingKeys.push("AI provider");
+          if (!hasTranscriptionKey) missingKeys.push("transcription");
+          
+          showNotification(
+            `⚙️ Please configure your ${missingKeys.join(" and ")} API keys in Settings to get started.`,
+            "info",
+            8000
+          );
+        }, 2000);
+      }
+    } catch (e) {
+      log.warn("Could not check API keys on startup:", e);
+    }
+  }
+  
+  // Run startup check
+  checkApiKeysOnStartup();
+
+  // Verify stealth protection status at startup
+  (async () => {
+    try {
+      if (window.electronAPI && window.electronAPI.getStealthStatus) {
+        const stealth = await window.electronAPI.getStealthStatus();
+        if (stealth.effectiveProtection) {
+          log.info(`[Stealth] Content protection active (platform: ${stealth.platform})`);
+        } else {
+          log.warn(`[Stealth] Content protection not effective on ${stealth.platform} — window may be visible in screen shares`);
+        }
+      }
+    } catch (e) {
+      log.debug('[Stealth] Could not query stealth status:', e);
+    }
+  })();
+  
+  // ========== End Settings Modal Functions ==========
   
   // Listen for credits updates from main process
   if (window.electronAPI && window.electronAPI.onCreditsUpdated) {
@@ -1793,7 +2143,7 @@
     console.log("Attempting to connect to server...");
     if (!state._reconnectAttempts) state._reconnectAttempts = 0;
     
-    // CLOUD MODE SUPPORT: Check if we should connect to cloud backend
+    // HYBRID MODE: Try local first, fallback to cloud if local unavailable
     let config = null;
     try {
       if (window.electronAPI && window.electronAPI.getConfig) {
@@ -1804,15 +2154,8 @@
       console.log('[Connection] Could not get config from main process:', e);
     }
 
-    // If cloud mode is enabled, connect to cloud server directly
-    if (config && config.cloudMode && config.serverUrl) {
-      console.log(`[Cloud Mode] Connecting to cloud server: ${config.serverUrl}`);
-      connectToCloud(config.serverUrl);
-      return;
-    }
-
-    // LOCAL MODE: Scan localhost ports for local Python server
-    console.log('[Local Mode] Scanning localhost ports for server...');
+    // ALWAYS TRY LOCAL FIRST: Scan localhost ports for local Python server
+    console.log('[Hybrid Mode] Trying local backend first...');
     try {
       const tryConnect = (port) =>
         new Promise((resolve) => {
@@ -1881,33 +2224,81 @@
           }
         }
         if (!state.ws) {
-          console.error(
-            "No WebSocket connection established after scanning ports 8765-8774",
+          console.log(
+            "❌ No local server found after scanning ports 8765-8774",
           );
-          // Provide user feedback only once per failed sweep
+          
+          // Local-only mode: no cloud fallback (open-source)
           try {
             if (typeof showNotification === "function")
-              showNotification("Server not running. Retrying...", "error");
+              showNotification("Local server not running. Starting automatically...", "error");
           } catch {}
-          throw new Error("No ws connection");
+          throw new Error("Local backend not available — ensure Python server is running");
         }
 
-        state.ws.onopen = () => {
-          log.info("WebSocket connection opened successfully");
+        const onLocalConnected = async () => {
+          log.info("✅ WebSocket connection opened successfully (LOCAL BACKEND)");
+          console.log(`✅ Connected to LOCAL backend on port ${state.serverPort}`);
+          state.connectedToCloud = false;
+          state.cloudServerUrl = null;
           setConnected(true);
           state._reconnectAttempts = 0;
           try {
             localStorage.setItem("toolbar_last_port", String(state.serverPort));
           } catch {}
           if (showNotification) {
-            showNotification("Connected! Mic ready.", "success");
+            showNotification("Connected to local server! Mic ready.", "success");
           } else {
             log.info("Connected! Mic ready.");
+          }
+          // Send init_session with user's BYOK API keys
+          try {
+            if (window.electronAPI && window.electronAPI.settings) {
+              const [deepgramKey, allSettings] = await Promise.all([
+                window.electronAPI.settings.getApiKey('deepgram'),
+                window.electronAPI.settings.getAll(),
+              ]);
+              const cfg = (allSettings && allSettings.ai) || {};
+              const provider = cfg.provider || 'openai';
+              // Read key from provider-specific store (not ai_primary which may be stale)
+              const providerKeyMap = { openai: 'openai', anthropic: 'anthropic', gemini: 'gemini', groq: 'groq', openrouter: 'openrouter', custom: 'custom' };
+              const storeKey = providerKeyMap[provider] || 'ai_primary';
+              const aiKey = await window.electronAPI.settings.getApiKey(storeKey);
+              send({
+                type: 'init_session',
+                deepgram_api_key: deepgramKey || '',
+                deepgram_model: (allSettings && allSettings.deepgram && allSettings.deepgram.model) || 'nova-2',
+                ai_provider: provider,
+                ai_api_key: aiKey || '',
+                ai_model: cfg.model || '',
+                ai_base_url: cfg.baseUrl || '',
+                smart_routing: cfg.smartRouting !== false,
+                budget_mode: !!cfg.budgetMode,
+                max_cost_per_request: cfg.maxCostPerRequest || 0.10,
+              });
+              log.info('[Session] init_session sent to backend');
+            }
+          } catch (initErr) {
+            log.error('[Session] Failed to send init_session:', initErr);
           }
           // Sync listen_student preference to server
           try {
             send({ type: "listen_student", enabled: !!listenStudent });
           } catch {}
+          
+          // Sync saved language preference to server (reads from encrypted settings store)
+          try {
+            let lang = null;
+            if (window.electronAPI?.settings?.getAll) {
+              const all = await window.electronAPI.settings.getAll();
+              lang = all?.deepgram?.language;
+            }
+            if (lang && lang !== "en-US") {
+              send({ type: "set_language", language: lang });
+              log.info(`Synced transcription language: ${lang}`);
+            }
+          } catch {}
+          
           // Start health monitoring
           connectionHealth.start();
           log.info("Connection health monitoring started");
@@ -1934,7 +2325,23 @@
               }
             }
           }
+
+          // Re-send stored resume so AI context is available after server restarts
+          try {
+            const storedResume = localStorage.getItem("resume_content");
+            const storedResumeName = localStorage.getItem("uploaded_resume_name");
+            if (storedResume && storedResumeName) {
+              state.ws.send(JSON.stringify({ type: "resume", name: storedResumeName, content: storedResume }));
+              log.info("Re-sent stored resume to server after connect");
+            }
+          } catch (resumeSyncErr) {
+            log.warn("Failed to sync stored resume on connect", resumeSyncErr);
+          }
         };
+        // Socket is already open (tryConnect resolves on onopen) — invoke immediately.
+        // Also keep as onopen handler so reconnections trigger the same init.
+        state.ws.onopen = onLocalConnected;
+        onLocalConnected();
         state.ws.onclose = () => {
           log.info("WebSocket connection closed, scheduling reconnect");
           connectionHealth.stop();
@@ -1973,26 +2380,60 @@
       const ws = new WebSocket(wsUrl);
       state.ws = ws;
       
-      ws.onopen = () => {
-        console.log(`[Cloud] ✅ Connected to cloud server: ${serverUrl}`);
+      ws.onopen = async () => {
+        console.log(`✅ Connected to CLOUD backend: ${serverUrl}`);
+        log.info(`[Cloud] ✅ Connected to cloud server: ${serverUrl}`);
+        state.connectedToCloud = true;
+        state.cloudServerUrl = serverUrl;
         setConnected(true);
         state._reconnectAttempts = 0;
-        
+
         try {
           localStorage.setItem('toolbar_cloud_connected', 'true');
+          localStorage.setItem('toolbar_cloud_url', serverUrl);
         } catch {}
-        
+
         if (showNotification) {
-          showNotification('Connected to cloud server', 'success');
+          showNotification('Connected to cloud server!', 'success');
         } else {
           console.log('Connected to cloud server');
         }
-        
+
+        // Send init_session with BYOK API keys (same as local connection)
+        try {
+          if (window.electronAPI && window.electronAPI.settings) {
+            const [deepgramKey, allSettings] = await Promise.all([
+              window.electronAPI.settings.getApiKey('deepgram'),
+              window.electronAPI.settings.getAll(),
+            ]);
+            const cfg = (allSettings && allSettings.ai) || {};
+            const provider = cfg.provider || 'openai';
+            const providerKeyMap = { openai: 'openai', anthropic: 'anthropic', gemini: 'gemini', groq: 'groq', openrouter: 'openrouter', custom: 'custom' };
+            const storeKey = providerKeyMap[provider] || 'ai_primary';
+            const aiKey = await window.electronAPI.settings.getApiKey(storeKey);
+            send({
+              type: 'init_session',
+              deepgram_api_key: deepgramKey || '',
+              deepgram_model: (allSettings && allSettings.deepgram && allSettings.deepgram.model) || 'nova-2',
+              ai_provider: provider,
+              ai_api_key: aiKey || '',
+              ai_model: cfg.model || '',
+              ai_base_url: cfg.baseUrl || '',
+              smart_routing: cfg.smartRouting !== false,
+              budget_mode: !!cfg.budgetMode,
+              max_cost_per_request: cfg.maxCostPerRequest || 0.10,
+            });
+            log.info('[Cloud] init_session sent');
+          }
+        } catch (initErr) {
+          log.error('[Cloud] Failed to send init_session:', initErr);
+        }
+
         // Sync listen_student preference to server
         try {
-          send({ type: "listen_student", value: listenStudent });
+          send({ type: "listen_student", enabled: !!listenStudent });
         } catch {}
-        
+
         // Start health monitoring
         connectionHealth.start();
         log.info('[Cloud] Connection health monitoring started');
@@ -2019,6 +2460,18 @@
               );
             }
           }
+        }
+
+        // Re-send stored resume so AI context is available after server restarts
+        try {
+          const storedResume = localStorage.getItem("resume_content");
+          const storedResumeName = localStorage.getItem("uploaded_resume_name");
+          if (storedResume && storedResumeName) {
+            state.ws.send(JSON.stringify({ type: "resume", name: storedResumeName, content: storedResume }));
+            log.info("[Cloud] Re-sent stored resume to server after connect");
+          }
+        } catch (resumeSyncErr) {
+          log.warn("[Cloud] Failed to sync stored resume on connect", resumeSyncErr);
         }
       };
       
@@ -2066,6 +2519,21 @@
   function handleWebSocketMessage(ev) {
     try {
       const msg = JSON.parse(ev.data);
+
+      // Any message from server proves the connection is alive — reset health timer
+      connectionHealth.receivedMessage();
+
+      // Handle NO_CONFIG: backend has no API keys — prompt user to configure
+      if (msg.type === 'error' && msg.code === 'NO_CONFIG') {
+        log.warn('[Config] Backend missing API keys — opening Settings');
+        if (typeof showNotification === 'function') {
+          showNotification('API keys not configured. Click ⚙ to open Settings.', 'warn');
+        }
+        if (window.electronAPI && window.electronAPI.settings) {
+          window.electronAPI.settings.openWindow();
+        }
+        return;
+      }
 
       // CRITICAL: Receive session_id from server for session isolation
       if (msg.type === 'session_init' && msg.session_id) {
@@ -2115,6 +2583,7 @@
         }
       }
       if (msg.type === "context_ack" && msg.context_kind === "company") {
+        clearTimeout(state._companyBriefAckTimeout);
         const silentSync = !!state.companyBriefSilentSync;
         state.companyBriefSilentSync = false;
 
@@ -2181,78 +2650,22 @@
       // Transcript updates
       if (msg.type === "transcript") {
         console.log("[Transcript] Received:", msg);
+        const isFinal = !!msg.is_final;
         const text = msg.text || "";
-        const full = msg.full || "";
-        // Determine finality: prefer explicit is_final, otherwise infer from interim
-        let isFinal = undefined;
-        if (msg.hasOwnProperty('is_final')) {
-          isFinal = Boolean(msg.is_final);
-        } else if (msg.hasOwnProperty('interim')) {
-          isFinal = !Boolean(msg.interim);
-        }
-        if (!text && !full) return;
+        if (!text.trim()) return;
 
         const mode = msg.mode || state.recordingMode || "interviewer";
-        const seq = Number(msg.seq || msg.results_count || 0) || 0;
-        console.log(`[Transcript] Mode: ${mode}, isFinal: ${String(isFinal)}, seq: ${seq}, fullPresent: ${!!full}`);
+        console.log(`[Transcript] Mode: ${mode}, Final: ${isFinal}`);
 
-        // If a full cumulative transcript is provided, prefer it (with guards)
-        if (full) {
-          // Defensive guards: ignore out-of-order or shrinking full updates
-          if (seq && seq < (window._lastTranscriptSeq || 0)) {
-            console.warn('[Transcript] Ignoring out-of-order full', { seq, lastSeq: window._lastTranscriptSeq });
-          } else if (window._lastRenderedLength && full.length < Math.max(0, window._lastRenderedLength - 50)) {
-            console.warn('[Transcript] Rejecting shrinking full text', { lastLen: window._lastRenderedLength, newLen: full.length, seq });
-          } else {
-            // Accept full as authoritative
-            console.debug('[Transcript] Accepting full cumulative transcript', { len: full.length, seq });
-            liveTranscriptAccumulated = String(full || '').trim();
-            window._lastRenderedLength = liveTranscriptAccumulated.length;
-            if (seq) window._lastTranscriptSeq = seq;
-            // Update DOM via same path used by appendToLiveTranscript (no duplication)
-            const target = state.chatHistory.find((m) => m.id === liveTranscriptMsgId);
-            if (target) target.content = liveTranscriptAccumulated;
-            if (chatMessages) {
-              const el = chatMessages.querySelector(`.chat-message[data-id="${liveTranscriptMsgId}"] .chat-content div:last-child`);
-              if (el) el.innerHTML = preserveUserFormatting(liveTranscriptAccumulated.trim());
-            }
-          }
-        } else if (isFinal === true) {
-          // Final single segment: append to accumulated
-          console.log("[Transcript] FINAL (segment) -", text.substring(0, 50) + "...");
+        if (isFinal) {
+          console.log("[Transcript] FINAL -", text.substring(0, 50) + "...");
           appendToLiveTranscript(text);
-        } else if (isFinal === false) {
-          // Explicitly interim
+        } else {
           console.log("[Transcript] INTERIM -", text.substring(0, 50));
           updateLiveTranscriptInterim(text);
-        } else {
-          // Unknown finality: fall back to treating messages with interim===false as final
-          if (msg.hasOwnProperty('interim') && msg.interim === false) {
-            console.log("[Transcript] TREAT AS FINAL (inferred) -", text.substring(0, 50) + "...");
-            appendToLiveTranscript(text);
-          } else {
-            console.log("[Transcript] TREAT AS INTERIM (fallback) -", text.substring(0, 50));
-            updateLiveTranscriptInterim(text);
-          }
         }
 
         usageStats.increment("transcriptions");
-      }
-
-      // Server requested transcript clear - clear toolbar live transcript state too
-      if (msg.type === 'transcript_cleared') {
-        console.log('[Transcript] Server requested transcript clear - clearing live transcript');
-        liveTranscriptMsgId = null;
-        liveTranscriptAccumulated = '';
-        window._lastTranscriptSeq = 0;
-        window._lastRenderedLength = 0;
-        // Remove any existing live transcript chat message element
-        if (chatMessages) {
-          const el = chatMessages.querySelector('.chat-message[data-id]');
-          if (el && el.querySelector('.question-label')?.textContent === '🎤 Transcript Sent') {
-            el.remove();
-          }
-        }
       }
 
       // Handle screen/OCR captures
@@ -2273,8 +2686,6 @@
 
         state.lastContext = ocrText;
         state.lastQuestionContext = "screen_capture";
-
-        addChatMessage("analysis", ocrText);
 
         if (state.autoTriggerAI && ocrText.trim()) {
           console.log("[OCR] Auto-triggering AI with screen content");
@@ -2383,45 +2794,39 @@
       if (msg.type === "ai_response" && msg.text && msg.text.trim()) {
         addChatMessage("ai", msg.text.trim());
       }
+
+      // Server confirmed transcript was cleared — reset live transcript state
+      if (msg.type === "transcript_cleared") {
+        finalizeLiveTranscript();
+        if (transcriptionText) transcriptionText.textContent = "";
+        if (transcriptionDisplay) transcriptionDisplay.classList.remove("active");
+        log.info("[Transcript] Cleared by server");
+      }
     } catch (err) {
       console.error('[WS] Error processing message:', err);
-    }
-  }
-
-  // Process server messages (extracted for reuse between local and cloud)
-  function processServerMessage(msg) {
-    try {
-      if (
-        msg.type === "status" &&
-        ((msg.data && msg.data.audio) || msg.audio)
-      ) {
-        const a = (msg.data && msg.data.audio) || msg.audio;
-        statusText.textContent =
-          a === "listening"
-            ? "Listening…"
-            : a === "receiving"
-              ? "Processing…"
-              : "Connected";
-      }
-
-      // Continue with rest of message handling...
-      // (This is a placeholder - the actual logic from ws.onmessage will be used)
-    } catch (err) {
-      console.error('[Message] Error processing:', err);
     }
   }
 
   function scheduleReconnect() {
     state._reconnectAttempts = (state._reconnectAttempts || 0) + 1;
     const attempt = state._reconnectAttempts;
-    const delay = Math.min(10000, 1000 * Math.pow(1.4, attempt)); // capped exponential backoff
-    console.log(
-      `Scheduling reconnect attempt ${attempt} in ${Math.round(delay)}ms`,
-    );
-    if (statusText) statusText.textContent = "Reconnecting...";
+    // First 5 attempts: fast retry (500ms, 1s, 1.5s, 2s, 3s).
+    // After that: slow exponential up to 10s.
+    const delay = attempt <= 5
+      ? Math.min(500 * attempt, 3000)
+      : Math.min(10000, 1000 * Math.pow(1.4, attempt - 5));
+    console.log(`Scheduling reconnect attempt ${attempt} in ${Math.round(delay)}ms`);
+    if (statusText) statusText.textContent = attempt <= 5 ? 'Waiting for server…' : 'Reconnecting…';
     clearTimeout(state._reconnectTimer);
     state._reconnectTimer = setTimeout(() => {
-      if (!state.connected) connect();
+      if (state.connected) return;
+      // Reconnect to cloud if that was the previous connection type
+      if (state.connectedToCloud && state.cloudServerUrl) {
+        log.info('[Reconnect] Reconnecting to cloud:', state.cloudServerUrl);
+        connectToCloud(state.cloudServerUrl);
+      } else {
+        connect();
+      }
     }, delay);
   }
 
@@ -2457,26 +2862,32 @@
         // Determine audio endpoint based on mode
         let audioUrl;
         
-        // Get config to check if cloud mode is enabled
-        let config = null;
-        try {
-          if (window.electronAPI && window.electronAPI.getConfig) {
-            config = await window.electronAPI.getConfig();
-          }
-        } catch (e) {
-          console.log("[Audio] Could not get config:", e);
-        }
-        
-        // In cloud mode, use the cloud server's audio endpoint
-        if (config && config.cloudMode && config.serverUrl) {
-          // Convert https:// to wss:// or http:// to ws://
-          audioUrl = config.serverUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:') + '/audio';
-          console.log("[Audio] Cloud mode - connecting to:", audioUrl);
+        // CRITICAL: Use local server if we're connected to one (state.serverPort is set)
+        // This takes precedence over config.cloudMode setting
+        if (state.serverPort) {
+          // We're connected to local server - use local audio endpoint
+          audioUrl = `ws://localhost:${state.serverPort}/audio`;
+          console.log("[Audio] Local mode - opening audio WebSocket to port", state.serverPort, "...");
         } else {
-          // Local mode - use localhost
-          const port = state.serverPort || 8765;
-          audioUrl = `ws://localhost:${port}/audio`;
-          console.log("[Audio] Local mode - opening audio WebSocket to port", port, "...");
+          // Not connected to local server - try cloud
+          let config = null;
+          try {
+            if (window.electronAPI && window.electronAPI.getConfig) {
+              config = await window.electronAPI.getConfig();
+            }
+          } catch (e) {
+            console.log("[Audio] Could not get config:", e);
+          }
+          
+          if (config && config.cloudMode && config.serverUrl) {
+            // Convert https:// to wss:// or http:// to ws://
+            audioUrl = config.serverUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:') + '/audio';
+            console.log("[Audio] Cloud mode - connecting to:", audioUrl);
+          } else {
+            // Fallback to default local port
+            audioUrl = `ws://localhost:8765/audio`;
+            console.log("[Audio] Fallback - opening audio WebSocket to port 8765...");
+          }
         }
         
         // CRITICAL: Append session_id to URL for proper session isolation
@@ -2853,7 +3264,12 @@
         const msg = ev.data || {};
         if (!state.recording || state.recordingMode !== mode) return;
         if (msg.type === "level") {
-          state.lastRMS = msg.rms;
+          // Smooth RMS with peak-hold to avoid false silence warnings from brief gaps
+          const alpha = 0.15;
+          state.lastRMS = Math.max(
+            msg.rms,
+            (state.lastRMS || 0) * (1 - alpha)
+          );
           if (msg.rms !== undefined && statusText) {
             statusText.textContent = msg.silence
               ? "Listening (silence)"
@@ -3774,6 +4190,17 @@
       state.companyBriefSilentSync = false;
       state.companyBriefConfirmationPending = true;
       state.companyBriefConfirmedForSession = false;
+      // Safety timeout: if server never acks within 10s, unlock the UI
+      clearTimeout(state._companyBriefAckTimeout);
+      state._companyBriefAckTimeout = setTimeout(() => {
+        if (state.companyBriefConfirmationPending) {
+          state.companyBriefConfirmationPending = false;
+          state.pendingCompanyBrief = null;
+          if (companyBriefSave) companyBriefSave.disabled = false;
+          resetCompanyBriefStatus("Server did not respond. Try again.", "warn");
+          log.warn("[CompanyBrief] Ack timeout — unlocking UI");
+        }
+      }, 10000);
       state.ws.send(JSON.stringify(payload));
     } catch (err) {
       console.error("Failed to send company brief", err);
@@ -3809,6 +4236,9 @@
       showNotification("Uploading resume...", "info");
       const buf = await file.arrayBuffer();
       const b64 = arrayBufferToBase64(buf);
+      // Persist so it can be re-sent automatically after server restarts
+      localStorage.setItem("resume_content", b64);
+      localStorage.setItem("uploaded_resume_name", file.name);
       const msg = { type: "resume", name: file.name, content: b64 };
       state.ws.send(JSON.stringify(msg));
     } catch (e) {
@@ -3844,6 +4274,54 @@
     });
   }
 
+  // Settings Resume Upload Area handlers
+  if (settingsResumeUploadArea) {
+    settingsResumeUploadArea.addEventListener("click", (e) => {
+      // Don't trigger if clicking remove button
+      if (e.target === resumeRemoveBtn || e.target.closest(".resume-remove-btn")) return;
+      if (settingsResumeFileInput) settingsResumeFileInput.click();
+    });
+  }
+  if (settingsResumeFileInput) {
+    settingsResumeFileInput.addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) {
+        if (!validateFileSize(file)) {
+          e.target.value = "";
+          return;
+        }
+        pendingResumeFile = file;
+        // Update UI to show selected file
+        if (resumeUploadContent) resumeUploadContent.style.display = "none";
+        if (resumeUploadFile) {
+          resumeUploadFile.style.display = "flex";
+          if (resumeFileName) resumeFileName.textContent = file.name;
+        }
+        if (settingsResumeUploadArea) settingsResumeUploadArea.classList.add("has-file");
+        if (resumeStatus) {
+          resumeStatus.textContent = "Ready";
+          resumeStatus.className = "key-status configured";
+        }
+      }
+      e.target.value = "";
+    });
+  }
+  if (resumeRemoveBtn) {
+    resumeRemoveBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      pendingResumeFile = null;
+      localStorage.removeItem("uploaded_resume_name");
+      localStorage.removeItem("resume_content");
+      if (resumeUploadContent) resumeUploadContent.style.display = "flex";
+      if (resumeUploadFile) resumeUploadFile.style.display = "none";
+      if (settingsResumeUploadArea) settingsResumeUploadArea.classList.remove("has-file");
+      if (resumeStatus) {
+        resumeStatus.textContent = "Not Uploaded";
+        resumeStatus.className = "key-status missing";
+      }
+    });
+  }
+
   // Close Application Button
   if (closeAppBtn) {
     closeAppBtn.addEventListener("click", () => {
@@ -3858,6 +4336,7 @@
       }
     });
   }
+
 
   // Visibility toggles the compact toolbar window visibility/background
   if (visibilityBtn)
@@ -4094,8 +4573,8 @@
         }
       }
 
-      // Show user message immediately in chat
-      addChatMessage("interviewer", displayMessage);
+      // Show user message in transcription display instead of chat
+      updateTranscriptionDisplay(displayMessage);
 
       // Determine context channel - use last context for follow-up questions
       // This allows the AI to maintain conversation history across questions
@@ -4641,6 +5120,25 @@
         : "Thinking…";
       send(message);
       expandChatContainer();
+      
+      // Add visible loading indicator in chat area
+      if (chatMessages) {
+        const loadingEl = document.createElement("div");
+        loadingEl.className = "chat-message ai loading-indicator";
+        loadingEl.id = "ai-loading-indicator";
+        loadingEl.innerHTML = `
+          <div class="message-avatar">🤖</div>
+          <div class="message-content">
+            <div class="message-text" style="color: var(--text-secondary); font-style: italic;">
+              <span class="loading-dots">Thinking</span>
+              <span class="dot-animation">...</span>
+            </div>
+          </div>
+        `;
+        chatMessages.appendChild(loadingEl);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+      
       showNotification(
         captureRequest
           ? "AI capture analysis request sent"
@@ -4660,6 +5158,9 @@
         }
         askAiBtn.classList.remove("busy");
         askAiBtn.textContent = prevLabel;
+        // Remove loading indicator from chat
+        const loadingIndicator = document.getElementById("ai-loading-indicator");
+        if (loadingIndicator) loadingIndicator.remove();
       };
       // We expect messages via WebSocket, not window, so instead hook WebSocket onmessage
       if (state.ws) {
@@ -4676,6 +5177,11 @@
           }
           try {
             const d = JSON.parse(evt.data);
+            // Remove loading indicator when first coach message arrives
+            if (d && d.type === "coach") {
+              const loadingIndicator = document.getElementById("ai-loading-indicator");
+              if (loadingIndicator) loadingIndicator.remove();
+            }
             // Clear busy when we see completion of coach stream
             if (d && d.type === "coach" && d.complete) {
               clearBusy();

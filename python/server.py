@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import asyncio
 
 import base64
@@ -61,33 +62,19 @@ from streaming_fixes import (
 # Lazy loaded: pypdf, docx, PIL, pytesseract
 ImageFile = None # Will be imported with PIL
 
-# Import improved OCR utilities (optional)
-try:
-    from ocr_utils import OCRProcessor, OCRConfig
-    _has_ocr_utils = True
-except ImportError:
-    logger.warning("ocr_utils module not found, using legacy OCR processing")
-    _has_ocr_utils = False
-
-# Import EasyOCR engine (excellent for screenshots) - LAZY LOADING
-try:
-    from easyocr_engine import process_ocr_easyocr, get_easyocr_engine, check_easyocr_available
-    _has_easyocr = None
-except ImportError as e:
-    logger.warning(f"EasyOCR module not found: {e}")
-    _has_easyocr = False
-
-# Import PaddleOCR engine (superior OCR accuracy) - LAZY LOADING
+# Import PaddleOCR engine (primary and only OCR engine)
 try:
     from paddleocr_engine import process_ocr_paddleocr, get_paddle_ocr_engine, check_paddleocr_available
-    # Defer check to background thread to speed up startup
-    _has_paddleocr = None 
+    _has_paddleocr = True
 except ImportError as e:
-    logger.warning(f"PaddleOCR module not found: {e}")
+    logger.error(f"PaddleOCR module not found: {e} - OCR will not work!")
     _has_paddleocr = False
 
 # Import our new AI providers system
-from ai_providers import initialize_ai, generate_ai_response, get_ai_status, generate_ai_response_for
+from ai_providers import initialize_ai, generate_ai_response, get_ai_status, generate_ai_response_for, UserProviderConfig, create_provider_from_config
+
+# Import Vision Provider
+from vision_provider import VisionProvider
 
 # Import intelligent routing modules (NEW - for smart model selection)
 try:
@@ -100,6 +87,25 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️  Intelligent routing modules not available: {e}")
     _has_intelligent_routing = False
+
+# Import performance optimization modules (NEW)
+try:
+    from ocr_cache import get_cached_ocr, cache_ocr_result, get_ocr_cache_stats
+    from performance_metrics import PerformanceMetrics, get_metrics_tracker, record_metrics
+    from vision_provider import get_vision_provider, analyze_image_with_vision
+    from batch_processor import get_batch_processor, submit_batch_request, BatchRequest, RequestPriority
+    _has_optimization_modules = True
+    logger.info("✅ Performance optimization modules loaded successfully")
+except ImportError as e:
+    logger.warning(f"⚠️  Performance optimization modules not available: {e}")
+    _has_optimization_modules = False
+    # Provide fallback implementations
+    def get_cached_ocr(image_bytes): return None
+    def cache_ocr_result(image_bytes, text, engine, time_ms): pass
+    def get_ocr_cache_stats(): return {}
+    def record_metrics(metrics): pass
+    def get_vision_provider(): return None
+    def analyze_image_with_vision(image_bytes, prompt, question=None): return None
 
 # Import answer quality enhancement modules (NEW - for postprocessing & quality validation)
 try:
@@ -122,19 +128,29 @@ try:
         capture_screen_windows,
         capture_window_windows,
         get_available_windows,
-        is_windows_capture_available
+        is_windows_capture_available,
+        capture_screen_cross_platform,
+        is_cross_platform_capture_available,
     )
     _has_windows_capture = is_windows_capture_available()
+    _has_cross_platform_capture = is_cross_platform_capture_available()
     if _has_windows_capture:
         logger.info("✅ Windows native capture available - can capture restricted applications")
+    if _has_cross_platform_capture:
+        logger.info("✅ Cross-platform (mss) capture available")
 except ImportError:
     _has_windows_capture = False
+    _has_cross_platform_capture = False
     capture_screen_windows = None
     capture_window_windows = None
     get_available_windows = None
+    capture_screen_cross_platform = None
     logger.info("Windows native capture not available (install pywin32)")
 
 # Import streaming transcription engine
+_streaming_module_path = os.path.join(os.path.dirname(__file__), 'streaming_transcription.py')
+logger.info(f"Looking for streaming_transcription at: {_streaming_module_path}")
+logger.info(f"File exists: {os.path.exists(_streaming_module_path)}")
 try:
     from streaming_transcription import (
         StreamingTranscriptionEngine,
@@ -142,9 +158,15 @@ try:
         TranscriptResult
     )
     _has_streaming = True
-    logger.info("Streaming transcription module loaded successfully")
+    logger.info("✅ Streaming transcription module loaded successfully")
 except ImportError as e:
-    logger.error(f"streaming_transcription module not available: {e}")
+    logger.error(f"❌ streaming_transcription module import failed: {e}")
+    logger.error(f"Current directory: {os.getcwd()}")
+    logger.error(f"Script directory: {os.path.dirname(__file__)}")
+    logger.error(f"Module search path: {sys.path[:5]}")  # Show first 5 entries
+    _has_streaming = False
+except Exception as e:
+    logger.error(f"❌ Unexpected error loading streaming_transcription: {e}", exc_info=True)
     _has_streaming = False
 
 # Embedding (lazy)
@@ -227,18 +249,17 @@ last_student_time = 0.0
 # AI system initialization flag
 ai_initialized = False
 
-# Global OCR processor instance
-_ocr_processor = None
 # UI connections list - maps session_id to WebSocket client
 ui_clients: Dict[str, websockets.WebSocketServerProtocol] = {}
 
 # Session tracking - maps WebSocket to user session ID
 client_sessions: Dict[websockets.WebSocketServerProtocol, str] = {}
 
+# BYOK: per-session API key config (populated by init_session message)
+session_configs: Dict[str, dict] = {}
+
 # Transcription state
 partial_text = ""
-# Incremental sequence number for transcript broadcasts (helps clients detect out-of-order messages)
-transcript_seq = 0
 captured_ocr_texts: List[str] = []
 
 # Company brief context chunks (fed into embedding store)
@@ -248,13 +269,17 @@ company_brief_chunks: List[str] = []
 streaming_engine = None
 
 # Auto-coach runtime flags
-auto_coach_enabled = os.getenv("AUTO_COACH", "0").lower() in ("1", "true", "yes", "on")
+# Read from AUTO_COACH_ENABLED (primary) or AUTO_COACH (legacy fallback)
+auto_coach_enabled = os.getenv("AUTO_COACH_ENABLED", os.getenv("AUTO_COACH", "0")).lower() in ("1", "true", "yes", "on")
 coach_in_progress = False
 last_coach_question: Optional[str] = None
 
 # Embedding stores for resume/context personalization (PER SESSION)
 # Structure: session_id -> {"index": faiss_index, "emb_texts": List[str], "emb_matrix": np.ndarray, "embedder": model}
 session_resume_data: Dict[str, Dict] = {}
+
+# Initialize Vision Provider
+vision_provider = VisionProvider()
 
 # Lazy image provider handle (may be used for diagram generation)
 image_provider = None
@@ -306,25 +331,9 @@ if CLOUD_MODE:
 else:
     logger.info("🏠 Running in LOCAL MODE - accepting connections from localhost only")
 
-# Thread pool retained for blocking operations (non-transcription)
-executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="bg_")
-
-def get_ocr_processor():
-    """Get or create OCR processor instance"""
-    global _ocr_processor
-    if _ocr_processor is None:
-        if _has_ocr_utils:
-            try:
-                config = OCRConfig()
-                _ocr_processor = OCRProcessor(config)
-                logger.info("Using improved OCR processor")
-            except Exception as e:
-                logger.warning(f"Failed to initialize OCR processor: {e}, falling back to legacy")
-                _ocr_processor = False  # Mark as failed, use legacy
-        else:
-            _ocr_processor = False  # Use legacy
-    return _ocr_processor if _ocr_processor else None
-
+# Thread pool for blocking operations (OCR, file I/O, etc.)
+# Increased from 2 to 4 workers for better parallelism during screen captures
+executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="bg_")
 
 def _is_blank_image_from_bytes(image_bytes: bytes) -> bool:
     """Check if image bytes represent a blank/empty image"""
@@ -339,451 +348,62 @@ def _is_blank_image_from_bytes(image_bytes: bytes) -> bool:
         return False
 
 
-def process_ocr_image(image_bytes: bytes) -> str:
-    """Process OCR with the best engine (EasyOCR or PaddleOCR)."""
+async def preload_ocr_engines():
+    """Pre-initialize PaddleOCR engine in background to avoid first-capture delay"""
+    loop = asyncio.get_event_loop()
     
-    # Choose OCR engine: easyocr, paddleocr (default), or tesseract
-    ocr_engine = os.getenv("OCR_ENGINE", "paddleocr").lower()
-    
-    # Enable fallback if primary engine fails (default: enabled)
-    enable_fallback = os.getenv("OCR_FALLBACK", "1").lower() in ("1", "true", "yes", "on")
-    
-    # Try EasyOCR first if available and requested (optional - heavy dependencies)
-    if ocr_engine == "easyocr" and _has_easyocr:
+    if _has_paddleocr:
         try:
-            logger.info("Using EasyOCR engine (optimized for screenshots)")
-            text = process_ocr_easyocr(image_bytes)
-            if text and len(text.strip()) > 10:
-                logger.info(f"✅ EasyOCR: {len(text)} characters extracted")
-                return text
-            else:
-                logger.warning(f"EasyOCR returned insufficient text ({len(text)} chars)")
-                if not enable_fallback:
-                    return text  # Return what we got, no fallback
+            logger.info("🔄 Pre-loading PaddleOCR engine in background...")
+            await loop.run_in_executor(executor, _warmup_paddleocr)
+            logger.info("✅ PaddleOCR engine pre-loaded")
         except Exception as e:
-            logger.warning(f"EasyOCR failed: {e}")
-            if not enable_fallback:
-                return ""
-    
-    # Try PaddleOCR (PRIMARY ENGINE - lighter, faster, good accuracy)
-    if (ocr_engine == "paddleocr" or enable_fallback) and _has_paddleocr:
-        try:
-            logger.info("Using PaddleOCR engine")
-            text = process_ocr_paddleocr(image_bytes)
-            if text and len(text.strip()) > 10:
-                logger.info(f"✅ PaddleOCR: {len(text)} characters extracted")
-                return text
-            else:
-                logger.warning(f"PaddleOCR returned insufficient text")
-                if not enable_fallback:
-                    return text
-        except Exception as e:
-            logger.warning(f"PaddleOCR failed: {e}")
-            if not enable_fallback:
-                return ""
-    
-    # Try to use improved OCR processor (Tesseract with preprocessing)
-    processor = get_ocr_processor()
-    if processor:
-        try:
-            # Configure for screen capture (faster but still accurate)
-            processor.config.fast_mode = False  # Use thorough mode for better accuracy
-            # Give a bit more time for tough screens and small fonts
-            processor.config.variant_budget_seconds = float(os.getenv("OCR_VARIANT_BUDGET_SECONDS", "6.0"))
-            # Upscale more aggressively for HiDPI/zoomed UIs
-            processor.config.min_upscale_size = int(os.getenv("OCR_MIN_UPSCALE_SIZE", "1600"))
-            processor.config.clean_text_only = True  # Clean output for analysis
-            # Honor language and whitelist if provided
-            lang = os.getenv("OCR_LANG", "eng").strip()
-            if lang:
-                processor.config.tesseract_lang = lang
-            whitelist = os.getenv("OCR_CHAR_WHITELIST", "").strip()
-            if whitelist:
-                processor.config.char_whitelist = whitelist
-            return processor.process(image_bytes)
-        except Exception as e:
-            logger.warning(f"Improved OCR processor failed: {e}, falling back to legacy")
-    
-    # Legacy OCR processing (fallback) - Enhanced for screen captures
+            logger.warning(f"PaddleOCR pre-load skipped: {e}")
+
+
+def _warmup_paddleocr():
+    """Synchronous warmup for PaddleOCR - called from thread pool"""
     try:
-        import pytesseract
-        import numpy as np
-        from PIL import Image, ImageFilter, ImageOps, ImageEnhance, ImageStat
+        from paddleocr_engine import get_paddle_ocr_engine
+        get_paddle_ocr_engine()  # Forces initialization
+    except Exception as e:
+        logger.debug(f"PaddleOCR warmup: {e}")
+
+
+def process_ocr_image(image_bytes: bytes) -> str:
+    """Process OCR using PaddleOCR (primary and only engine)."""
+
+    if not _has_paddleocr:
+        return "[OCR unavailable: PaddleOCR not installed. Run: pip install paddleocr paddlepaddle]"
+
+    # OPTIMIZATION: Check cache first for instant results
+    start_time = time.perf_counter()
+    cached_text = get_cached_ocr(image_bytes)
+    if cached_text is not None:
+        cache_time = (time.perf_counter() - start_time) * 1000
+        logger.info(f"⚡ OCR cache HIT: {len(cached_text)} chars in {cache_time:.1f}ms")
+        return cached_text
+
+    try:
+        logger.info("Using PaddleOCR engine")
+        text = process_ocr_paddleocr(image_bytes)
+        processing_time_ms = (time.perf_counter() - start_time) * 1000
         
-        start_time = time.perf_counter()
-        # For screen captures, use balanced mode (not too fast, not too slow)
-        fast_mode = os.getenv("OCR_FAST_MODE", "0").lower() not in ("0", "false", "no", "off")  # Default thorough for captures
-        try:
-            tesseract_lang = os.getenv("OCR_LANG", "eng").strip()
-            quick_config = os.getenv("OCR_QUICK_CONFIG", f"--oem 3 --psm 6 -l {tesseract_lang}")
-            quick_min_chars = int(os.getenv("OCR_QUICK_MIN_CHARS", "60"))
-        except ValueError:
-            quick_min_chars = 60
-        try:
-            quick_conf_threshold = float(os.getenv("OCR_QUICK_CONF_THRESHOLD", "65"))
-        except ValueError:
-            quick_conf_threshold = 65.0
-        try:
-            variant_budget = float(os.getenv("OCR_VARIANT_BUDGET_SECONDS", "4.0"))  # Increased from 2.5 for better accuracy
-        except ValueError:
-            variant_budget = 4.0
-        variant_budget = max(0.0, variant_budget)
-
-        # Configure Tesseract path
-        if os.getenv('TESSERACT_CMD'):
-            pytesseract.pytesseract.tesseract_cmd = os.getenv('TESSERACT_CMD')  # type: ignore
-        elif os.name == 'nt':
-            candidates = [
-                r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
-                r"C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe",
-                os.path.join(os.environ.get('USERPROFILE', ''), r"AppData\\Local\\Tesseract-OCR\\tesseract.exe"),
-                os.path.join(os.environ.get('USERPROFILE', ''), r"AppData\\Local\\Programs\\Tesseract-OCR\\tesseract.exe"),
-                r"C:\\Tesseract-OCR\\tesseract.exe",
-                r"D:\\Tesseract-OCR\\tesseract.exe",
-            ]
-            for candidate in candidates:
-                if os.path.exists(candidate):
-                    pytesseract.pytesseract.tesseract_cmd = candidate
-                    logger.info("Found Tesseract at %s", candidate)
-                    break
-            else:
-                return "[Tesseract not found. Please install from: https://github.com/UB-Mannheim/tesseract/wiki]"
-
-        # Load the image
-        img_raw = Image.open(io.BytesIO(image_bytes))
-        original_size = img_raw.size
-
-        # Convert to RGB to safely handle transparency and palettes
-        if img_raw.mode in ('RGBA', 'LA', 'P'):
-            background = Image.new('RGB', img_raw.size, (255, 255, 255))
-            if img_raw.mode == 'P':
-                img_raw = img_raw.convert('RGBA')
-            mask = img_raw.split()[-1] if img_raw.mode in ('RGBA', 'LA') else None
-            background.paste(img_raw, mask=mask)
-            img_raw = background
+        if text and len(text.strip()) > 0:
+            logger.info(f"✅ PaddleOCR: {len(text)} chars in {processing_time_ms:.1f}ms")
+            cache_ocr_result(image_bytes, text, "paddleocr", processing_time_ms)
+            return text
         else:
-            img_raw = img_raw.convert('RGB')
-
-        # Work in grayscale for OCR
-        img_gray = img_raw.convert('L')
-
-        # Enhanced upscaling for screen captures (especially video conferencing)
-        # Video conference text (Zoom chat, Google Meet captions) is often small
-        w, h = img_gray.size
-        logger.debug(f"OCR processing image size: {w}x{h}")
-        
-        # More aggressive upscaling for video conferencing scenarios
-        min_target_size = 1600  # Higher target for better text recognition
-        
-        if max(w, h) < min_target_size:
-            # Calculate scale factor based on size
-            if max(w, h) < 400:
-                scale = 4.0  # Very small captures (typical for chat messages)
-            elif max(w, h) < 600:
-                scale = 3.5
-            elif max(w, h) < 900:
-                scale = 2.5
-            elif max(w, h) < 1200:
-                scale = 2.0
-            else:
-                scale = 1.5
-            
-            new_size = (int(w * scale), int(h * scale))
-            # Use LANCZOS for best quality upscaling
-            img_gray = img_gray.resize(new_size, Image.LANCZOS)
-            logger.info(f"OCR upscaled {original_size} -> {new_size} ({scale:.1f}x) for better text recognition")
-        else:
-            # Even larger images benefit from slight upscaling for OCR
-            if max(w, h) < min_target_size * 1.3:
-                scale = 1.2
-                new_size = (int(w * scale), int(h * scale))
-                img_gray = img_gray.resize(new_size, Image.LANCZOS)
-                logger.debug(f"OCR slight upscale {original_size} -> {new_size} for optimization")
-            else:
-                logger.debug(f"OCR image size adequate: {original_size}")
-
-        working_img = img_gray.copy()
-
-        # Fast-path pass: try a single Tesseract run and return immediately if it looks good enough
-        quick_text = ""
-        quick_conf = 0.0
-        if fast_mode:
-            try:
-                quick_text = pytesseract.image_to_string(working_img, config=quick_config).strip()
-            except Exception as exc:
-                logger.debug("OCR fast path image_to_string failed: %s", exc)
-                quick_text = ""
-            if quick_text:
-                try:
-                    quick_data = pytesseract.image_to_data(working_img, config=quick_config, output_type=pytesseract.Output.DICT)
-                    quick_confidences = [int(conf) for conf in quick_data.get('conf', []) if conf not in (-1, '-1')]
-                    quick_conf = sum(quick_confidences) / len(quick_confidences) if quick_confidences else 0.0
-                except Exception as exc:
-                    logger.debug("OCR fast path confidence failed: %s", exc)
-                    quick_conf = 0.0
-
-                quick_lines = [ln for ln in quick_text.splitlines() if ln.strip()]
-                if len(quick_text) >= quick_min_chars or quick_conf >= quick_conf_threshold or len(quick_lines) >= 2:
-                    logger.info(
-                        "OCR fast path accepted (%d chars, %.1f%% confidence, %.2fs)",
-                        len(quick_text), quick_conf, time.perf_counter() - start_time
-                    )
-                    return quick_text
-
-        # Histogram equalisation for contrast
-        try:
-            img_array = np.array(working_img)
-            hist, _ = np.histogram(img_array.flatten(), 256, [0, 256])
-            cdf = hist.cumsum()
-            cdf_masked = np.ma.masked_equal(cdf, 0)
-            cdf_scaled = (cdf_masked - cdf_masked.min()) * 255 / (cdf_masked.max() - cdf_masked.min())
-            cdf_final = np.ma.filled(cdf_scaled, 0).astype('uint8')
-            equalized = Image.fromarray(cdf_final[img_array])
-        except Exception as exc:
-            logger.debug("Histogram equalization failed: %s", exc)
-            equalized = working_img
-
-        # Enhanced denoising for video conferencing artifacts
-        # Video compression creates artifacts that affect OCR accuracy
-        try:
-            # First pass: remove compression artifacts
-            denoised = equalized.filter(ImageFilter.MedianFilter(size=3))
-            # Second pass: stronger denoising for video artifacts
-            denoised = denoised.filter(ImageFilter.MedianFilter(size=3))
-            logger.debug("Applied double median filter for video artifact removal")
-        except Exception as exc:
-            logger.debug("Median filter failed: %s", exc)
-            denoised = equalized
-
-        # Autocontrast + enhancement variants
-        auto_contrast = ImageOps.autocontrast(denoised)
-        if fast_mode and not quick_text:
-            try:
-                quick_text = pytesseract.image_to_string(auto_contrast, config=quick_config).strip()
-            except Exception as exc:
-                logger.debug("OCR fast path (autocontrast) failed: %s", exc)
-                quick_text = ""
-            if quick_text:
-                try:
-                    quick_data = pytesseract.image_to_data(auto_contrast, config=quick_config, output_type=pytesseract.Output.DICT)
-                    quick_confidences = [int(conf) for conf in quick_data.get('conf', []) if conf not in (-1, '-1')]
-                    quick_conf = sum(quick_confidences) / len(quick_confidences) if quick_confidences else 0.0
-                except Exception as exc:
-                    logger.debug("OCR fast path (autocontrast) confidence failed: %s", exc)
-                    quick_conf = 0.0
-                quick_lines = [ln for ln in quick_text.splitlines() if ln.strip()]
-                if len(quick_text) >= quick_min_chars or quick_conf >= quick_conf_threshold or len(quick_lines) >= 2:
-                    logger.info(
-                        "OCR fast path (autocontrast) accepted (%d chars, %.1f%% confidence, %.2fs)",
-                        len(quick_text), quick_conf, time.perf_counter() - start_time
-                    )
-                    return quick_text
-        try:
-            contrast_boost = ImageEnhance.Contrast(auto_contrast).enhance(2.0)
-        except Exception:
-            contrast_boost = auto_contrast
-        try:
-            sharpened = ImageEnhance.Sharpness(contrast_boost).enhance(1.6)
-        except Exception:
-            sharpened = contrast_boost
-
-        # Adaptive threshold (Otsu)
-        threshold = 127
-        try:
-            hist = denoised.histogram()
-            total = sum(hist)
-            sumB = 0.0
-            wB = 0.0
-            maximum = 0.0
-            sum1 = sum(i * hist[i] for i in range(256))
-            for i in range(256):
-                wB += hist[i]
-                if wB == 0:
-                    continue
-                wF = total - wB
-                if wF == 0:
-                    break
-                sumB += i * hist[i]
-                mB = sumB / wB
-                mF = (sum1 - sumB) / wF
-                between = wB * wF * (mB - mF) ** 2
-                if between > maximum:
-                    maximum = between
-                    threshold = i
-            logger.debug("OCR Otsu threshold: %d", threshold)
-        except Exception as exc:
-            logger.debug("Otsu thresholding failed: %s", exc)
-
-        binary = denoised.point(lambda p: 255 if p > threshold else 0)
-        binary_soft = denoised.point(lambda p: 255 if p > max(0, threshold - 10) else 0)
-
-        # Morphological refinements
-        try:
-            binary_clean = binary.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.SHARPEN)
-        except Exception:
-            binary_clean = binary
-
-        inverted = ImageOps.invert(binary_clean)
-        inverted_soft = ImageOps.invert(binary_soft)
-
-        # Brightness heuristic (dark backgrounds benefit from inversion)
-        try:
-            brightness = ImageStat.Stat(working_img).mean[0]
-        except Exception:
-            brightness = 128
-
-        # Orientation detection (auto-rotate)
-        rotate_angle = 0
-        try:
-            osd = pytesseract.image_to_osd(auto_contrast, output_type=pytesseract.Output.DICT)
-            rotate_angle = int(osd.get('rotate', 0))
-        except Exception as exc:
-            logger.debug("OSD orientation detection failed: %s", exc)
-
-        def maybe_rotate(image: Image.Image, label: str) -> tuple[str, Image.Image]:
-            if rotate_angle and rotate_angle % 360 != 0:
-                try:
-                    rotated = image.rotate(-rotate_angle, expand=True)
-                    return f"{label}_rot{rotate_angle}", rotated
-                except Exception:
-                    pass
-            return label, image
-
-        # Build variant list for voting
-        variants: List[tuple[str, Image.Image]] = []
-        for name, variant in [
-            ("gray", working_img),
-            ("equalized", equalized),
-            ("autocontrast", auto_contrast),
-            ("contrast", contrast_boost),
-            ("sharpened", sharpened),
-            ("binary", binary_clean),
-            ("binary_soft", binary_soft),
-        ]:
-            variants.append(maybe_rotate(variant.copy(), name))
-
-        # Always include inverted variants for dark mode UI (common in Zoom/Meet)
-        # Video conferencing apps often use dark backgrounds with light text
-        inverted_variants = [
-            ("inverted", inverted),
-            ("inverted_soft", inverted_soft),
-        ]
-        # Prioritize inverted variants for dark UI (typical in video apps)
-        if brightness < 140:  # Increased threshold for video conferencing dark mode
-            inverted_variants.extend([
-                ("contrast_inverted", ImageOps.invert(contrast_boost)),
-                ("sharpened_inverted", ImageOps.invert(sharpened)),
-                ("equalized_inverted", ImageOps.invert(equalized)),  # Better for dark mode chat
-            ])
-        for name, variant in inverted_variants:
-            variants.append(maybe_rotate(variant.copy(), name))
-
-        # Deduplicate variants by hashing raw bytes to avoid redundant work
-        unique_variants: Dict[str, Image.Image] = {}
-        for label, image in variants:
-            try:
-                key = f"{label}:{hash(image.tobytes())}"
-            except Exception:
-                key = label
-            if key not in unique_variants:
-                unique_variants[key] = image
-
-        # Enhanced configs for video conferencing scenarios
-        configs_to_try = [
-            '--oem 3 --psm 6',   # Uniform block of text (best for chat messages)
-            '--oem 3 --psm 11',  # Sparse text, best-effort (good for captions)
-            '--oem 3 --psm 3',   # Fully automatic page segmentation
-            '--oem 3 --psm 4',   # Column detection
-            '--oem 3 --psm 7',   # Single text line (captions/usernames)
-            '--oem 1 --psm 6',   # LSTM engine for better modern text
-        ]
-
-        best_text = ""
-        best_confidence = -1.0
-        best_length = 0
-        best_label = ""
-        best_config = ""
-        variant_deadline = None
-        if fast_mode and variant_budget > 0:
-            variant_deadline = start_time + max(0.5, variant_budget)
-
-        for key, variant in unique_variants.items():
-            if variant_deadline and time.perf_counter() > variant_deadline:
-                logger.info("OCR variant search stopped at %.2fs (fast mode budget reached)", time.perf_counter() - start_time)
-                break
-            label = key.split(':', 1)[0]
-            for config in configs_to_try:
-                if variant_deadline and time.perf_counter() > variant_deadline:
-                    logger.debug("Stopping OCR config search after %.2fs", time.perf_counter() - start_time)
-                    break
-                try:
-                    data = pytesseract.image_to_data(variant, config=config, output_type=pytesseract.Output.DICT)
-                    confidences = [int(conf) for conf in data.get('conf', []) if conf not in (-1, '-1')]
-                    avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
-                    text = pytesseract.image_to_string(variant, config=config).strip()
-                    if not text:
-                        continue
-
-                    text_length = len(text)
-                    # Prefer higher confidence; tie-breaker on text length
-                    if (avg_conf > best_confidence + 0.5) or (abs(avg_conf - best_confidence) <= 0.5 and text_length > best_length):
-                        best_confidence = avg_conf
-                        best_length = text_length
-                        best_text = text
-                        best_label = label
-                        best_config = config
-                        logger.debug("OCR variant %s with %s achieved %.1f%% confidence (%d chars)", label, config, avg_conf, text_length)
-                except Exception as exc:
-                    logger.debug("OCR variant %s with %s failed: %s", label, config, exc)
-
-        if not best_text:
-            # Last resort fallback on auto contrast image
-            best_text = pytesseract.image_to_string(auto_contrast, config='--oem 3 --psm 6').strip()
-            best_confidence = 0.0
-            best_label = 'fallback'
-            best_config = '--oem 3 --psm 6'
-
-        if best_text:
-            logger.info(
-                "OCR extracted %d characters (confidence: %.1f%%) using %s / %s",
-                len(best_text),
-                best_confidence,
-                best_label,
-                best_config,
+            logger.warning("PaddleOCR returned no text — trying vision fallback")
+            vision_text = analyze_image_with_vision(
+                image_bytes,
+                "Extract all text and describe the content visible in this screenshot.",
             )
-            
-            # Enhance with visual content detection
-            try:
-                img_array = np.array(img_gray)
-                edges = auto_contrast.filter(ImageFilter.FIND_EDGES)
-                edge_array = np.array(edges)
-                edge_ratio = np.count_nonzero(edge_array > 30) / edge_array.size
-                img_rgb_array = np.array(img_raw)
-                color_variance = np.var(img_rgb_array)
-                
-                # Detect visual elements
-                if edge_ratio > 0.15 or color_variance > 2000:
-                    content_types = []
-                    if edge_ratio > 0.25:
-                        content_types.append("diagram or flowchart")
-                    elif edge_ratio > 0.15:
-                        content_types.append("chart or graph")
-                    if color_variance > 5000:
-                        content_types.append("colorful image")
-                    elif color_variance > 2000 and not content_types:
-                        content_types.append("visual content")
-                    
-                    if content_types:
-                        visual_note = f"\n\n[Visual Analysis: The screen capture contains {' and '.join(content_types)}. The above text was extracted via OCR, but visual elements are also present in the image.]"
-                        best_text += visual_note
-                        logger.info(f"Visual content detected: {', '.join(content_types)}")
-            except Exception as e:
-                logger.debug(f"Visual content detection failed: {e}")
-        else:
-            logger.warning("OCR extracted no text")
-
-        return best_text
-
+            if vision_text:
+                logger.info(f"✅ Vision fallback: {len(vision_text)} chars")
+                cache_ocr_result(image_bytes, vision_text, "vision", processing_time_ms)
+                return vision_text
+            return ""
     except Exception as exc:
         logger.exception("OCR processing error")
         return f"[OCR error: {str(exc)}]"
@@ -1114,6 +734,24 @@ async def handle_ui(ws):
                     }))
                     continue
                 
+                # BYOK: store per-session API config supplied by the desktop app
+                if mtype == "init_session":
+                    session_configs[session_id] = {
+                        "deepgram_api_key": msg.get("deepgram_api_key", ""),
+                        "deepgram_model": msg.get("deepgram_model", "nova-2"),
+                        "ai_provider": msg.get("ai_provider", "openai"),
+                        "ai_api_key": msg.get("ai_api_key", ""),
+                        "ai_model": msg.get("ai_model", ""),
+                        "ai_base_url": msg.get("ai_base_url", ""),
+                        "smart_routing": msg.get("smart_routing", True),
+                        "budget_mode": msg.get("budget_mode", False),
+                        "max_cost_per_request": msg.get("max_cost_per_request", 0.10),
+                    }
+                    logger.info(f"[Session {session_id}] init_session received: provider={session_configs[session_id]['ai_provider']}")
+                    if not session_configs[session_id]["ai_api_key"] and session_configs[session_id]["ai_provider"] != "ollama":
+                        await ws.send(json.dumps({"type": "error", "code": "NO_CONFIG", "message": "API keys not configured. Open Settings to add them."}))
+                    continue
+                
                 if mtype == "ask":
                     # Force to default LLM (single-model mode)
                     llm = DEFAULT_LLM
@@ -1148,10 +786,51 @@ async def handle_ui(ws):
                                 }, session_id=session_id)
                             except Exception:
                                 pass
+
+                        # When the "Capture & Analyze" button is clicked (autoAnalyze=True),
+                        # send the screenshot directly to the LLM via vision API so the model
+                        # sees the actual image instead of OCR-extracted text.
+                        if msg.get("autoAnalyze"):
+                            vision_ok = await stream_vision_to_llm(
+                                DEFAULT_LLM, arr, session_id=session_id
+                            )
+                            if vision_ok:
+                                # Acknowledge to client so it resets its autoTriggerAI flag
+                                await broadcast(
+                                    {
+                                        "type": "ocr_result",
+                                        "text": "",
+                                        "captureIndex": msg.get("captureIndex", 0),
+                                        "totalCaptures": len(captured_ocr_texts),
+                                    },
+                                    session_id=session_id,
+                                )
+                                continue  # skip OCR pipeline — LLM already answered
+                            # vision failed — fall through to OCR pipeline below
+
+                        # Vision-First Mode Check (legacy, requires VISION_MODE env var)
+                        vision_result = None
+                        is_vision_analysis = False
                         
-                        # Offload OCR processing to thread pool (CPU-intensive)
-                        loop = asyncio.get_event_loop()
-                        text = await loop.run_in_executor(None, process_ocr_image, arr)
+                        # Check if Vision Mode is enabled (default to false unless explicitly enabled)
+                        if vision_provider.is_available() and os.getenv("VISION_MODE", "false").lower() in ("true", "1", "yes", "on"):
+                            logger.info("Vision-First Mode: Analyzing image directly with Vision Model...")
+                            try:
+                                # Send image to Vision Model
+                                vision_prompt = "Analyze this screenshot for an interview context. If it contains a coding problem, solve it. If it contains a diagram, explain it. If it contains text, extract and summarize it. Be concise and direct."
+                                # Run in executor to avoid blocking if the provider is synchronous (though it's async, better safe)
+                                vision_result = await vision_provider.analyze_image(arr, prompt=vision_prompt)
+                                if vision_result:
+                                    text = vision_result
+                                    is_vision_analysis = True
+                                    logger.info("Vision analysis successful")
+                            except Exception as ve:
+                                logger.error(f"Vision analysis failed: {ve}")
+                        
+                        if not is_vision_analysis:
+                            # Offload OCR processing to thread pool (CPU-intensive)
+                            loop = asyncio.get_event_loop()
+                            text = await loop.run_in_executor(None, process_ocr_image, arr)
 
                         # If improved processor / legacy returned install guidance, pass through
                         raw_text = text or ""
@@ -1324,18 +1003,11 @@ async def handle_ui(ws):
                                     # Re-process with OCR
                                     img_bytes = base64.b64decode(result['image'])
                                     
-                                    if _has_ocr_utils:
-                                        try:
-                                            text = process_ocr_image(img_bytes)
-                                        except Exception as e:
-                                            logger.warning(f"Improved OCR failed in retry: {e}, falling back")
-                                            from PIL import Image
-                                            img = Image.open(io.BytesIO(img_bytes))
-                                            text = pytesseract.image_to_string(img)
-                                    else:
-                                        from PIL import Image
-                                        img = Image.open(io.BytesIO(img_bytes))
-                                        text = pytesseract.image_to_string(img)
+                                    try:
+                                        text = process_ocr_image(img_bytes)
+                                    except Exception as e:
+                                        logger.warning(f"OCR failed in retry: {e}")
+                                        text = ""
                                     
                                     # Update stored text
                                     if capture_index >= len(captured_ocr_texts):
@@ -1378,8 +1050,8 @@ async def handle_ui(ws):
                                     else:
                                         meta = {'method': result.get('method', 'windows_retry')}
                                     
-                                    ocr_result['text'] = text
-                                    ocr_result['meta'] = meta
+                                    # text and meta are already updated above; no separate dict needed
+                                    logger.info(f"Windows capture retry updated text ({len(text or '')} chars)")
                                     
                                 else:
                                     logger.warning("Windows capture retry failed or returned blank image")
@@ -1407,7 +1079,15 @@ async def handle_ui(ws):
                         # Enable by default - AI will automatically analyze captured content
                         auto_coach_on_capture = os.getenv("AUTO_COACH_ON_CAPTURE", "1").lower() in ("1", "true", "yes", "on")
                         
-                        if auto_coach_on_capture and text and text.strip() and not send_troubleshooting_response:
+                        if is_vision_analysis:
+                             # If we already have the vision analysis, send it as the coach response directly
+                             await broadcast({
+                                "type": "coach",
+                                "text": text,
+                                "reset": True
+                             }, session_id=session_id)
+                             logger.info(f"Sent Vision analysis directly as coach response")
+                        elif auto_coach_on_capture and text and text.strip() and not send_troubleshooting_response:
                             # Only trigger AI if we have actual text (not troubleshooting tips)
                             await handle_auto_answer_after_capture(text, "ocr", session_id=session_id)
                     except Exception as e:
@@ -1422,42 +1102,37 @@ async def handle_ui(ws):
                         else:
                             await broadcast({"type": "ocr", "text": f"[OCR error: {e}]"}, session_id=session_id)
                 elif mtype == "windows_capture":
-                    # Windows native screen capture for restricted applications
+                    # Native screen capture — Windows-specific first, cross-platform fallback
                     try:
-                        if not _has_windows_capture:
+                        if not _has_windows_capture and not _has_cross_platform_capture:
                             await broadcast({
                                 "type": "ocr",
-                                "text": "[Windows native capture not available. Install pywin32: pip install pywin32]"
+                                "text": "[Native capture not available. Install pywin32 (Windows) or mss (cross-platform): pip install pywin32 mss]"
                             }, session_id=session_id)
                         else:
                             monitor_index = msg.get("monitor", 0)
                             window_title = msg.get("window_title")
-                            
-                            if window_title:
-                                logger.info(f"Capturing window: {window_title}")
-                                result = capture_window_windows(window_title=window_title)
+
+                            if _has_windows_capture:
+                                if window_title:
+                                    logger.info(f"Capturing window (Windows): {window_title}")
+                                    result = capture_window_windows(window_title=window_title)
+                                else:
+                                    logger.info(f"Capturing monitor {monitor_index} (Windows)")
+                                    result = capture_screen_windows(monitor_index=monitor_index)
                             else:
-                                logger.info(f"Capturing monitor {monitor_index}")
-                                result = capture_screen_windows(monitor_index=monitor_index)
+                                logger.info(f"Capturing monitor {monitor_index} (cross-platform/mss)")
+                                result = capture_screen_cross_platform(monitor_index=monitor_index)
                             
                             if result:
                                 # Process with OCR
                                 img_bytes = base64.b64decode(result['image'])
                                 
-                                if _has_ocr_utils:
-                                    try:
-                                        # Use the improved OCR pipeline defined above
-                                        text = process_ocr_image(img_bytes)
-                                    except Exception as e:
-                                        logger.warning(f"Improved OCR failed in windows_capture path: {e}, falling back")
-                                        from PIL import Image
-                                        img = Image.open(io.BytesIO(img_bytes))
-                                        text = pytesseract.image_to_string(img)
-                                else:
-                                    # Fallback to basic OCR
-                                    from PIL import Image
-                                    img = Image.open(io.BytesIO(img_bytes))
-                                    text = pytesseract.image_to_string(img)
+                                try:
+                                    text = process_ocr_image(img_bytes)
+                                except Exception as e:
+                                    logger.warning(f"OCR failed in windows_capture path: {e}")
+                                    text = ""
                                 
                                 # Store captured text
                                 capture_index = msg.get("captureIndex", len(captured_ocr_texts))
@@ -1552,14 +1227,6 @@ async def handle_ui(ws):
                         await broadcast({"type": "resume_parsed", "success": False, "error": str(e)}, session_id=session_id)
                 elif mtype == "coach":
                     # Manual coach trigger optionally with provided question
-                    # Reset server-side aggregated transcript when user manually requests AI
-                    try:
-                        partial_text = ""
-                        transcript_seq = 0
-                        logger.debug("[Streaming] Cleared partial_text and reset seq due to manual coach trigger")
-                    except Exception:
-                        logger.exception("Failed to reset partial_text/seq on coach trigger")
-
                     q = msg.get("question") or ""
                     llm = DEFAULT_LLM
                     strict = bool(msg.get("strict"))
@@ -1583,60 +1250,17 @@ async def handle_ui(ws):
                             logger.info(f"Processing uploaded file: {file_name} ({file_type})")
                             
                             if file_type.startswith("image/"):
-                                # Handle image upload with enhanced OCR
-                                logger.info("Starting enhanced OCR processing...")
+                                # Handle image upload with PaddleOCR
+                                logger.info("Starting OCR processing...")
                                 img_bytes = base64.b64decode(file_data)
 
                                 text = ""
-                                tnf = getattr(pytesseract, 'TesseractNotFoundError', Exception)
                                 try:
-                                    # Use enhanced OCR processor if available
-                                    if _has_ocr_utils:
-                                        try:
-                                            # Configure OCR for better accuracy
-                                            ocr_config = OCRConfig()
-                                            ocr_config.fast_mode = False  # Use thorough processing for uploads
-                                            ocr_config.variant_budget_seconds = 6.0  # More time for better accuracy
-                                            ocr_config.min_upscale_size = 1600  # Larger upscaling
-                                            ocr_config.clean_text_only = True  # Return clean text for AI processing
-
-                                            processor = OCRProcessor(ocr_config)
-                                            text = processor.process(img_bytes)
-                                            logger.info(f"Enhanced OCR completed. Extracted {len(text or '')} characters")
-                                        except Exception as ocr_error:
-                                            # If tesseract is missing, short-circuit with guidance
-                                            if isinstance(ocr_error, tnf) or 'tesseract is not installed' in str(ocr_error).lower():
-                                                raise ocr_error
-                                            logger.warning(f"Enhanced OCR failed, falling back to basic: {ocr_error}")
-                                            # Fallback to basic OCR
-                                            img = Image.open(io.BytesIO(img_bytes))
-                                            if img.mode not in ('L', 'LA'):
-                                                img = img.convert('L')
-                                            config = '--oem 3 --psm 6'
-                                            text = pytesseract.image_to_string(img, config=config)
-                                    else:
-                                        # Basic OCR path
-                                        img = Image.open(io.BytesIO(img_bytes))
-                                        logger.info(f"Image loaded: {img.size}, mode: {img.mode}")
-                                        if img.mode not in ('L', 'LA'):
-                                            img = img.convert('L')
-                                        config = '--oem 3 --psm 6'
-                                        text = pytesseract.image_to_string(img, config=config)
-                                        logger.info(f"Basic OCR completed. Extracted {len(text or '')} characters")
+                                    text = process_ocr_image(img_bytes)
+                                    logger.info(f"OCR completed. Extracted {len(text or '')} characters")
                                 except Exception as e_ocr:
-                                    # Provide a clear, user-facing message if Tesseract is missing
-                                    msg_txt = str(e_ocr)
-                                    if isinstance(e_ocr, tnf) or 'tesseract is not installed' in msg_txt.lower() or 'not found' in msg_txt.lower():
-                                        guidance = (
-                                            "[OCR setup required] Tesseract is not installed or not on PATH. "
-                                            "Install from: https://github.com/UB-Mannheim/tesseract/wiki and restart the app. "
-                                            "If already installed, set TESSERACT_CMD in your .env to the full path (e.g., C:\\Program Files\\Tesseract-OCR\\tesseract.exe)."
-                                        )
-                                        logger.warning("Tesseract missing for image upload OCR")
-                                        file_context = f"\n\n[Image from {file_name}]:\n{guidance}"
-                                    else:
-                                        logger.exception(f"Image OCR failed: {e_ocr}")
-                                        file_context = f"\n\n[Image from {file_name}]:\n[OCR error: {msg_txt}]"
+                                    logger.exception(f"Image OCR failed: {e_ocr}")
+                                    file_context = f"\n\n[Image from {file_name}]:\n[OCR error: {str(e_ocr)}]"
                                 else:
                                     # Intelligent text truncation for context management
                                     if text:
@@ -1716,11 +1340,8 @@ async def handle_ui(ws):
                                 else:
                                     continue
 
-                                img = Image.open(io.BytesIO(arr))
-                                if img.mode not in ('L', 'LA'):
-                                    img = img.convert('L')
-                                config = '--oem 3 --psm 6'
-                                text = pytesseract.image_to_string(img, config=config)
+                                loop = asyncio.get_event_loop()
+                                text = await loop.run_in_executor(None, process_ocr_image, arr)
                                 captured_ocr_texts.append(text or "")
                                 logger.info(f"Processed captured screen {i+1}: {len(text or '')} characters")
                             except Exception as e:
@@ -1900,6 +1521,13 @@ async def handle_ui(ws):
                     captured_ocr_texts = []
                     logger.info("Cleared all captured OCR texts")
                     await broadcast({"type": "captures_cleared"}, session_id=session_id)
+                elif mtype == "clear_transcript":
+                    # Clear the accumulated transcript (partial_text) on server
+                    # global partial_text  <-- Redundant, already declared at top
+                    old_len = len(partial_text) if partial_text else 0
+                    partial_text = ""
+                    logger.info(f"[Session {session_id}] Cleared transcript (was {old_len} chars)")
+                    await broadcast({"type": "transcript_cleared"}, session_id=session_id)
                 elif mtype == "clear_conversation":
                     # Clear conversation history for specified mode or all modes
                     global conversation_history
@@ -1914,17 +1542,6 @@ async def handle_ui(ws):
                         session_hist[mode_to_clear] = []
                         logger.info(f"[Session {session_id}] Cleared conversation history for mode: {mode_to_clear}")
                         await broadcast({"type": "conversation_cleared", "mode": mode_to_clear}, session_id=session_id)
-                elif mtype == "clear_transcript":
-                    # Clear server-side accumulated transcript (partial_text) on user request
-                    try:
-                        if 'partial_text' in globals() and isinstance(partial_text, str):
-                            partial_text = ""
-                            logger.info(f"[Session {session_id}] Cleared partial transcript")
-                        else:
-                            partial_text = ""
-                    except Exception as e:
-                        logger.warning(f"Failed to clear partial_text: {e}")
-                    await broadcast({"type": "transcript_cleared"}, session_id=session_id)
                 elif mtype == "start_audio":
                     # Get speaker information and recording mode if provided
                     speaker = msg.get("speaker", "user1")
@@ -1976,6 +1593,25 @@ async def handle_ui(ws):
                             **status
                         }
                     })
+                elif mtype == "set_language":
+                    # Change transcription language
+                    language = msg.get("language", "en-US")
+                    logger.info(f"[Session {session_id}] Setting transcription language to: {language}")
+                    if streaming_engine:
+                        success = await streaming_engine.set_language(language)
+                        await broadcast({
+                            "type": "language_changed",
+                            "language": language,
+                            "success": success
+                        }, session_id=session_id)
+                    else:
+                        # Store for when engine is created
+                        globals()['pending_language'] = language
+                        await broadcast({
+                            "type": "language_changed",
+                            "language": language,
+                            "success": True
+                        }, session_id=session_id)
             except json.JSONDecodeError as e:
                 logger.warning(f"Invalid JSON from UI client: {e}")
             except Exception as e:
@@ -2886,28 +2522,9 @@ def should_retry_response(response: str, original_question: str) -> bool:
 
 async def ensure_ai_initialized():
     """Ensure AI providers and heavy modules are initialized in background"""
-    global ai_initialized, _has_paddleocr
-    
-    # 1. Initialize PaddleOCR (Heavy Import)
-    if _has_paddleocr is None:
-        if check_paddleocr_available:
-            logger.info("Initializing PaddleOCR in background...")
-            try:
-                # Run in executor to avoid blocking event loop
-                loop = asyncio.get_running_loop()
-                is_available = await loop.run_in_executor(None, check_paddleocr_available)
-                _has_paddleocr = is_available
-                if is_available:
-                    logger.info("✅ PaddleOCR initialized and available")
-                else:
-                    logger.info("PaddleOCR not available (optional)")
-            except Exception as e:
-                logger.warning(f"Failed to check PaddleOCR: {e}")
-                _has_paddleocr = False
-        else:
-            _has_paddleocr = False
+    global ai_initialized
 
-    # 2. Initialize AI Providers
+    # 1. Initialize AI Providers
     if not ai_initialized:
         logger.info("Initializing AI providers...")
         try:
@@ -2934,6 +2551,109 @@ async def ensure_ai_initialized():
                     "error": str(e)
                 }
             })
+
+
+async def stream_vision_to_llm(
+    llm_id: str,
+    image_bytes: bytes,
+    user_prompt: str = None,
+    out_type: str = "coach",
+    session_id: str = None,
+) -> bool:
+    """Send screenshot directly to LLM via vision API and stream the response.
+
+    Returns True on success, False if the model/provider doesn't support vision
+    so the caller can fall back to OCR.
+    """
+    image_format = "png"
+    if len(image_bytes) >= 3 and image_bytes[:3] == b'\xff\xd8\xff':
+        image_format = "jpeg"
+
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+    prompt = user_prompt or (
+        "Analyze this screenshot carefully. "
+        "If it shows a coding problem or algorithm question, solve it completely with working code, "
+        "explanation, and time/space complexity. "
+        "If it shows a system design question, provide a thorough design. "
+        "If it shows a behavioral or HR interview question, answer using the STAR framework. "
+        "If it shows a technical concept, diagram, or text, explain or summarize it clearly. "
+        "Give a direct, comprehensive answer suitable for a technical interview."
+    )
+
+    system_prompt = (
+        "You are an expert AI interview assistant. Analyze the provided screenshot and give a clear, "
+        "accurate, complete answer. For coding problems provide working code with complexity analysis. "
+        "Use proper formatting: **bold**, `code`, LaTeX math ($O(n)$). "
+        "Structure with headers and bullet points."
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/{image_format};base64,{image_b64}"},
+                },
+            ],
+        },
+    ]
+
+    await ensure_ai_initialized()
+    if not ai_initialized:
+        broadcast_sync({"type": out_type, "text": "[AI system not initialized]"}, session_id=session_id)
+        return False
+
+    # Signal start of new response
+    broadcast_sync(
+        {
+            "type": out_type,
+            "text": "",
+            "reset": True,
+            "contextType": "capture",
+            "contextLabel": "📷 Screen Analysis",
+        },
+        session_id=session_id,
+    )
+
+    # Resolve generator — respect BYOK session config
+    session_cfg = session_configs.get(session_id) if session_id else None
+    try:
+        if session_cfg and session_cfg.get("ai_api_key"):
+            user_prov_cfg = UserProviderConfig(
+                provider=session_cfg.get("ai_provider", "openai"),
+                api_key=session_cfg["ai_api_key"],
+                model=session_cfg.get("ai_model", "") or llm_id or "",
+                base_url=session_cfg.get("ai_base_url", ""),
+            )
+            byok_provider = create_provider_from_config(user_prov_cfg)
+            gen = byok_provider.generate_stream(messages)
+        else:
+            gen = generate_ai_response_for(llm_id, messages) if llm_id else generate_ai_response(messages)
+
+        collected: List[str] = []
+        async for token in gen:
+            if not token or token == "[[TRUNCATED_BY_LENGTH]]":
+                continue
+            if token.startswith("[ERROR:"):
+                logger.warning(f"Vision LLM error token: {token}")
+                # Reset the UI and signal caller to fall back to OCR
+                broadcast_sync({"type": out_type, "text": "", "reset": True}, session_id=session_id)
+                return False
+            collected.append(token)
+            broadcast_sync({"type": out_type, "text": token}, session_id=session_id)
+            await asyncio.sleep(0)
+
+        broadcast_sync({"type": out_type, "text": "", "complete": True}, session_id=session_id)
+        logger.info(f"Vision LLM stream complete: {len(''.join(collected))} chars")
+        return True
+
+    except Exception as exc:
+        logger.error(f"stream_vision_to_llm error: {exc}")
+        return False
 
 
 async def stream_llm(
@@ -2985,8 +2705,10 @@ async def stream_llm(
             logger.warning(f"⚠️  Duplicate detection failed: {e}")
     
     # Ensure AI is initialized
+    _ai_stream_start = time.perf_counter()
+
     await ensure_ai_initialized()
-    
+
     if not ai_initialized:
         broadcast_sync({"type": out_type, "text": "[AI system not initialized]"}, session_id=session_id)
         return
@@ -3246,9 +2968,25 @@ async def stream_llm(
     messages.append({"role": "user", "content": user})
 
     try:
-        # Stream response from AI providers; respect explicit llm_id overrides
+        # BYOK: if this session has a user-supplied API key, create a temporary provider
         use_override = bool(llm_id)
-        gen = generate_ai_response_for(llm_id, messages) if use_override else generate_ai_response(messages)
+        session_cfg = session_configs.get(session_id) if session_id else None
+        if session_cfg and session_cfg.get("ai_api_key"):
+            user_prov_cfg = UserProviderConfig(
+                provider=session_cfg.get("ai_provider", "openai"),
+                api_key=session_cfg["ai_api_key"],
+                model=session_cfg.get("ai_model", "") or llm_id or "",
+                base_url=session_cfg.get("ai_base_url", ""),
+            )
+            try:
+                byok_provider = create_provider_from_config(user_prov_cfg)
+                gen = byok_provider.generate_stream(messages)
+            except Exception as e:
+                logger.warning(f"BYOK provider creation failed, falling back to default: {e}")
+                gen = generate_ai_response_for(llm_id, messages) if use_override else generate_ai_response(messages)
+        else:
+            # Stream response from AI providers; respect explicit llm_id overrides
+            gen = generate_ai_response_for(llm_id, messages) if use_override else generate_ai_response(messages)
         
         # Send reset signal to start new response with context information
         context_label = {
@@ -3395,7 +3133,8 @@ async def stream_llm(
                             mode=mode,
                             strict=True,
                             context_type=context_type,
-                            extra_ctx=extra_ctx
+                            extra_ctx=extra_ctx,
+                            session_id=session_id,
                         )
                     else:
                         logger.warning("⚠️ Max enhanced retries reached")
@@ -3484,7 +3223,8 @@ async def stream_llm(
                             mode=mode,
                             strict=True,  # Enable strict mode for retry
                             context_type=context_type,
-                            extra_ctx=extra_ctx
+                            extra_ctx=extra_ctx,
+                            session_id=session_id,
                         )
                     else:
                         logger.warning("⚠️ Max retries reached, accepting low-confidence answer")
@@ -3619,6 +3359,13 @@ async def stream_llm(
             logger.info(f"🏁 Sending completion signal for {out_type}")
             broadcast_sync({"type": out_type, "text": "", "complete": True}, session_id=session_id)
             completion_sent = True
+            # Record performance metric for completed AI response
+            try:
+                _ai_elapsed_ms = (time.perf_counter() - _ai_stream_start) * 1000
+                record_metrics({"type": "ai_response", "duration_ms": _ai_elapsed_ms, "model": llm_id, "chars": len(full_text)})
+                logger.debug(f"[Metrics] AI response: {_ai_elapsed_ms:.0f}ms, {len(full_text)} chars")
+            except Exception:
+                pass
         else:
             logger.info(f"⏭️ Skipping completion signal (already sent for {out_type})")
 
@@ -3736,7 +3483,12 @@ async def handle_audio_streaming(ws, session_id=None):
         if streaming_engine is None:
             logger.info("[Streaming] Creating new streaming transcription engine")
             from streaming_transcription import StreamingTranscriptionEngine
-            streaming_engine = StreamingTranscriptionEngine()
+            # BYOK: use session-specific Deepgram key if available
+            _cfg = session_configs.get(session_id, {})
+            streaming_engine = StreamingTranscriptionEngine(
+                api_key=_cfg.get("deepgram_api_key") or None,
+                model=_cfg.get("deepgram_model") or None,
+            )
         
         # Connect to streaming provider (Deepgram/AssemblyAI)
         logger.info("[Streaming] Connecting to transcription provider...")
@@ -3784,7 +3536,7 @@ async def handle_audio_streaming(ws, session_id=None):
         asyncio.create_task(broadcast({
             "type": "transcript",
             "text": result.text,
-            "interim": True,  # Mark as interim
+            "interim": True,
             "is_final": False,
             "speaker": current_speaker,
             "recording_mode": recording_mode,
@@ -3794,7 +3546,7 @@ async def handle_audio_streaming(ws, session_id=None):
     # Callback for final results (confirmed transcriptions)
     def on_final_result(result: TranscriptResult):
         nonlocal last_final_text, interim_buffer, results_received
-        global partial_text, last_processed_student_utterance, last_student_time, transcript_seq
+        global partial_text, last_processed_student_utterance, last_student_time
         
         results_received += 1
         text = result.text.strip()
@@ -3804,53 +3556,33 @@ async def handle_audio_streaming(ws, session_id=None):
         
         # Append to rolling partial_text without injecting speaker tags
         # Keep the aggregated transcript clean; UI gets speaker via message fields
-        try:
-            if partial_text and not partial_text.endswith((" ", "\n")):
-                partial_text += " "
-            partial_text += text
-
-            # Trim if too long (keep last N chars)
-            if len(partial_text) > 12000:
-                partial_text = partial_text[-8000:]
-        except Exception:
-            # Defensive: ensure partial_text remains a string
-            try:
-                partial_text = str(partial_text or '') + ' ' + text
-            except Exception:
-                partial_text = text
-
+        if partial_text and not partial_text.endswith((" ", "\n")):
+            partial_text += " "
+        partial_text += text
+        
+        # Trim if too long (keep last 8000 chars)
+        if len(partial_text) > 12000:
+            partial_text = partial_text[-8000:]
+        
         last_final_text = text
         interim_buffer = ""  # Clear interim buffer
-
+        
         recording_mode = globals().get('current_recording_mode', 'interviewer')
-
-        # Bump transcript seq and timestamp for client-side ordering guards
-        try:
-            transcript_seq += 1
-            seq = transcript_seq
-        except Exception:
-            seq = int(time.time() * 1000)
-
-        logger.info(f"[Streaming] Final ({results_received}, seq={seq}): '{text[:120]}' (conf: {result.confidence:.2f}) full_len={len(partial_text)}")
-
-        # Broadcast final result (include seq and timestamp for client ordering)
-        # Ensure 'full' always contains the cumulative transcript (not empty)
-        try:
-            asyncio.create_task(broadcast({
-                "type": "transcript",
-                "text": text,
-                "full": partial_text,
-                "interim": False,  # Mark as final
-                "is_final": True,   # legacy flag used by toolbar
-                "speaker": current_speaker,
-                "recording_mode": recording_mode,
-                "confidence": result.confidence,
-                "results_count": results_received,
-                "seq": seq,
-                "ts": time.time()
-            }, session_id=session_id))
-        except Exception as e:
-            logger.exception(f"[Streaming] Failed to broadcast final transcript (seq={seq}): {e}")
+        
+        logger.info(f"[Streaming] Final ({results_received}): '{text[:80]}' (conf: {result.confidence:.2f})")
+        
+        # Broadcast final result
+        asyncio.create_task(broadcast({
+            "type": "transcript",
+            "text": text,
+            "full": partial_text,
+            "interim": False,
+            "is_final": True,
+            "speaker": current_speaker,
+            "recording_mode": recording_mode,
+            "confidence": result.confidence,
+            "results_count": results_received
+        }, session_id=session_id))
         
         # Auto-coach is DISABLED - user must click "Ask AI" button manually
         # No automatic AI triggering on transcription
@@ -4066,25 +3798,17 @@ async def handle_audio(ws):
                     return
                 last_emitted_full = partial_text
                 recording_mode = globals().get('current_recording_mode', 'interviewer')
-                # Sequence for client-side ordering
-                try:
-                    transcript_seq += 1
-                    seq = transcript_seq
-                except Exception:
-                    seq = 0
-                logger.info(f"[Transcript] Broadcasting: seq={seq}, speaker={current_speaker}, mode={recording_mode}, text='{new_portion[:80]}'")
+                logger.info(f"[Transcript] Broadcasting: speaker={current_speaker}, mode={recording_mode}, text='{new_portion[:80]}'")
                 await broadcast({
                     "type": "transcript",
-                    "text": new_portion,     # incremental diff portion
-                    "full": partial_text,    # full rolling history
-                    "interim": True,         # Mark as interim (not final)
-                    "is_final": False,       # legacy flag used by toolbar
+                    "text": new_portion,
+                    "full": partial_text,
+                    "interim": False,
+                    "is_final": True,
                     "speaker": current_speaker,
                     "recording_mode": recording_mode,
                     "bytes": bytes_received,
-                    "emissions": emissions,
-                    "seq": seq,
-                    "ts": time.time()
+                    "emissions": emissions
                 })
                 # Auto-coach is DISABLED - user must click "Ask AI" button manually
                 # No automatic AI triggering on transcription
@@ -4308,7 +4032,9 @@ async def maybe_trigger_auto_coach():
             # Reset UI for new suggestion
             broadcast_sync({"type": "coach", "text": "", "reset": True})
             # Auto-coach is triggered by speech, so use transcription context
-            await stream_llm(DEFAULT_LLM, q, out_type="coach", mode="coach", strict=True, context_type="transcription")
+            # Broadcast to all sessions — pick the first active session for BYOK key lookup
+            _auto_sid = next(iter(session_configs), None)
+            await stream_llm(DEFAULT_LLM, q, out_type="coach", mode="coach", strict=True, context_type="transcription", session_id=_auto_sid)
         finally:
             coach_in_progress = False
 
@@ -4346,6 +4072,14 @@ async def ws_router(websocket, path):
             await handle_audio_streaming(websocket, session_id=session_id)
         else:
             logger.error("[Router] Streaming module missing. Please ensure streaming_transcription.py is present.")
+            # Send error message before closing
+            try:
+                await websocket.send(json.dumps({
+                    "type": "error",
+                    "message": "Audio streaming not available - streaming_transcription module failed to load. Check server logs for import errors."
+                }))
+            except Exception:
+                pass
             await websocket.close()
 
 
@@ -4382,6 +4116,9 @@ async def main():
     # Initialize AI providers on startup (background) and start server immediately
     logger.info("Starting AI Interview Assistant Server...")
     asyncio.create_task(ensure_ai_initialized())
+    
+    # Pre-initialize OCR engines in background to avoid first-capture delay
+    asyncio.create_task(preload_ocr_engines())
 
     # Find an available port
     try:

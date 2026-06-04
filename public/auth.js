@@ -1,5 +1,5 @@
 // Authentication Logic with Supabase
-// Handles Login, Sign Up, and redirects to payment
+// Handles Login, Sign Up, and redirects to home
 
 // Supabase Configuration
 const SUPABASE_URL = 'https://npdysfxewryqcmmztdxl.supabase.co'; // Replace with your Supabase URL
@@ -11,8 +11,8 @@ if (!window.__interviewAINativeSupabaseClient) {
         auth: {
             persistSession: false, // Don't persist session (session-only mode)
             autoRefreshToken: false, // Don't auto-refresh
-            // Allow parsing session from URL hash (needed to complete OAuth redirects)
-            detectSessionInUrl: true
+            detectSessionInUrl: true, // Allow parsing session from URL hash (needed to complete OAuth redirects)
+            flowType: 'implicit' // Use implicit flow so tokens are returned in hash (PKCE requires verifier persistence)
         }
     });
 }

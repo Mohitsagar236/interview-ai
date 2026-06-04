@@ -25,7 +25,7 @@
             <div class="nav-links">
                 <a href="index.html" class="nav-link">Home</a>
                 <a href="index.html#features" class="nav-link">Features</a>
-                <a href="index.html#pricing" class="nav-link">Pricing</a>
+                <a href="user-guide.html" class="nav-link">User Guide</a>
                 <button class="theme-toggle" aria-label="Toggle theme">
                     <i class="fas fa-moon"></i>
                     <i class="fas fa-sun"></i>
@@ -41,8 +41,8 @@
                 <h1>Download Interview AI</h1>
                 <p>Choose your platform and start practicing interviews in minutes</p>
                 <div class="download-note">
-                    <i class="fas fa-info-circle"></i>
-                    <span>Free to download. Get credits to unlock premium features.</span>
+                    <i class="fas fa-lock-open"></i>
+                    <span>100% Free &amp; Open Source — bring your own API key, no subscription ever.</span>
                 </div>
             </div>
         </div>
@@ -55,10 +55,10 @@
                 </div>
                 <div class="platform-info">
                     <h3>Windows</h3>
-                    <p>For Windows 10 and 11 (64-bit)</p>
+                    <p>For Windows 10 and 11 (64-bit &amp; 32-bit)</p>
                     <div class="platform-details">
-                        <span><i class="fas fa-box"></i> Version 2.0.1</span>
-                        <span><i class="fas fa-download"></i> 45 MB</span>
+                        <span><i class="fas fa-box"></i> Version 0.1.0</span>
+                        <span><i class="fas fa-download"></i> ~590 MB</span>
                     </div>
                 </div>
                 <button class="btn-download-primary" onclick="downloadApp('windows')">
@@ -74,15 +74,14 @@
                 </div>
                 <div class="platform-info">
                     <h3>macOS</h3>
-                    <p>For macOS 11.0 or later (Intel & Apple Silicon)</p>
+                    <p>For macOS 11.0 or later (Intel &amp; Apple Silicon)</p>
                     <div class="platform-details">
-                        <span><i class="fas fa-box"></i> Version 2.0.1</span>
-                        <span><i class="fas fa-download"></i> 52 MB</span>
+                        <span><i class="fas fa-clock"></i> Coming soon</span>
                     </div>
                 </div>
-                <button class="btn-download-primary" onclick="downloadApp('mac')">
-                    <i class="fas fa-download"></i>
-                    <span>Download for macOS</span>
+                <button class="btn-download-primary" disabled style="opacity:.5;cursor:not-allowed;">
+                    <i class="fas fa-clock"></i>
+                    <span>Coming Soon</span>
                 </button>
             </div>
 
@@ -95,13 +94,12 @@
                     <h3>Linux</h3>
                     <p>For Ubuntu, Debian, Fedora, and other distributions</p>
                     <div class="platform-details">
-                        <span><i class="fas fa-box"></i> Version 2.0.1</span>
-                        <span><i class="fas fa-download"></i> 48 MB</span>
+                        <span><i class="fas fa-clock"></i> Coming soon</span>
                     </div>
                 </div>
-                <button class="btn-download-primary" onclick="downloadApp('linux')">
-                    <i class="fas fa-download"></i>
-                    <span>Download for Linux</span>
+                <button class="btn-download-primary" disabled style="opacity:.5;cursor:not-allowed;">
+                    <i class="fas fa-clock"></i>
+                    <span>Coming Soon</span>
                 </button>
             </div>
         </div>
@@ -122,13 +120,13 @@
                 </div>
                 <div class="guide-step">
                     <div class="step-number">3</div>
-                    <h4>Launch</h4>
-                    <p>Open the app and create your free account</p>
+                    <h4>Add API Key</h4>
+                    <p>Get a free key from OpenRouter, Groq, or OpenAI and paste it in Settings</p>
                 </div>
                 <div class="guide-step">
                     <div class="step-number">4</div>
-                    <h4>Get Credits</h4>
-                    <p>Purchase credits to unlock premium features</p>
+                    <h4>Start Using</h4>
+                    <p>Launch the toolbar and get real-time AI help during your interviews</p>
                 </div>
             </div>
 
@@ -196,15 +194,15 @@
         <!-- CTA Section -->
         <div class="download-cta">
             <h2>Ready to Ace Your Interviews?</h2>
-            <p>Download now and start practicing with AI-powered interview assistance</p>
+            <p>Download free, add your API key, and get real-time AI coaching — no subscription, no limits</p>
             <div class="cta-buttons">
-                <a href="auth.html" class="btn btn-primary">
-                    <i class="fas fa-user-plus"></i>
-                    <span>Create Free Account</span>
-                </a>
-                <a href="index.html#pricing" class="btn btn-secondary">
-                    <i class="fas fa-coins"></i>
-                    <span>Get Credits</span>
+                <button class="btn btn-primary" onclick="downloadApp('windows')">
+                    <i class="fas fa-download"></i>
+                    <span>Download for Windows</span>
+                </button>
+                <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" class="btn btn-secondary">
+                    <i class="fas fa-key"></i>
+                    <span>Get Free API Key</span>
                 </a>
             </div>
         </div>

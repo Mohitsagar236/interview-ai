@@ -1,223 +1,210 @@
-"""
-PaddleOCR Integration - Superior OCR for production use
-Much better accuracy than Tesseract, especially for screenshots and code
-"""
-import os
-import io
-import logging
-from typing import Optional, List, Tuple
-
-# Lazy loaded
-Image = None
-np = None
-
-logger = logging.getLogger(__name__)
-
-# Global variable for lazy loading
-_paddle_ocr_instance = None
-_has_paddleocr = None
-
-
-def check_paddleocr_available():
-    """Check if PaddleOCR is available without importing it"""
-    global _has_paddleocr
-    if _has_paddleocr is not None:
-        return _has_paddleocr
-    
-    try:
-        import paddleocr
-        _has_paddleocr = True
-        logger.info("✅ PaddleOCR is available")
-    except ImportError:
-        _has_paddleocr = False
-        logger.warning("PaddleOCR not available. Install with: pip install paddleocr")
-    
-    return _has_paddleocr
-
-
-class PaddleOCREngine:
-    """PaddleOCR wrapper for superior text detection"""
-    
-    def __init__(self):
-        # Lazy import PaddleOCR only when needed
-        try:
-            from paddleocr import PaddleOCR
-        except ImportError:
-            raise ImportError("PaddleOCR not installed. Run: pip install paddleocr")
-        
-        # Initialize PaddleOCR with optimized settings for better accuracy
-        # use_angle_cls=True enables text rotation detection
-        # lang='en' for English (supports 80+ languages)
-        # det_db_thresh=0.3 - lower detection threshold for better text finding
-        # det_db_box_thresh=0.5 - box threshold
-        try:
-            self.ocr = PaddleOCR(
-                use_angle_cls=True,
-                lang='en',
-                det_db_thresh=0.3,  # Lower threshold to detect more text (default 0.5)
-                det_db_box_thresh=0.5,
-                show_log=False  # Reduce noise in logs
-            )
-            logger.info("PaddleOCR initialized with optimized settings (det_db_thresh=0.3)")
-        except Exception as e:
-            logger.error(f"Failed to initialize PaddleOCR: {e}")
-            raise
-    
-    def extract_text(self, image_bytes: bytes) -> str:
-        """
-        Extract text from image bytes using PaddleOCR
-        
-        Args:
-            image_bytes: Raw image bytes (PNG, JPEG, etc.)
-            
-        Returns:
-            Extracted text as string
-        """
-        global Image, np
-        if Image is None:
-            from PIL import Image
-            import numpy as np
-
-        try:
-            # Load image
-            img = Image.open(io.BytesIO(image_bytes))
-            
-            # Convert to RGB if needed
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            
-            # Convert to numpy array for PaddleOCR
-            img_array = np.array(img)
-            
-            # Run OCR (without cls parameter - not supported in newer versions)
-            result = self.ocr.ocr(img_array)
-            
-            # Debug: log the raw result structure
-            logger.info(f"PaddleOCR raw result type: {type(result)}, length: {len(result) if result else 0}")
-            if result and len(result) > 0:
-                logger.info(f"First element type: {type(result[0])}, content: {result[0]}")
-            
-            # Extract text from results
-            if not result or not result[0]:
-                logger.warning("PaddleOCR detected no text boxes in image")
-                return ""
-            
-            logger.info(f"PaddleOCR detected {len(result[0])} text boxes")
-            
-            # Combine all detected text
-            # result[0] is list of [bbox, (text, confidence)]
-            texts = []
-            for line in result[0]:
-                if line and len(line) >= 2:
-                    text_info = line[1]
-                    if isinstance(text_info, (tuple, list)) and len(text_info) >= 1:
-                        text = text_info[0]
-                        confidence = text_info[1] if len(text_info) > 1 else 0
-                        
-                        # Lower confidence threshold for better text extraction (was 0.5)
-                        # Accept text with confidence > 0.3 (30%)
-                        if confidence > 0.3:
-                            texts.append(text)
-                            logger.debug(f"PaddleOCR line: '{text}' (confidence: {confidence:.2f})")
-                        else:
-                            logger.debug(f"PaddleOCR skipped low confidence: '{text}' ({confidence:.2f})")
-            
-            combined_text = '\n'.join(texts)
-            logger.info(f"PaddleOCR extracted {len(combined_text)} characters from {len(texts)} lines")
-            
-            return combined_text
-            
-        except Exception as e:
-            logger.error(f"PaddleOCR extraction failed: {e}")
-            return ""
-    
-    def extract_text_with_layout(self, image_bytes: bytes) -> dict:
-        """
-        Extract text with layout information (bounding boxes, confidence)
-        
-        Returns:
-            dict with 'text', 'lines' (with bbox and confidence), 'metadata'
-        """
-        try:
-            img = Image.open(io.BytesIO(image_bytes))
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            
-            img_array = np.array(img)
-            result = self.ocr.ocr(img_array, cls=True)
-            
-            if not result or not result[0]:
-                return {'text': '', 'lines': [], 'metadata': {}}
-            
-            lines = []
-            all_text = []
-            
-            for line in result[0]:
-                if line and len(line) >= 2:
-                    bbox = line[0]  # [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-                    text_info = line[1]
-                    
-                    if isinstance(text_info, (tuple, list)) and len(text_info) >= 1:
-                        text = text_info[0]
-                        confidence = text_info[1] if len(text_info) > 1 else 0
-                        
-                        if confidence > 0.3:  # Lower threshold for better extraction
-                            all_text.append(text)
-                            lines.append({
-                                'text': text,
-                                'confidence': confidence,
-                                'bbox': bbox,
-                            })
-            
-            return {
-                'text': '\n'.join(all_text),
-                'lines': lines,
-                'metadata': {
-                    'total_lines': len(lines),
-                    'avg_confidence': sum(l['confidence'] for l in lines) / len(lines) if lines else 0,
-                    'image_size': img.size,
-                }
-            }
-            
-        except Exception as e:
-            logger.error(f"PaddleOCR layout extraction failed: {e}")
-            return {'text': '', 'lines': [], 'metadata': {}}
-
-
-# Global instance
-_paddle_ocr_engine = None
-
-
-def get_paddle_ocr_engine() -> Optional[PaddleOCREngine]:
-    """Get or create PaddleOCR engine instance (lazy loading)"""
-    global _paddle_ocr_engine
-    
-    # Check if PaddleOCR is available first
-    if not check_paddleocr_available():
-        return None
-    
-    if _paddle_ocr_engine is None:
-        try:
-            _paddle_ocr_engine = PaddleOCREngine()
-        except Exception as e:
-            logger.error(f"Failed to initialize PaddleOCR: {e}")
-            return None
-    
-    return _paddle_ocr_engine
-
-
-def process_ocr_paddleocr(image_bytes: bytes) -> str:
-    """
-    Process image with PaddleOCR
-    
-    Args:
-        image_bytes: Raw image bytes
-        
-    Returns:
-        Extracted text
-    """
-    engine = get_paddle_ocr_engine()
-    if not engine:
-        raise ImportError("PaddleOCR not available")
-    
-    return engine.extract_text(image_bytes)
+# -*- coding: utf-8 -*-
+"""
+PaddleOCR v3 Integration — Best-in-class OCR for screen captures.
+
+Rewritten for PaddleOCR 3.x API (predict-based).
+This is the ONLY OCR engine used by the application.
+"""
+
+import io
+import logging
+from typing import Optional, List, Dict
+
+logger = logging.getLogger(__name__)
+
+# Lazy-loaded heavy imports
+Image = None
+np = None
+
+_has_paddleocr: Optional[bool] = None
+
+
+def check_paddleocr_available() -> bool:
+    """Check if PaddleOCR is importable."""
+    global _has_paddleocr
+    if _has_paddleocr is not None:
+        return _has_paddleocr
+    try:
+        import paddleocr  # noqa: F401
+        _has_paddleocr = True
+        logger.info("✅ PaddleOCR is available (v%s)", getattr(paddleocr, "__version__", "?"))
+    except ImportError:
+        _has_paddleocr = False
+        logger.warning("⚠️ PaddleOCR not available. Install with: pip install paddleocr")
+    return _has_paddleocr
+
+
+class PaddleOCREngine:
+    """PaddleOCR 3.x wrapper optimised for screen-capture OCR."""
+
+    def __init__(self):
+        from paddleocr import PaddleOCR  # will raise ImportError if missing
+
+        # Screen captures are always upright → disable doc orientation/unwarping
+        # Lower detection thresholds so faint / small text is still found
+        try:
+            self.ocr = PaddleOCR(
+                lang="en",
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
+                text_det_thresh=0.25,
+                text_det_box_thresh=0.4,
+                text_rec_score_thresh=0.2,
+            )
+            logger.info("PaddleOCR 3.x engine initialised (optimised for screenshots)")
+        except TypeError:
+            # Fallback if some kwargs are removed in a future version
+            self.ocr = PaddleOCR(lang="en")
+            logger.info("PaddleOCR 3.x engine initialised (default params)")
+
+    # ------------------------------------------------------------------ #
+    #  Public helpers
+    # ------------------------------------------------------------------ #
+
+    def extract_text(self, image_bytes: bytes) -> str:
+        """Return plain text extracted from *image_bytes* (PNG / JPEG)."""
+        global Image, np
+        if Image is None:
+            from PIL import Image as _Image
+            import numpy as _np
+            Image = _Image
+            np = _np
+
+        try:
+            img = Image.open(io.BytesIO(image_bytes))
+            if img.mode != "RGB":
+                if img.mode in ("RGBA", "LA", "P"):
+                    bg = Image.new("RGB", img.size, (255, 255, 255))
+                    if img.mode == "P":
+                        img = img.convert("RGBA")
+                    mask = img.split()[-1] if img.mode in ("RGBA", "LA") else None
+                    bg.paste(img, mask=mask)
+                    img = bg
+                else:
+                    img = img.convert("RGB")
+
+            # Upscale small images for better detection
+            w, h = img.size
+            min_side = 1600
+            if max(w, h) < min_side:
+                scale = min_side / max(w, h)
+                img = img.resize(
+                    (int(w * scale), int(h * scale)),
+                    Image.LANCZOS,
+                )
+                logger.debug("Upscaled %dx%d → %dx%d (%.1fx)", w, h, *img.size, scale)
+
+            img_array = np.array(img)
+            texts, scores = self._run_predict(img_array)
+
+            if not texts:
+                logger.warning("PaddleOCR detected no text in image (%dx%d)", w, h)
+                return ""
+
+            combined = "\n".join(texts)
+            avg_score = sum(scores) / len(scores) if scores else 0
+            logger.info(
+                "PaddleOCR extracted %d chars / %d lines (avg confidence %.2f)",
+                len(combined), len(texts), avg_score,
+            )
+            return combined
+
+        except Exception as exc:
+            logger.error("PaddleOCR extraction failed: %s", exc)
+            return ""
+
+    def extract_text_with_layout(self, image_bytes: bytes) -> Dict:
+        """Return structured output: text + per-line bbox / confidence."""
+        global Image, np
+        if Image is None:
+            from PIL import Image as _Image
+            import numpy as _np
+            Image = _Image
+            np = _np
+
+        try:
+            img = Image.open(io.BytesIO(image_bytes))
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+
+            img_array = np.array(img)
+            texts, scores, polys = self._run_predict(img_array, return_polys=True)
+
+            lines = []
+            for txt, sc, poly in zip(texts, scores, polys):
+                lines.append({"text": txt, "confidence": sc, "bbox": poly})
+
+            return {
+                "text": "\n".join(texts),
+                "lines": lines,
+                "metadata": {
+                    "total_lines": len(lines),
+                    "avg_confidence": sum(scores) / len(scores) if scores else 0,
+                    "image_size": img.size,
+                },
+            }
+        except Exception as exc:
+            logger.error("PaddleOCR layout extraction failed: %s", exc)
+            return {"text": "", "lines": [], "metadata": {}}
+
+    # ------------------------------------------------------------------ #
+    #  Internal
+    # ------------------------------------------------------------------ #
+
+    def _run_predict(self, img_array, return_polys=False):
+        """Run PaddleOCR predict and return (texts, scores[, polys])."""
+        texts: List[str] = []
+        scores: List[float] = []
+        polys: List = []
+
+        for result in self.ocr.predict(img_array):
+            res = result.json
+            if isinstance(res, dict) and "res" in res:
+                res = res["res"]
+
+            rec_texts = res.get("rec_texts", [])
+            rec_scores = res.get("rec_scores", [])
+            rec_polys = res.get("rec_polys", res.get("dt_polys", []))
+
+            for i, (txt, sc) in enumerate(zip(rec_texts, rec_scores)):
+                texts.append(txt)
+                scores.append(sc)
+                if return_polys:
+                    poly = rec_polys[i] if i < len(rec_polys) else []
+                    if hasattr(poly, "tolist"):
+                        poly = poly.tolist()
+                    polys.append(poly)
+
+        if return_polys:
+            return texts, scores, polys
+        return texts, scores
+
+
+# ------------------------------------------------------------------ #
+#  Module-level singleton helpers
+# ------------------------------------------------------------------ #
+
+_engine: Optional[PaddleOCREngine] = None
+
+
+def get_paddle_ocr_engine() -> Optional[PaddleOCREngine]:
+    """Return (or create) the singleton PaddleOCR engine."""
+    global _engine
+    if not check_paddleocr_available():
+        return None
+    if _engine is None:
+        try:
+            _engine = PaddleOCREngine()
+        except Exception as exc:
+            logger.error("Failed to create PaddleOCR engine: %s", exc)
+            return None
+    return _engine
+
+
+def process_ocr_paddleocr(image_bytes: bytes) -> str:
+    """Convenience: extract text via the singleton engine."""
+    engine = get_paddle_ocr_engine()
+    if engine is None:
+        return ""
+    return engine.extract_text(image_bytes)
