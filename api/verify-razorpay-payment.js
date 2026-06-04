@@ -207,7 +207,7 @@ module.exports = async (req, res) => {
         console.log('📊 Credit addition result:', { creditsAdded, creditAdditionDetails });
 
         // Get download URL based on product type - use R2 direct URLs or API endpoint
-        const R2_BASE_URL = process.env.R2_PUBLIC_URL || 'https://pub-bd0f8fce43ae498088abfcbd6d669f15.r2.dev';
+        const R2_BASE_URL = process.env.R2_PUBLIC_URL || 'https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev';
         const downloadUrls = {
             basic: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,
             plus: `${R2_BASE_URL}/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe`,
