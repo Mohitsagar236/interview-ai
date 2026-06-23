@@ -278,6 +278,60 @@ last_coach_question: Optional[str] = None
 # Structure: session_id -> {"index": faiss_index, "emb_texts": List[str], "emb_matrix": np.ndarray, "embedder": model}
 session_resume_data: Dict[str, Dict] = {}
 
+CONTEXT_STOPWORDS = {
+    "about", "after", "again", "against", "also", "and", "are", "because",
+    "been", "before", "being", "between", "both", "but", "can", "could",
+    "did", "does", "doing", "during", "each", "for", "from", "had", "has",
+    "have", "how", "into", "its", "more", "most", "not", "off", "our",
+    "out", "over", "own", "same", "she", "should", "such", "than", "that",
+    "the", "their", "then", "there", "these", "they", "this", "those",
+    "through", "too", "under", "use", "used", "using", "very", "was",
+    "were", "what", "when", "where", "which", "while", "who", "why", "will",
+    "with", "would", "you", "your"
+}
+
+
+def get_or_create_resume_data(session_id: str) -> Dict:
+    """Return the per-session resume/context store."""
+    if session_id not in session_resume_data:
+        session_resume_data[session_id] = {
+            "index": None,
+            "emb_texts": [],
+            "emb_matrix": None,
+            "embedder": None
+        }
+    return session_resume_data[session_id]
+
+
+def tokenize_context_text(text: str) -> Set[str]:
+    """Tokenize text for the portable no-embedding context fallback."""
+    tokens = re.findall(r"[a-z0-9][a-z0-9+#.\-]{1,}", (text or "").lower())
+    return {token for token in tokens if token not in CONTEXT_STOPWORDS}
+
+
+def retrieve_text_context(chunks: List[str], query: str, limit: int = 5) -> List[str]:
+    """Retrieve relevant chunks without optional sentence-transformers/faiss deps."""
+    if not chunks:
+        return []
+    query_terms = tokenize_context_text(query)
+    if not query_terms:
+        return chunks[:limit]
+
+    ranked = []
+    for idx, chunk in enumerate(chunks):
+        terms = tokenize_context_text(chunk)
+        if not terms:
+            continue
+        overlap = query_terms & terms
+        score = len(overlap) * 4
+        score += sum(1 for term in query_terms if term in chunk.lower())
+        score += min(len(chunk), 1200) / 1200
+        if score > 0:
+            ranked.append((score, idx, chunk))
+
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    return [chunk for _, _, chunk in ranked[:limit]] or chunks[:limit]
+
 # Initialize Vision Provider
 vision_provider = VisionProvider()
 
@@ -748,7 +802,10 @@ async def handle_ui(ws):
                         "max_cost_per_request": msg.get("max_cost_per_request", 0.10),
                     }
                     logger.info(f"[Session {session_id}] init_session received: provider={session_configs[session_id]['ai_provider']}")
-                    if not session_configs[session_id]["ai_api_key"] and session_configs[session_id]["ai_provider"] != "ollama":
+                    _provider = session_configs[session_id]["ai_provider"]
+                    _base_url = session_configs[session_id].get("ai_base_url", "")
+                    _local_custom = _provider == "custom" and any(host in _base_url for host in ("localhost", "127.0.0.1", "::1"))
+                    if not session_configs[session_id]["ai_api_key"] and _provider != "ollama" and not _local_custom:
                         await ws.send(json.dumps({"type": "error", "code": "NO_CONFIG", "message": "API keys not configured. Open Settings to add them."}))
                     continue
                 
@@ -1200,6 +1257,10 @@ async def handle_ui(ws):
                         txt = msg.get("text") or msg.get("resume_text") or ""
                         raw = txt.encode("utf-8", errors="ignore")
                     await ingest_resume(str(name), raw, session_id=session_id)
+                elif mtype == "resume_clear":
+                    if session_id in session_resume_data:
+                        del session_resume_data[session_id]
+                    await broadcast({"type": "resume", "text": "Resume context cleared"}, session_id=session_id)
                 elif mtype == "context" and msg.get("context_kind") == "company":
                     # Store company brief details so AI can use them for follow-ups
                     try:
@@ -1630,6 +1691,10 @@ async def handle_ui(ws):
             del ui_clients[session_id]
         if ws in client_sessions:
             del client_sessions[ws]
+
+        if session_id in session_configs:
+            del session_configs[session_id]
+            logger.info(f"[Session] Cleared provider config for session: {session_id}")
         
         # Clean up session-specific resume data for privacy
         if session_id in session_resume_data:
@@ -1699,15 +1764,7 @@ async def ingest_resume(name: str, raw: bytes, session_id: str = None):
     
     # Initialize session data if not exists
     global SentenceTransformer, session_resume_data
-    if session_id not in session_resume_data:
-        session_resume_data[session_id] = {
-            "index": None,
-            "emb_texts": [],
-            "emb_matrix": None,
-            "embedder": None
-        }
-    
-    session_data = session_resume_data[session_id]
+    session_data = get_or_create_resume_data(session_id)
     
     try:
         if SentenceTransformer is None:
@@ -1760,15 +1817,7 @@ async def ingest_company_brief(text: str, session_id: str = None):
         del company_brief_chunks[:-50]
     
     # Initialize session data if not exists
-    if session_id not in session_resume_data:
-        session_resume_data[session_id] = {
-            "index": None,
-            "emb_texts": [],
-            "emb_matrix": None,
-            "embedder": None
-        }
-    
-    session_data = session_resume_data[session_id]
+    session_data = get_or_create_resume_data(session_id)
     
     # Reuse existing embedding pipeline for consistency
     try:
@@ -2047,6 +2096,15 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
         else:
             logger.debug(f"ℹ️ No company brief available")
     
+    resume_context_block = ""
+    if base_ctx.strip():
+        resume_context_block = (
+            "Candidate resume/background context:\n"
+            f"{base_ctx}\n\n"
+            "Use this context only when it is relevant to the interviewer question. "
+            "Do not invent resume details that are not present.\n\n"
+        )
+
     # Core response guidelines: Always respond directly with clear, polished, complete answers
     # For transcription context, enforce brevity and conciseness
     if context_type == "transcription":
@@ -2275,6 +2333,7 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
             if context_type == "transcription":
                 user = (
                     f"QUESTION: {question}\n\n"
+                    f"{resume_context_block}"
                     f"{additional_context}"
                     "Provide a concise answer with:\n"
                     "• Core approach (1-2 sentences)\n"
@@ -2297,6 +2356,7 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
             if context_type == "transcription":
                 user = (
                     f"QUESTION: {question}\n\n"
+                    f"{resume_context_block}"
                     f"{additional_context}"
                     "Provide a direct, concise answer to this question. Keep it brief but complete."
                 )
@@ -2376,7 +2436,7 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
                 if context_type == "transcription":
                     user = (
                         f"Interviewer question: \"{question}\"\n\n"
-                        # Avoid adding resume/background to reduce drift during live Q&A
+                        f"{resume_context_block}"
                         f"{additional_context}"
                         "Provide a BRIEF answer:\n"
                         "- Core concept in 1-2 sentences\n"
@@ -2414,6 +2474,7 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
                 if context_type == "transcription":
                     user = (
                         f"Interviewer question: \"{question}\"\n\n"
+                        f"{resume_context_block}"
                         f"{additional_context}"
                         f"Provide a BRIEF, CONCISE answer to this question: \"{question}\"\n\n"
                         "Requirements:\n"
@@ -2832,6 +2893,9 @@ async def stream_llm(
             else:
                 # Fallback to first few chunks if no query context yet
                 ctx = emb_texts[:5]
+    elif emb_texts:
+        query_text = (partial_text or "").strip() or (facts or "").strip() or (get_combined_ocr_text() or "").strip()
+        ctx = retrieve_text_context(emb_texts, query_text, limit=5)
     
     if extra_ctx:
         ctx.extend([chunk for chunk in extra_ctx if chunk])
@@ -2971,12 +3035,18 @@ async def stream_llm(
         # BYOK: if this session has a user-supplied API key, create a temporary provider
         use_override = bool(llm_id)
         session_cfg = session_configs.get(session_id) if session_id else None
-        if session_cfg and session_cfg.get("ai_api_key"):
+        provider_name = session_cfg.get("ai_provider", "openai") if session_cfg else "openai"
+        base_url = session_cfg.get("ai_base_url", "") if session_cfg else ""
+        local_no_key = provider_name == "ollama" or (
+            provider_name == "custom" and any(host in base_url for host in ("localhost", "127.0.0.1", "::1"))
+        )
+        session_api_key = session_cfg.get("ai_api_key") if session_cfg else ""
+        if session_cfg and (session_api_key or local_no_key):
             user_prov_cfg = UserProviderConfig(
-                provider=session_cfg.get("ai_provider", "openai"),
-                api_key=session_cfg["ai_api_key"],
+                provider=provider_name,
+                api_key=session_api_key or "local-no-auth",
                 model=session_cfg.get("ai_model", "") or llm_id or "",
-                base_url=session_cfg.get("ai_base_url", ""),
+                base_url=base_url,
             )
             try:
                 byok_provider = create_provider_from_config(user_prov_cfg)
@@ -3463,11 +3533,12 @@ async def stream_llm(
 
 async def handle_audio_streaming(ws, session_id=None):
     """
-    Real-time streaming audio handler using Deepgram/AssemblyAI for <200ms latency.
+    Real-time streaming audio handler using Deepgram for low-latency transcription.
     Streams audio directly to provider and forwards interim/final results to UI immediately.
     """
     import numpy as np
-    global partial_text, current_speaker, listen_student_enabled, last_processed_student_utterance, last_student_time, streaming_engine
+    global partial_text, current_speaker, listen_student_enabled, last_processed_student_utterance, last_student_time
+    streaming_engine_local = None
     
     logger.info(f"[Streaming] Audio WebSocket connected - session_id: {session_id}")
     
@@ -3480,27 +3551,26 @@ async def handle_audio_streaming(ws, session_id=None):
     
     # Initialize streaming transcription engine
     try:
-        if streaming_engine is None:
-            logger.info("[Streaming] Creating new streaming transcription engine")
-            from streaming_transcription import StreamingTranscriptionEngine
-            # BYOK: use session-specific Deepgram key if available
-            _cfg = session_configs.get(session_id, {})
-            streaming_engine = StreamingTranscriptionEngine(
-                api_key=_cfg.get("deepgram_api_key") or None,
-                model=_cfg.get("deepgram_model") or None,
-            )
+        logger.info("[Streaming] Creating session streaming transcription engine")
+        from streaming_transcription import StreamingTranscriptionEngine
+        # BYOK: use session-specific Deepgram key if available
+        _cfg = session_configs.get(session_id, {})
+        streaming_engine_local = StreamingTranscriptionEngine(
+            api_key=_cfg.get("deepgram_api_key") or None,
+            model=_cfg.get("deepgram_model") or None,
+        )
         
-        # Connect to streaming provider (Deepgram/AssemblyAI)
+        # Connect to streaming provider (Deepgram)
         logger.info("[Streaming] Connecting to transcription provider...")
-        connected = await streaming_engine.connect()
+        connected = await streaming_engine_local.connect()
         
         if not connected:
             logger.error("[Streaming] Failed to connect to streaming transcription provider")
             await broadcast({"type": "error", "message": "Streaming transcription unavailable - check DEEPGRAM_API_KEY"}, session_id=session_id)
             return
         
-        logger.info(f"[Streaming] Connected to {streaming_engine.provider_name} - ready for audio")
-        await broadcast({"type": "status", "data": {"audio": "streaming_ready", "provider": streaming_engine.provider_name}}, session_id=session_id)
+        logger.info(f"[Streaming] Connected to {streaming_engine_local.provider_name} - ready for audio")
+        await broadcast({"type": "status", "data": {"audio": "streaming_ready", "provider": streaming_engine_local.provider_name}}, session_id=session_id)
         
     except Exception as e:
         logger.error(f"[Streaming] Engine initialization failed: {e}")
@@ -3591,7 +3661,7 @@ async def handle_audio_streaming(ws, session_id=None):
     async def receive_results_loop():
         """Background task to receive and process transcription results"""
         try:
-            async for result in streaming_engine.stream_results(
+            async for result in streaming_engine_local.stream_results(
                 on_interim=on_interim_result,
                 on_final=on_final_result
             ):
@@ -3614,7 +3684,7 @@ async def handle_audio_streaming(ws, session_id=None):
                 
                 try:
                     # Forward audio chunk directly to streaming provider (zero buffering)
-                    await streaming_engine.send_audio(data)
+                    await streaming_engine_local.send_audio(data)
                     # On first audio, announce receiving status to UI
                     if not announced_receiving:
                         announced_receiving = True
@@ -3642,7 +3712,7 @@ async def handle_audio_streaming(ws, session_id=None):
                     await broadcast({"type": "status", "data": {"audio": "reconnecting"}}, session_id=session_id)
                     
                     # Try to reconnect
-                    reconnected = await streaming_engine.connect()
+                    reconnected = await streaming_engine_local.connect()
                     if reconnected:
                         logger.info("[Streaming] Reconnected successfully")
                         await broadcast({"type": "status", "data": {"audio": "streaming_ready"}}, session_id=session_id)
@@ -3667,9 +3737,9 @@ async def handle_audio_streaming(ws, session_id=None):
             pass
         
         # Close streaming engine connection
-        if streaming_engine:
+        if streaming_engine_local:
             try:
-                await streaming_engine.close()
+                await streaming_engine_local.close()
             except Exception as e:
                 logger.warning(f"[Streaming] Error closing engine: {e}")
 

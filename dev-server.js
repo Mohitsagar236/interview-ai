@@ -6,6 +6,8 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const R2_BASE_URL = (process.env.R2_PUBLIC_URL || 'https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev').replace(/\/+$/, '');
+const VERSION = process.env.APP_VERSION || '0.1.0';
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -26,6 +28,17 @@ app.post('/api/activation', (req, res) => {
 
 app.post('/api/grant-free-credits', (req, res) => {
   res.json({ success: true });
+});
+
+app.get('/api/download', (req, res) => {
+  const platform = req.query.platform;
+
+  if (platform !== 'windows') {
+    return res.status(400).json({ error: 'Invalid platform' });
+  }
+
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.redirect(302, `${R2_BASE_URL}/releases/v${VERSION}/Interview-AI-Setup-${VERSION}-x64.exe`);
 });
 
 // Catch-all: serve index.html for client-side routing

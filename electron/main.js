@@ -78,7 +78,6 @@ criticalVars.forEach(v => {
 });
 console.log('[ENV] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-let mainWindow;
 let toolbarWindow;
 let setupWindow = null;
 let overlayWindows = [];
@@ -298,9 +297,7 @@ async function ensureCoachWS() {
         try {
           const msg = JSON.parse(data.toString());
           if (msg && msg.type === 'coach') {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('coach-update', { text: msg.text || '', reset: !!msg.reset });
-            }
+            sendToUi('coach-update', { text: msg.text || '', reset: !!msg.reset });
           }
         } catch (err) { /* ignore parse errors */ }
       });
@@ -561,9 +558,7 @@ function logActivity(type, details) {
     // Cap to last 400 entries
     if (data.activities.length > 400) data.activities = data.activities.slice(-400);
     writeActivities(data);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('activity-updated', entry);
-    }
+    sendToUi('activity-updated', entry);
     return entry;
   } catch (e) { console.error('logActivity failed', e.message); }
 }
@@ -617,13 +612,67 @@ function createSetupWindow() {
 
 function sendSetupProgress(pct, label, log, logType) {
   const payload = { pct, label, log, logType };
-  [setupWindow, mainWindow].forEach(w => {
+  [setupWindow].forEach(w => {
     try { if (w && !w.isDestroyed()) w.webContents.send('setup-progress', payload); } catch {}
   });
 }
 
 function closeSetupWindow() {
   try { if (setupWindow && !setupWindow.isDestroyed()) { setupWindow.close(); setupWindow = null; } } catch {}
+}
+
+function isOnboardingComplete() {
+  try { return !!settingsStore.get('onboardingComplete', false); } catch { return false; }
+}
+
+function ensureToolbarWindow(options = {}) {
+  const { focus = false, show = true } = options || {};
+  if (!toolbarWindow || toolbarWindow.isDestroyed()) {
+    createToolbarWindow();
+  } else if (show) {
+    toolbarWindow.show();
+  }
+  if (focus && toolbarWindow && !toolbarWindow.isDestroyed()) {
+    toolbarWindow.focus();
+  }
+  return toolbarWindow;
+}
+
+function showToolbarWhenReady() {
+  closeSetupWindow();
+  if (isOnboardingComplete()) {
+    ensureToolbarWindow({ show: true });
+  }
+}
+
+function showPrimaryUi(section) {
+  const normalized = String(section || '').toLowerCase();
+  if (normalized === 'settings' || normalized === 'api-keys' || normalized === 'apikeys') {
+    createSettingsWindow();
+    return true;
+  }
+  ensureToolbarWindow({ focus: true, show: true });
+  return true;
+}
+
+function sendToUi(channel, ...args) {
+  [toolbarWindow].forEach(w => {
+    try {
+      if (w && !w.isDestroyed()) {
+        w.webContents.send(channel, ...args);
+      }
+    } catch {}
+  });
+}
+
+function getDialogParentWindow() {
+  if (toolbarWindow && !toolbarWindow.isDestroyed()) return toolbarWindow;
+  return null;
+}
+
+function showSaveDialogForApp(dialog, options) {
+  const parent = getDialogParentWindow();
+  return parent ? dialog.showSaveDialog(parent, options) : dialog.showSaveDialog(options);
 }
 
 ipcMain.handle('setup:retry', () => { startPythonServer(); return true; });
@@ -702,10 +751,6 @@ function startPythonServer() {
         if (settings.deepgramApiKey) {
           env.DEEPGRAM_API_KEY = settings.deepgramApiKey;
           console.log('[Server] ✅ Deepgram API key loaded from settings');
-        }
-        if (settings.assemblyaiApiKey) {
-          env.ASSEMBLYAI_API_KEY = settings.assemblyaiApiKey;
-          console.log('[Server] ✅ AssemblyAI API key loaded from settings');
         }
         
         if (settings.defaultLLM) env.DEFAULT_LLM = settings.defaultLLM;
@@ -796,8 +841,8 @@ function startPythonServer() {
 
     // Check if venv already exists (returning user → show window right away)
     const venvAlreadyExists = fs.existsSync(getVenvPythonExe(getUserVenvDir()));
-    if (venvAlreadyExists && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
+    if (venvAlreadyExists && isOnboardingComplete()) {
+      ensureToolbarWindow({ show: true });
     }
 
     console.log('[Server] Checking for venv Python...');
@@ -888,10 +933,6 @@ function startPythonServer() {
         env.DEEPGRAM_API_KEY = settings.deepgramApiKey;
         console.log('[Server] ✅ Deepgram API key loaded from settings');
       }
-      if (settings.assemblyaiApiKey) {
-        env.ASSEMBLYAI_API_KEY = settings.assemblyaiApiKey;
-        console.log('[Server] ✅ AssemblyAI API key loaded from settings');
-      }
       
       // Apply other settings
       if (settings.defaultLLM) env.DEFAULT_LLM = settings.defaultLLM;
@@ -969,10 +1010,10 @@ function startPythonServer() {
         console.warn('[Server] ⚠️ App will use fallback HuggingFace model (slower, offline).');
       }
       
-      const hasTranscriptionKey = env.DEEPGRAM_API_KEY || env.ASSEMBLYAI_API_KEY;
+      const hasTranscriptionKey = env.DEEPGRAM_API_KEY;
       if (!hasTranscriptionKey) {
         console.warn('[Server] ⚠️ WARNING: No transcription API keys configured!');
-        console.warn('[Server] ⚠️ Please add Deepgram or AssemblyAI key in Settings for transcription.');
+        console.warn('[Server] ⚠️ Please add a Deepgram key in Settings for transcription.');
         console.warn('[Server] ⚠️ App will use local Whisper model (slower, but works offline).');
       }
     } catch (e) {
@@ -999,10 +1040,9 @@ function attachServerIO() {
         if (!serverReady) {
           serverReady = true;
           sendSetupProgress(100, 'Ready!', `Server started on port ${serverPort}`, 'ok');
-          // Show main window and close setup window after brief delay
+          // Close setup window after brief delay, then show toolbar for returning users.
           setTimeout(() => {
-            closeSetupWindow();
-            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+            showToolbarWhenReady();
           }, 600);
         }
       }
@@ -1022,8 +1062,7 @@ function attachServerIO() {
           serverReady = true;
           sendSetupProgress(100, 'Ready!', `Server started on port ${serverPort}`, 'ok');
           setTimeout(() => {
-            closeSetupWindow();
-            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+            showToolbarWhenReady();
           }, 600);
         }
       }
@@ -1035,84 +1074,17 @@ function attachServerIO() {
   });
 }
 
-function createMainWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1000,
-    minHeight: 700,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true
-    },
-    titleBarStyle: 'default',
-    show: false // Don't show until ready
-  });
-
-  // Load the main UI
-  mainWindow.loadFile(path.join(__dirname, '../renderer/app.html'));
-
-  mainWindow.once('ready-to-show', () => {
-    if (process.env.NODE_ENV === 'development') {
-      mainWindow.webContents.openDevTools();
-      mainWindow.show(); // always show in dev
-    }
-    // In production: window stays hidden until server is ready (setup window shown instead)
-    // startPythonServer / attachServerIO call mainWindow.show() once port is detected
-
-    // Kick off server auto-start shortly after UI is ready
-    setTimeout(() => { try { startPythonServer(); } catch (e) { console.error('Failed to auto-start server', e); } }, 300);
-  });
-
-  // Prevent this window from appearing in screen recordings/shares
-  try { 
-    mainWindow.setContentProtection(true); 
-  } catch (e) {
-    console.log('Content protection not available on this platform');
-  }
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
-
-  // Handle window state changes
-  mainWindow.on('minimize', () => {
-    console.log('Window minimized');
-  });
-
-  mainWindow.on('restore', () => {
-    console.log('Window restored');
-  });
-
-  // Re-register shortcuts when window gains focus to ensure they work
-  mainWindow.on('focus', () => {
-    console.log('[Window] Main window focused - ensuring shortcuts are registered');
-    // Small delay to avoid conflicts during window state transitions
-    setTimeout(() => {
-      registerGlobalShortcuts();
-    }, 100);
-  });
-
-  // Handle browser window focus events
-  mainWindow.on('blur', () => {
-    console.log('[Window] Main window lost focus');
-  });
-}
-
 // Heartbeat broadcast (UI can show server + app status)
 function startHeartbeat() {
   if (heartbeatInterval) return;
   heartbeatInterval = setInterval(() => {
     try {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('app-heartbeat', {
-          ts: Date.now(),
-          serverRunning: !!serverProcess,
-          overlays: overlayWindows.length,
-          toolbarVisible: !!(toolbarWindow && !toolbarWindow.isDestroyed() && toolbarWindow.isVisible())
-        });
-      }
+      sendToUi('app-heartbeat', {
+        ts: Date.now(),
+        serverRunning: !!serverProcess,
+        overlays: overlayWindows.length,
+        toolbarVisible: !!(toolbarWindow && !toolbarWindow.isDestroyed() && toolbarWindow.isVisible())
+      });
     } catch (e) {
       console.error('Heartbeat send failed', e.message);
     }
@@ -1179,21 +1151,29 @@ function createStealthOverlay() {
 }
 
 // ==========================================
-// (Credits/Activation system removed in open-source BYOK mode)
+// Credits/activation system removed in free BYOK mode.
 // ==========================================
 
 
 /**
- * CHANGED: Open-source BYOK mode — always create toolbar without credit/activation checks.
+ * Free BYOK mode: always create toolbar without credit/activation checks.
  */
 function createToolbarWithCreditCheck() {
-  console.log('[BYOK] ✅ Open-source mode - creating toolbar without credit/activation check');
+  console.log('[BYOK] Free BYOK mode - creating toolbar without credit/activation check');
   createToolbarWindow();
   return true;
 }
 
 // Lightweight floating toolbar window
 function createToolbarWindow() {
+  if (toolbarWindow && !toolbarWindow.isDestroyed()) {
+    try {
+      toolbarWindow.show();
+      toolbarWindow.focus();
+    } catch {}
+    return toolbarWindow;
+  }
+
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workAreaSize;
 
@@ -1279,6 +1259,7 @@ function createToolbarWindow() {
   }
   applyPassthrough();
 
+  ipcMain.removeHandler('toolbar-set-passthrough');
   ipcMain.handle('toolbar-set-passthrough', (_evt, value) => {
     passthrough = !!value;
     applyPassthrough();
@@ -1286,6 +1267,7 @@ function createToolbarWindow() {
   });
 
   // Allow renderer to request focus (e.g., when expanding chat)
+  ipcMain.removeHandler('toolbar-focus');
   ipcMain.handle('toolbar-focus', () => {
     try {
       if (toolbarWindow && !toolbarWindow.isDestroyed()) {
@@ -1334,7 +1316,7 @@ function createToolbarWindow() {
   return toolbarWindow;
 }
 
-// CHANGED: Onboarding window for first-run (open-source BYOK mode)
+// CHANGED: Onboarding window for first-run (free BYOK mode)
 let onboardingWindow = null;
 function createOnboardingWindow() {
   if (onboardingWindow && !onboardingWindow.isDestroyed()) {
@@ -1392,6 +1374,47 @@ ipcMain.handle('settings:get-all', () => settingsStore.store);
 ipcMain.handle('settings:has-ai-key', () => hasAnyAiKey());
 ipcMain.handle('settings:has-deepgram-key', () => hasDeepgramKey());
 ipcMain.handle('settings:open-window', () => { createSettingsWindow(); return true; });
+
+ipcMain.handle('resume-current:get', () => {
+  const current = settingsStore.get('resume.current', null);
+  return { ok: true, resume: current || null };
+});
+
+ipcMain.handle('resume-current:set', (_event, payload = {}) => {
+  try {
+    const name = String(payload.name || '').trim();
+    const content = String(payload.content || '').trim();
+    if (!name || !content) return { ok: false, error: 'Resume name and content are required' };
+
+    const maxBase64Bytes = 16 * 1024 * 1024;
+    if (content.length > maxBase64Bytes) {
+      return { ok: false, error: 'Resume must be 10MB or smaller' };
+    }
+
+    const resume = {
+      name: name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 180),
+      content,
+      size: Number(payload.size) || null,
+      type: String(payload.type || ''),
+      updatedAt: new Date().toISOString(),
+    };
+    settingsStore.set('resume.current', resume);
+    if (payload.notify !== false) sendToUi('resume-current-updated', resume);
+    return { ok: true, resume: { name: resume.name, size: resume.size, type: resume.type, updatedAt: resume.updatedAt } };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('resume-current:clear', (_event, options = {}) => {
+  try {
+    settingsStore.delete('resume.current');
+    if (!options || options.notify !== false) sendToUi('resume-current-cleared');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 
 // ── Claude Account sign-in — opens system browser (Chrome) ──────────────────
 const CLAUDE_OAUTH = {
@@ -1961,26 +1984,18 @@ ipcMain.handle('open-external', (_event, url) => {
 
 ipcMain.handle('show-main', () => {
   try {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-      mainWindow.focus();
-      return true;
-    }
-  } catch {}
+    ensureToolbarWindow({ focus: true, show: true });
+    return true;
+  } catch (e) {
+    console.error('show-main failed:', e.message);
+  }
   return false;
 });
 
-// Navigate to a logical section inside the main/profile window
+// Navigate to a logical section in the active desktop UI.
 ipcMain.handle('navigate-section', (_event, section) => {
   try {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      // Bring window to front first
-      mainWindow.show();
-      mainWindow.focus();
-      // Relay to renderer
-      mainWindow.webContents.send('navigate-section', section);
-      return true;
-    }
+    return showPrimaryUi(section);
   } catch (e) {
     console.error('navigate-section failed:', e.message);
   }
@@ -2063,7 +2078,7 @@ ipcMain.handle('resumes-upload', (_event, file) => {
         const latest = readJSON(resumesMetaPath, { resumes: [] });
         const r = latest.resumes.find(r => r.id === entry.id);
         if (r) { r.status = 'processed'; writeJSON(resumesMetaPath, latest); }
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('resumes-updated');
+        sendToUi('resumes-updated');
       } catch (e) { console.error('Finalize resume status failed', e.message); }
     }, 2000);
     return { ok: true, resume: entry };
@@ -2202,7 +2217,6 @@ ipcMain.handle('settings-load', () => {
       groq:       'groqApiKey',
       xai:        'xaiApiKey',
       deepgram:   'deepgramApiKey',
-      assemblyai: 'assemblyaiApiKey',
     };
     for (const [provider, field] of Object.entries(storeToField)) {
       if (!base[field]) {
@@ -2231,13 +2245,12 @@ ipcMain.handle('settings-save', (_event, patch) => {
       groqApiKey:       'groq',
       xaiApiKey:        'xai',
       deepgramApiKey:   'deepgram',
-      assemblyaiApiKey: 'assemblyai',
     };
     let detectedProvider = null;
     for (const [patchKey, storeProvider] of Object.entries(keyMap)) {
       if (patch[patchKey]) {
         saveApiKey(storeProvider, patch[patchKey]);
-        if (!detectedProvider && storeProvider !== 'deepgram' && storeProvider !== 'assemblyai') {
+        if (!detectedProvider && storeProvider !== 'deepgram') {
           detectedProvider = storeProvider;
         }
       }
@@ -2250,7 +2263,7 @@ ipcMain.handle('settings-save', (_event, patch) => {
       settingsStore.set('ai.model', patch.defaultLLM);
     }
 
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('settings-updated');
+    sendToUi('settings-updated');
     logActivity('settings.save', { keys: Object.keys(patch||{}) });
     return { ok: true, settings: merged };
   } catch (e) { return { ok: false, error: e.message }; }
@@ -2273,7 +2286,6 @@ ipcMain.handle('diagnostic:check-settings', () => {
         hasGroqKey: !!data.groqApiKey,
         hasXAIKey: !!data.xaiApiKey,
         hasDeepgramKey: !!data.deepgramApiKey,
-        hasAssemblyAIKey: !!data.assemblyaiApiKey,
         defaultLLM: data.defaultLLM,
         autoLaunchServer: data.autoLaunchServer,
         stealthEnabled: data.stealthEnabled
@@ -2307,7 +2319,6 @@ ipcMain.handle('diagnostic:check-env', () => {
     GROQ_API_KEY: process.env.GROQ_API_KEY ? maskKey(process.env.GROQ_API_KEY) : null,
     XAI_API_KEY: process.env.XAI_API_KEY ? maskKey(process.env.XAI_API_KEY) : null,
     DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY ? maskKey(process.env.DEEPGRAM_API_KEY) : null,
-    ASSEMBLYAI_API_KEY: process.env.ASSEMBLYAI_API_KEY ? maskKey(process.env.ASSEMBLYAI_API_KEY) : null,
     DEFAULT_LLM: process.env.DEFAULT_LLM,
     USE_STREAMING_TRANSCRIPTION: process.env.USE_STREAMING_TRANSCRIPTION,
     STREAMING_PROVIDER: process.env.STREAMING_PROVIDER,
@@ -2338,7 +2349,7 @@ ipcMain.handle('interviews-create', (_event, payload) => {
     };
     data.interviews.push(interview);
     writeInterviews(data);
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('interviews-updated');
+    sendToUi('interviews-updated');
     logActivity('interview.create', { id: interview.id, role: interview.role, company: interview.company });
     return { ok: true, interview };
   } catch (e) { return { ok: false, error: e.message }; }
@@ -2351,7 +2362,7 @@ ipcMain.handle('interviews-update', (_event, id, patch) => {
     if (!it) return { ok: false, error: 'Not found' };
     Object.assign(it, patch, { updatedAt: new Date().toISOString() });
     writeInterviews(data);
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('interviews-updated');
+    sendToUi('interviews-updated');
     logActivity(patch && patch.status === 'completed' ? 'interview.complete' : 'interview.update', { id, patch });
     return { ok: true, interview: it };
   } catch (e) { return { ok: false, error: e.message }; }
@@ -2364,28 +2375,9 @@ ipcMain.handle('interviews-delete', (_event, id) => {
     if (idx === -1) return { ok: false, error: 'Not found' };
     data.interviews.splice(idx, 1);
     writeInterviews(data);
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('interviews-updated');
+    sendToUi('interviews-updated');
     return { ok: true };
   } catch (e) { return { ok: false, error: e.message }; }
-});
-
-// ---------------- Dashboard Stats IPC -----------------
-ipcMain.handle('dashboard-stats', () => {
-  try {
-    ensureDataPaths();
-    const resumes = readJSON(resumesMetaPath, { resumes: [] }).resumes;
-    const interviews = readInterviews().interviews;
-    const processedResumes = resumes.filter(r => r.status === 'processed').length;
-    const upcomingInterviews = interviews.filter(i => i.status === 'upcoming').length;
-    const completedInterviews = interviews.filter(i => i.status === 'completed').length;
-    return {
-      resumesTotal: resumes.length,
-      resumesProcessed: processedResumes,
-      interviewsUpcoming: upcomingInterviews,
-      interviewsCompleted: completedInterviews,
-      lastUpdated: new Date().toISOString()
-    };
-  } catch (e) { return { error: e.message }; }
 });
 
 // ---------------- Interview Live Session (simple timer) -----------------
@@ -2411,7 +2403,7 @@ ipcMain.handle('interview-start-session', async (_event, id) => {
     interviewTickInterval = setInterval(() => {
       if (!activeInterviewSession) return;
       activeInterviewSession.elapsedSec = Math.floor((Date.now() - activeInterviewSession.startedAt)/1000);
-      try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('interview-session-tick', { id, elapsedSec: activeInterviewSession.elapsedSec }); } catch {}
+      try { sendToUi('interview-session-tick', { id, elapsedSec: activeInterviewSession.elapsedSec }); } catch {}
     }, 1000);
     
     logActivity('interview.session.start', { id });
@@ -2437,7 +2429,7 @@ ipcMain.handle('interview-end-session', async (_event, id, options) => {
         it.notes = (it.notes||'') + (it.notes?'\n':'') + options.notes;
       }
       writeInterviews(data);
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('interviews-updated');
+      sendToUi('interviews-updated');
     }
     
     logActivity('interview.session.end', { id, durationSec });
@@ -2454,7 +2446,7 @@ ipcMain.handle('interview-append-note', (_event, id, note) => {
     if (!it) return { ok:false, error:'Not found' };
     it.notes = (it.notes||'') + (it.notes?'\n':'') + note;
     writeInterviews(data);
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('interviews-updated');
+    sendToUi('interviews-updated');
     logActivity('interview.note', { id, size: (note||'').length });
     return { ok:true };
   } catch (e) { return { ok:false, error:e.message }; }
@@ -2482,25 +2474,25 @@ ipcMain.handle('activity-list', (_event, limit=50) => {
   } catch (e) { return { ok:false, error:e.message }; }
 });
 
-// -------------- Credits System IPC (open-source stubs) --------------
-const OPEN_SOURCE_CREDITS = { remaining: 9999, used: 0, total: 9999, planType: 'open-source' };
-ipcMain.handle('credits-load', () => ({ ok: true, credits: OPEN_SOURCE_CREDITS }));
-ipcMain.handle('credits-sync', async () => ({ ok: true, credits: OPEN_SOURCE_CREDITS }));
-ipcMain.handle('credits-check', () => ({ ok: true, hasCredits: true, credits: OPEN_SOURCE_CREDITS }));
+// -------------- Credits System IPC (free BYOK stubs) --------------
+const FREE_BYOK_CREDITS = { remaining: 9999, used: 0, total: 9999, planType: 'free-byok' };
+ipcMain.handle('credits-load', () => ({ ok: true, credits: FREE_BYOK_CREDITS }));
+ipcMain.handle('credits-sync', async () => ({ ok: true, credits: FREE_BYOK_CREDITS }));
+ipcMain.handle('credits-check', () => ({ ok: true, hasCredits: true, credits: FREE_BYOK_CREDITS }));
 ipcMain.handle('credits-start-session', () => ({ ok: true }));
 ipcMain.handle('credits-end-session', () => ({ ok: true, success: true }));
 ipcMain.handle('credits-get-active-session', () => ({ ok: true, session: null }));
 
-// Open-source stubs — activation handlers return safe defaults
+// Free BYOK stubs - activation handlers return safe defaults
 ipcMain.handle('desktop-is-activated', () => ({ activated: true }));
-ipcMain.handle('desktop-get-activation-status', () => ({ ok: true, activated: true, planType: 'open-source' }));
+ipcMain.handle('desktop-get-activation-status', () => ({ ok: true, activated: true, planType: 'free-byok' }));
 ipcMain.handle('desktop-get-user', () => ({ ok: true, user: null }));
 ipcMain.handle('desktop-activate', async () => ({ success: true, hasCredits: true }));
 ipcMain.handle('desktop-deactivate', () => ({ ok: true }));
 ipcMain.handle('desktop-open-activation', () => { createSettingsWindow(); return { ok: true }; });
 ipcMain.handle('close-activation-window', () => ({ ok: true }));
-ipcMain.handle('desktop-get-credits', async () => ({ success: true, credits: OPEN_SOURCE_CREDITS }));
-ipcMain.handle('desktop-sync-credits', async () => ({ success: true, credits: OPEN_SOURCE_CREDITS }));
+ipcMain.handle('desktop-get-credits', async () => ({ success: true, credits: FREE_BYOK_CREDITS }));
+ipcMain.handle('desktop-sync-credits', async () => ({ success: true, credits: FREE_BYOK_CREDITS }));
 ipcMain.handle('credits-available', () => ({ ok: true }));
 ipcMain.handle('credits-add', () => ({ ok: true }));
 
@@ -2543,7 +2535,7 @@ ipcMain.handle('download-compact-bar', async (_event, type) => {
     
     // Show save dialog
     const { dialog } = require('electron');
-    const result = await dialog.showSaveDialog(mainWindow, {
+    const result = await showSaveDialogForApp(dialog, {
       title: 'Save Compact Bar',
       defaultPath: path.join(app.getPath('downloads'), fileName),
       filters: [
@@ -2632,7 +2624,7 @@ ipcMain.handle('download-main-app', async (_event, options = {}) => {
     const sourcePath = path.join(distDir, exe);
 
     const { dialog } = require('electron');
-    const result = await dialog.showSaveDialog(mainWindow, {
+    const result = await showSaveDialogForApp(dialog, {
       title: 'Save Interview AI Desktop App',
       defaultPath: path.join(app.getPath('downloads'), exe),
       filters: [ { name: 'Executable', extensions: ['exe'] } ]
@@ -2663,9 +2655,8 @@ function registerGlobalShortcuts() {
       console.log('🔥 [Shortcut] Quick capture triggered (Alt+C)');
       try {
         const image = await captureScreen();
-        if (image && mainWindow) {
-          // Send capture result to renderer for UI updates
-          mainWindow.webContents.send('quick-capture-result', image);
+        if (image) {
+          sendToUi('quick-capture-result', image);
           
           // Also send directly to Python server for immediate AI analysis
           try {
@@ -2723,9 +2714,7 @@ function registerGlobalShortcuts() {
         console.log('🥷 Stealth mode enabled via shortcut');
       }
       
-      if (mainWindow) {
-        mainWindow.webContents.send('stealth-toggled', !isStealthActive);
-      }
+      sendToUi('stealth-toggled', !isStealthActive);
     });
     
     if (!stealthRegistered) {
@@ -2750,8 +2739,8 @@ function registerGlobalShortcuts() {
     // Minimize window
     const minimizeRegistered = globalShortcut.register('CommandOrControl+M', () => {
       console.log('🔥 [Shortcut] Minimize triggered (Ctrl+M)');
-      if (mainWindow && !mainWindow.isMinimized()) {
-        mainWindow.minimize();
+      if (toolbarWindow && !toolbarWindow.isDestroyed() && toolbarWindow.isVisible()) {
+        toolbarWindow.hide();
         console.log('🗕 Window minimized via shortcut');
       }
     });
@@ -2860,14 +2849,18 @@ function registerGlobalShortcuts() {
 
 // Enhanced app event handlers
 app.whenReady().then(async () => {
-  // CHANGED: No activation manager in open-source BYOK mode
+  // CHANGED: No activation manager in free BYOK mode
   // CHANGED: Check if onboarding is complete; if not, show onboarding window first
   const onboardingComplete = settingsStore.get('onboardingComplete', false);
   
-  createMainWindow();
+  try {
+    startPythonServer();
+  } catch (e) {
+    console.error('Failed to auto-start server', e);
+  }
   
   // OPEN-SOURCE MODE: Always run in BYOK (Bring Your Own Keys) mode
-  console.log('[BYOK] ✅ Open-source mode — running locally with user-provided API keys');
+  console.log('[BYOK] Free BYOK mode - running locally with user-provided API keys');
   console.log('[BYOK] Configure your API keys in Settings (⚙️) to enable AI features');
   
   if (!onboardingComplete) {
@@ -2915,7 +2908,7 @@ app.whenReady().then(async () => {
   if (forcedStealth) {
     setTimeout(() => {
       createStealthOverlay();
-    }, 2000); // Delay to let main window load first
+    }, 2000);
   }
 
   // Register global shortcuts
@@ -3045,8 +3038,10 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (mainWindow === null) {
-    createMainWindow();
+  if (isOnboardingComplete()) {
+    ensureToolbarWindow({ focus: true, show: true });
+  } else {
+    createOnboardingWindow();
   }
   // Re-register shortcuts to ensure they work after app activation
   registerGlobalShortcuts();

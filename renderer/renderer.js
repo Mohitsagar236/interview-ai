@@ -81,15 +81,6 @@ class InterviewAssistant {
         }
         if (!this.ws) throw new Error('No ws connection');
 
-        this.ws.onopen = () => {
-          console.log('[OK] WebSocket connected');
-          this.isConnected = true;
-          this.reconnectAttempts = 0;
-          this.updateConnectionStatus();
-          this.updateUI();
-          this.showNotification('Connected to AI Assistant', 'success');
-        };
-
         this.ws.onmessage = (event) => {
           this.handleMessage(event.data);
         };
@@ -106,12 +97,68 @@ class InterviewAssistant {
           console.error('WebSocket error:', error);
           this.showNotification('Connection error', 'error');
         };
+
+        this.handleWebSocketOpen();
       };
 
       attempt();
     } catch (error) {
       console.error('Failed to create WebSocket:', error);
       this.attemptReconnect();
+    }
+  }
+
+  async handleWebSocketOpen() {
+    console.log('[OK] WebSocket connected');
+    this.isConnected = true;
+    this.reconnectAttempts = 0;
+    this.updateConnectionStatus();
+    this.updateUI();
+    await this.sendInitSession();
+    this.showNotification('Connected to AI Assistant', 'success');
+  }
+
+  async sendInitSession() {
+    try {
+      const api = window.electronAPI;
+      if (!api || !api.settings || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      const [deepgramKey, allSettings] = await Promise.all([
+        api.settings.getApiKey('deepgram'),
+        api.settings.getAll(),
+      ]);
+
+      const cfg = (allSettings && allSettings.ai) || {};
+      const provider = cfg.provider || 'openai';
+      const providerKeyMap = {
+        openai: 'openai',
+        anthropic: 'anthropic',
+        gemini: 'gemini',
+        groq: 'groq',
+        openrouter: 'openrouter',
+        xai: 'xai',
+        custom: 'custom',
+      };
+      const storeKey = providerKeyMap[provider] || 'ai_primary';
+      const aiKey = provider === 'ollama' ? '' : await api.settings.getApiKey(storeKey);
+
+      this.sendMessage({
+        type: 'init_session',
+        deepgram_api_key: deepgramKey || '',
+        deepgram_model: (allSettings && allSettings.deepgram && allSettings.deepgram.model) || 'nova-2',
+        deepgram_language: (allSettings && allSettings.deepgram && allSettings.deepgram.language) || 'en-US',
+        ai_provider: provider,
+        ai_api_key: aiKey || '',
+        ai_model: cfg.model || '',
+        ai_base_url: cfg.baseUrl || '',
+        smart_routing: cfg.smartRouting !== false,
+        budget_mode: !!cfg.budgetMode,
+        max_cost_per_request: cfg.maxCostPerRequest || 0.10,
+      });
+    } catch (error) {
+      console.error('[Session] Failed to send init_session:', error);
     }
   }
 

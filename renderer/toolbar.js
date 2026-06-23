@@ -442,7 +442,6 @@
   const anthropicApiKeyInput = $("anthropicApiKey");
   const groqApiKeyInput = $("groqApiKey");
   const xaiApiKeyInput = $("xaiApiKey");
-  const assemblyaiApiKeyInput = $("assemblyaiApiKey");
   const defaultLLMSelect = $("defaultLLM");
   // Key status indicators
   const openrouterKeyStatus = $("openrouterKeyStatus");
@@ -451,7 +450,6 @@
   const anthropicKeyStatus = $("anthropicKeyStatus");
   const groqKeyStatus = $("groqKeyStatus");
   const xaiKeyStatus = $("xaiKeyStatus");
-  const assemblyaiKeyStatus = $("assemblyaiKeyStatus");
   // Settings language and resume elements
   const settingsLanguageSelect = $("settingsLanguageSelect");
   const settingsResumeUploadArea = $("settingsResumeUploadArea");
@@ -1659,18 +1657,18 @@
   }
 
   // ==========================================
-  // CREDITS MANAGEMENT (open-source stub)
+  // CREDITS MANAGEMENT (free BYOK stub)
   // ==========================================
   
   async function loadCredits() {
-    // No-op in open-source/BYOK mode — credits are unlimited
+    // No-op in free BYOK mode - credits are unlimited
   }
   
   function updateCreditsUI(credits) {
-    // No-op in open-source/BYOK mode
+    // No-op in free BYOK mode
   }
   
-  // Credits display click handler (no-op in open-source mode)
+  // Credits display click handler (no-op in free BYOK mode)
 
   function showTimeBreakdownModal(credits, breakdown) {
     if (!timeBreakdownOverlay) {
@@ -1831,32 +1829,29 @@
         updateInputState(xaiApiKeyInput, !!settings.xaiApiKey);
         updateKeyStatus(xaiKeyStatus, !!settings.xaiApiKey);
       }
-      if (assemblyaiApiKeyInput) {
-        assemblyaiApiKeyInput.value = settings.assemblyaiApiKey || "";
-        updateInputState(assemblyaiApiKeyInput, !!settings.assemblyaiApiKey);
-        updateKeyStatus(assemblyaiKeyStatus, !!settings.assemblyaiApiKey);
-      }
       if (defaultLLMSelect) {
         defaultLLMSelect.value = settings.defaultLLM || "openai/gpt-4o-mini";
       }
       
       // Show current resume status
-      const savedResumeName = localStorage.getItem("uploaded_resume_name");
-      if (savedResumeName && resumeStatus) {
-        resumeStatus.textContent = "Uploaded";
-        resumeStatus.className = "key-status configured";
-        if (resumeUploadContent) resumeUploadContent.style.display = "none";
-        if (resumeUploadFile) {
-          resumeUploadFile.style.display = "flex";
-          if (resumeFileName) resumeFileName.textContent = savedResumeName;
+      let savedResumeName = localStorage.getItem("uploaded_resume_name");
+      if (!savedResumeName) {
+        try {
+          const result = await window.electronAPI?.resume?.getCurrent?.();
+          const resume = result && result.ok ? result.resume : null;
+          if (resume && resume.name && resume.content) {
+            localStorage.setItem("uploaded_resume_name", resume.name);
+            localStorage.setItem("resume_content", resume.content);
+            savedResumeName = resume.name;
+          }
+        } catch (resumeLoadErr) {
+          log.warn("Failed to load stored resume for settings modal", resumeLoadErr);
         }
-        if (settingsResumeUploadArea) settingsResumeUploadArea.classList.add("has-file");
+      }
+      if (savedResumeName && resumeStatus) {
+        updateSettingsResumeState(savedResumeName);
       } else if (resumeStatus) {
-        resumeStatus.textContent = "Not Uploaded";
-        resumeStatus.className = "key-status missing";
-        if (resumeUploadContent) resumeUploadContent.style.display = "flex";
-        if (resumeUploadFile) resumeUploadFile.style.display = "none";
-        if (settingsResumeUploadArea) settingsResumeUploadArea.classList.remove("has-file");
+        updateSettingsResumeState(null);
       }
       pendingResumeFile = null;
       
@@ -1889,9 +1884,6 @@
       }
       if (xaiApiKeyInput?.value?.trim()) {
         newSettings.xaiApiKey = xaiApiKeyInput.value.trim();
-      }
-      if (assemblyaiApiKeyInput?.value?.trim()) {
-        newSettings.assemblyaiApiKey = assemblyaiApiKeyInput.value.trim();
       }
       if (defaultLLMSelect?.value) {
         newSettings.defaultLLM = defaultLLMSelect.value;
@@ -2051,8 +2043,7 @@
     { input: openaiApiKeyInput, status: openaiKeyStatus },
     { input: anthropicApiKeyInput, status: anthropicKeyStatus },
     { input: groqApiKeyInput, status: groqKeyStatus },
-    { input: xaiApiKeyInput, status: xaiKeyStatus },
-    { input: assemblyaiApiKeyInput, status: assemblyaiKeyStatus }
+    { input: xaiApiKeyInput, status: xaiKeyStatus }
   ];
   
   settingsInputs.forEach(({ input, status }) => {
@@ -2074,7 +2065,7 @@
       
       const hasAIKey = settings.openrouterApiKey || settings.openaiApiKey || 
                        settings.anthropicApiKey || settings.groqApiKey || settings.xaiApiKey;
-      const hasTranscriptionKey = settings.deepgramApiKey || settings.assemblyaiApiKey;
+      const hasTranscriptionKey = settings.deepgramApiKey;
       
       if (!hasAIKey || !hasTranscriptionKey) {
         // Show a welcome notification after a short delay
@@ -2227,13 +2218,14 @@
           console.log(
             "❌ No local server found after scanning ports 8765-8774",
           );
-          
-          // Local-only mode: no cloud fallback (open-source)
+
+          // Local-only mode: schedule a retry so toolbar auto-connects once server is ready
           try {
             if (typeof showNotification === "function")
-              showNotification("Local server not running. Starting automatically...", "error");
+              showNotification("Waiting for local server to start...", "warning");
           } catch {}
-          throw new Error("Local backend not available — ensure Python server is running");
+          scheduleReconnect();
+          return;
         }
 
         const onLocalConnected = async () => {
@@ -2261,7 +2253,7 @@
               const cfg = (allSettings && allSettings.ai) || {};
               const provider = cfg.provider || 'openai';
               // Read key from provider-specific store (not ai_primary which may be stale)
-              const providerKeyMap = { openai: 'openai', anthropic: 'anthropic', gemini: 'gemini', groq: 'groq', openrouter: 'openrouter', custom: 'custom' };
+              const providerKeyMap = { openai: 'openai', anthropic: 'anthropic', gemini: 'gemini', groq: 'groq', openrouter: 'openrouter', xai: 'xai', custom: 'custom' };
               const storeKey = providerKeyMap[provider] || 'ai_primary';
               const aiKey = await window.electronAPI.settings.getApiKey(storeKey);
               send({
@@ -2326,17 +2318,7 @@
             }
           }
 
-          // Re-send stored resume so AI context is available after server restarts
-          try {
-            const storedResume = localStorage.getItem("resume_content");
-            const storedResumeName = localStorage.getItem("uploaded_resume_name");
-            if (storedResume && storedResumeName) {
-              state.ws.send(JSON.stringify({ type: "resume", name: storedResumeName, content: storedResume }));
-              log.info("Re-sent stored resume to server after connect");
-            }
-          } catch (resumeSyncErr) {
-            log.warn("Failed to sync stored resume on connect", resumeSyncErr);
-          }
+          await syncStoredResumeToServer("after connect");
         };
         // Socket is already open (tryConnect resolves on onopen) — invoke immediately.
         // Also keep as onopen handler so reconnections trigger the same init.
@@ -2358,7 +2340,10 @@
           // Use shared message handler
           handleWebSocketMessage(ev);
         };
-      })();
+      })().catch(e => {
+        console.error('[Connection] Unexpected error during connect:', e);
+        scheduleReconnect();
+      });
     } catch (e) {
       console.error("Toolbar WS error:", e);
       // Retry connection after 2 seconds
@@ -2408,7 +2393,7 @@
             ]);
             const cfg = (allSettings && allSettings.ai) || {};
             const provider = cfg.provider || 'openai';
-            const providerKeyMap = { openai: 'openai', anthropic: 'anthropic', gemini: 'gemini', groq: 'groq', openrouter: 'openrouter', custom: 'custom' };
+            const providerKeyMap = { openai: 'openai', anthropic: 'anthropic', gemini: 'gemini', groq: 'groq', openrouter: 'openrouter', xai: 'xai', custom: 'custom' };
             const storeKey = providerKeyMap[provider] || 'ai_primary';
             const aiKey = await window.electronAPI.settings.getApiKey(storeKey);
             send({
@@ -2462,17 +2447,7 @@
           }
         }
 
-        // Re-send stored resume so AI context is available after server restarts
-        try {
-          const storedResume = localStorage.getItem("resume_content");
-          const storedResumeName = localStorage.getItem("uploaded_resume_name");
-          if (storedResume && storedResumeName) {
-            state.ws.send(JSON.stringify({ type: "resume", name: storedResumeName, content: storedResume }));
-            log.info("[Cloud] Re-sent stored resume to server after connect");
-          }
-        } catch (resumeSyncErr) {
-          log.warn("[Cloud] Failed to sync stored resume on connect", resumeSyncErr);
-        }
+        await syncStoredResumeToServer("after cloud connect");
       };
       
       ws.onclose = (ev) => {
@@ -2643,6 +2618,18 @@
               "Server rejected company brief sync:",
               msg.error || "unknown",
             );
+          }
+        }
+      }
+
+      if (msg.type === "resume") {
+        const text = msg.text || "";
+        if (text) {
+          log.info("Resume context update:", text);
+          if (/ingested|cleared|processed/i.test(text)) {
+            showNotification(text.replace(/^[^\w[]+\s*/, ""), "success");
+          } else if (/error|no extractable/i.test(text)) {
+            showNotification(text, "error");
           }
         }
       }
@@ -4226,6 +4213,97 @@
     return btoa(binary);
   }
 
+  function updateSettingsResumeState(name, statusText = "Uploaded") {
+    if (name) {
+      if (resumeStatus) {
+        resumeStatus.textContent = statusText;
+        resumeStatus.className = "key-status configured";
+      }
+      if (resumeUploadContent) resumeUploadContent.style.display = "none";
+      if (resumeUploadFile) {
+        resumeUploadFile.style.display = "flex";
+        if (resumeFileName) resumeFileName.textContent = name;
+      }
+      if (settingsResumeUploadArea) settingsResumeUploadArea.classList.add("has-file");
+    } else {
+      if (resumeStatus) {
+        resumeStatus.textContent = "Not Uploaded";
+        resumeStatus.className = "key-status missing";
+      }
+      if (resumeUploadContent) resumeUploadContent.style.display = "flex";
+      if (resumeUploadFile) resumeUploadFile.style.display = "none";
+      if (settingsResumeUploadArea) settingsResumeUploadArea.classList.remove("has-file");
+    }
+  }
+
+  function syncCompanyBriefAfterContextReset() {
+    const normalized = normalizeCompanyBriefPayload(state.companyBrief);
+    if (!normalized || !state.ws || state.ws.readyState !== 1) return;
+    try {
+      state.companyBriefSilentSync = true;
+      state.ws.send(JSON.stringify({ type: "context", ...normalized }));
+    } catch (err) {
+      state.companyBriefSilentSync = false;
+      log.warn("Failed to resync company brief after resume reset", err);
+    }
+  }
+
+  async function syncResumePayloadToServer(payload, options = {}) {
+    const name = payload && payload.name;
+    const content = payload && payload.content;
+    if (!name || !content) return false;
+    localStorage.setItem("resume_content", content);
+    localStorage.setItem("uploaded_resume_name", name);
+    updateSettingsResumeState(name, options.statusText || "Uploaded");
+
+    if (!state.ws || state.ws.readyState !== 1) {
+      if (options.notify) showNotification("Resume saved. It will sync when the server connects.", "info");
+      return false;
+    }
+
+    try {
+      if (options.replace) {
+        send({ type: "resume_clear" });
+        syncCompanyBriefAfterContextReset();
+      }
+      send({ type: "resume", name, content });
+      if (options.notify) showNotification("Resume shared with AI", "success");
+      return true;
+    } catch (e) {
+      log.warn("Failed to sync resume to server", e);
+      if (options.notify) showNotification("Resume saved, but sync failed", "warn");
+      return false;
+    }
+  }
+
+  async function loadStoredResumePayload() {
+    const storedResume = localStorage.getItem("resume_content");
+    const storedResumeName = localStorage.getItem("uploaded_resume_name");
+    if (storedResume && storedResumeName) {
+      return { name: storedResumeName, content: storedResume };
+    }
+
+    try {
+      const result = await window.electronAPI?.resume?.getCurrent?.();
+      const resume = result && result.ok ? result.resume : null;
+      if (resume && resume.name && resume.content) {
+        localStorage.setItem("resume_content", resume.content);
+        localStorage.setItem("uploaded_resume_name", resume.name);
+        return resume;
+      }
+    } catch (e) {
+      log.warn("Failed to load stored resume", e);
+    }
+    return null;
+  }
+
+  async function syncStoredResumeToServer(label = "after connect") {
+    const resume = await loadStoredResumePayload();
+    if (!resume) return;
+    const synced = await syncResumePayloadToServer(resume, { notify: false });
+    if (synced) log.info(`Re-sent stored resume to server ${label}`);
+  }
+
   async function ingestResume(file) {
     if (!file) return;
     if (!state.ws || state.ws.readyState !== 1) {
@@ -4236,15 +4314,41 @@
       showNotification("Uploading resume...", "info");
       const buf = await file.arrayBuffer();
       const b64 = arrayBufferToBase64(buf);
-      // Persist so it can be re-sent automatically after server restarts
-      localStorage.setItem("resume_content", b64);
-      localStorage.setItem("uploaded_resume_name", file.name);
-      const msg = { type: "resume", name: file.name, content: b64 };
-      state.ws.send(JSON.stringify(msg));
+      await window.electronAPI?.resume?.setCurrent?.({
+        name: file.name,
+        content: b64,
+        size: file.size,
+        type: file.type || "",
+        notify: false,
+      });
+      await syncResumePayloadToServer({ name: file.name, content: b64 }, { replace: true, notify: true });
     } catch (e) {
       console.error("Resume upload failed", e);
       showNotification("Resume upload failed", "error");
     }
+  }
+
+  if (window.electronAPI?.resume?.onCurrentUpdated) {
+    window.electronAPI.resume.onCurrentUpdated(async (resume) => {
+      if (!resume || !resume.name || !resume.content) return;
+      await syncResumePayloadToServer(resume, { replace: true, notify: true });
+    });
+  }
+
+  if (window.electronAPI?.resume?.onCurrentCleared) {
+    window.electronAPI.resume.onCurrentCleared(() => {
+      localStorage.removeItem("uploaded_resume_name");
+      localStorage.removeItem("resume_content");
+      updateSettingsResumeState(null);
+      try {
+        if (state.ws && state.ws.readyState === 1) {
+          send({ type: "resume_clear" });
+          syncCompanyBriefAfterContextReset();
+        }
+      } catch (e) {
+        log.warn("Failed to clear resume context after settings update", e);
+      }
+    });
   }
 
   if (resumeUploadBtn) {
@@ -4307,17 +4411,20 @@
     });
   }
   if (resumeRemoveBtn) {
-    resumeRemoveBtn.addEventListener("click", (e) => {
+    resumeRemoveBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
       pendingResumeFile = null;
       localStorage.removeItem("uploaded_resume_name");
       localStorage.removeItem("resume_content");
-      if (resumeUploadContent) resumeUploadContent.style.display = "flex";
-      if (resumeUploadFile) resumeUploadFile.style.display = "none";
-      if (settingsResumeUploadArea) settingsResumeUploadArea.classList.remove("has-file");
-      if (resumeStatus) {
-        resumeStatus.textContent = "Not Uploaded";
-        resumeStatus.className = "key-status missing";
+      updateSettingsResumeState(null);
+      try { await window.electronAPI?.resume?.clearCurrent?.({ notify: false }); } catch {}
+      try {
+        if (state.ws && state.ws.readyState === 1) {
+          send({ type: "resume_clear" });
+          syncCompanyBriefAfterContextReset();
+        }
+      } catch (clearErr) {
+        log.warn("Failed to clear resume context on server", clearErr);
       }
     });
   }

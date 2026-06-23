@@ -1,7 +1,7 @@
-# Portable / minimal requirements — all core features work with these.
+# Portable / minimal requirements - all core features work with these.
 # Heavy optional deps (torch, sentence-transformers, faster-whisper) are omitted
-# so the first-run install is fast (<2 min on a normal connection).
-# Users supply their own API key; transcription uses Deepgram (cloud) by default.
+# so the first-run install is fast on a normal connection.
+# Users supply their own API key; transcription uses Deepgram by default.
 
 websockets==12.0
 python-dotenv==1.0.1
@@ -21,8 +21,9 @@ paddleocr>=2.7.0
 onnxruntime>=1.17.0
 pytesseract==0.3.13
 
-# Real-time transcription (cloud — requires Deepgram API key)
+# Real-time transcription (cloud - requires Deepgram API key)
 deepgram-sdk==3.2.7
 
 # Windows native screen capture (for restricted apps like Teams)
 pywin32>=306; sys_platform == 'win32'
+dxcam>=0.0.5; sys_platform == 'win32'

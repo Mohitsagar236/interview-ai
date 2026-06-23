@@ -1,5 +1,5 @@
 /**
- * Settings Store — encrypted local persistence for Interview AI (Open Source)
+ * Settings Store — encrypted local persistence for Interview AI (BYOK)
  * Uses electron-store for persistence + Electron safeStorage for API key encryption.
  */
 
@@ -15,7 +15,7 @@ const store = new Store({
       language: 'en-US'
     },
     ai: {
-      provider: null, // 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'groq' | 'openrouter' | 'custom'
+      provider: null, // openai | anthropic | gemini | ollama | groq | openrouter | xai | custom
       model: null,
       baseUrl: null,
       smartRouting: true,
@@ -87,7 +87,7 @@ function clearAllKeys() {
  * @returns {boolean}
  */
 function hasAnyAiKey() {
-  const providers = ['openai', 'anthropic', 'gemini', 'groq', 'openrouter', 'custom'];
+  const providers = ['openai', 'anthropic', 'gemini', 'groq', 'openrouter', 'xai', 'custom'];
   // Ollama needs no key — if provider is ollama, count it as configured
   const aiProvider = store.get('ai.provider');
   if (aiProvider === 'ollama') return true;

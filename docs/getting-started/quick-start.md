@@ -1,146 +1,53 @@
-# Quick Start Guide
+# Quick Start
 
-Get Interview AI running in under 10 minutes.
+Interview AI is designed for normal desktop users: install the app, add your own API keys, and use it locally. No account, activation code, subscription, database, or separate backend command is required.
 
-## Prerequisites
+## Install the Desktop App
 
-### Windows
+1. Open the download page.
+2. Download the Windows installer.
+3. Run the installer.
+4. Launch Interview AI.
+5. Open Settings and add:
+   - a Deepgram API key for live transcription
+   - one AI provider key, such as OpenRouter, OpenAI, Anthropic, Gemini, Groq, or xAI
+
+The desktop installer includes the Electron app and Python backend. You do not need to install Python packages manually.
+
+## Use the App
+
+1. Click Settings and save your keys.
+2. Start the toolbar.
+3. Use Record Interviewer for live transcription.
+4. Use Capture for screen/OCR context.
+5. Click Ask AI to generate an answer from the current transcript or capture.
+
+## Build From Source
+
+Development prerequisites:
+
 - Node.js 18+
 - Python 3.10+
-- VC++ Build Tools (for some dependencies)
+- Git
 
-### API Keys (get from providers)
-- **Required:** OpenRouter API key (for AI responses)
-- **Required:** Deepgram API key (for transcription)
-- **Optional:** OpenAI API key (for image generation)
-
----
-
-## Option 1: Desktop App (Recommended)
-
-### Download Pre-built App
-1. Download installer from releases
-2. Run installer
-3. Launch app
-4. Enter your activation code
-
-### Build from Source
 ```powershell
-# Clone repository
 git clone https://github.com/Mohitsagar236/interview-ai.git
 cd interview-ai
-
-# Install dependencies
 npm install
-
-# Create .env file (copy from example)
-copy .env.example .env
-# Edit .env with your API keys
-
-# Build the app
-npm run build
-
-# Run installer from dist/ folder
-```
-
----
-
-## Option 2: Development Mode
-
-### Start Backend + Frontend
-```powershell
-# Install all dependencies
-npm install
-pip install -r python/requirements.txt
-
-# Start development mode
+npm run setup:py
 npm run dev
 ```
 
-This starts:
-- Python WebSocket server on `ws://localhost:8765`
-- Electron app in development mode
-
----
-
-## Option 3: Cloud Backend
-
-If you've deployed the backend to the cloud:
+## Build a Production Installer
 
 ```powershell
-# Run with cloud backend
-npm run cloud
-
-# Or use PowerShell script
-.\run-cloud.ps1
+npm run build:prod
 ```
 
----
+This command builds the standalone Python backend first, then packages the desktop app.
 
-## Environment Configuration
+## Notes
 
-Create `.env` file in project root:
-
-```bash
-# AI Provider (Required)
-OPENROUTER_API_KEY=sk-or-v1-xxxxx
-OPENAI_BASE_URL=https://openrouter.ai/api/v1
-DEFAULT_LLM=openai/gpt-4o-mini
-
-# Transcription (Required)
-DEEPGRAM_API_KEY=your_deepgram_key
-
-# Database (Required for credits)
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_KEY=your_service_key
-
-# Payment (Optional)
-RAZORPAY_KEY_ID=rzp_xxx
-RAZORPAY_KEY_SECRET=your_secret
-
-# Image Generation (Optional)
-OPENAI_API_KEY=sk-xxx
-ENABLE_IMAGE_GEN=1
-```
-
----
-
-## Testing Your Setup
-
-### Test Python Server
-```powershell
-cd python
-python -c "from server import HOST, PORT; print(f'Server: {HOST}:{PORT}')"
-```
-
-### Test Full Application
-```powershell
-npm run test:comprehensive
-```
-
-This tests:
-- Server connectivity
-- OCR functionality
-- Resume parsing
-- LLM connections
-
----
-
-## Common Commands
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Development mode (local server) |
-| `npm run cloud` | Development with cloud backend |
-| `npm run build` | Build production app |
-| `npm run build:prod` | Build for distribution |
-| `npm start` | Start app (uses configured backend) |
-
----
-
-## Next Steps
-
-1. **[Database Setup](./database-setup.md)** - Set up Supabase
-2. **[Cloud Deployment](../deployment/cloud-deployment.md)** - Deploy backend
-3. **[Credits System](../features/credits-system.md)** - Configure credits
+- `.env` is optional for developers and must not be shipped in production installers.
+- Ollama can be used without an API key if Ollama is already running locally.
+- The packaged app stores keys locally using Electron secure storage.

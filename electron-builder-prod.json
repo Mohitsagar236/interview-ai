@@ -11,7 +11,7 @@
     "assets/**/*",
     "public/**/*",
     "package.json",
-    ".env",
+    ".env.example",
     "!python/**/*",
     "!python-dist/**/*"
   ],
@@ -30,16 +30,16 @@
   "extraMetadata": {
     "main": "electron/main.js"
   },
-  "copyright": "Copyright © 2025 Interview AI",
+  "copyright": "Copyright (c) 2025-2026 Mohit Sagar. All rights reserved.",
   "win": {
     "target": [
       {
         "target": "nsis",
-        "arch": ["x64", "ia32"]
+        "arch": ["x64"]
       }
     ],
     "icon": "assets/icon.ico",
-    "publisherName": "Interview AI",
+    "publisherName": "Mohit Sagar",
     "requestedExecutionLevel": "asInvoker",
     "artifactName": "Interview-AI-Setup-${version}-${arch}.${ext}"
   },
@@ -56,22 +56,5 @@
     "installerIcon": "assets/icon.ico",
     "uninstallerIcon": "assets/icon.ico",
     "include": "build/installer.nsh"
-  },
-  "mac": {
-    "target": [
-      {
-        "target": "dmg",
-        "arch": ["x64", "arm64"]
-      }
-    ],
-    "icon": "assets/icon.icns",
-    "category": "public.app-category.productivity",
-    "hardenedRuntime": true,
-    "gatekeeperAssess": false
-  },
-  "linux": {
-    "target": ["AppImage", "deb"],
-    "icon": "assets/icon.png",
-    "category": "Office"
   }
 }

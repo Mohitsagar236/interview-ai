@@ -2,47 +2,41 @@
   "name": "interview-ai-assistant",
   "version": "0.1.0",
   "private": true,
-  "description": "Privacy-first Interview AI Assistant with real-time local Whisper, multi-LLM streaming, OCR, and stealth overlay",
+  "description": "Privacy-first free BYOK Interview AI Assistant with real-time transcription, OCR, and desktop coaching",
   "author": {
-    "name": "Interview AI",
+    "name": "Mohit Sagar",
     "email": "support@interview-ai.app",
     "url": "https://github.com/Mohitsagar236/interview-ai"
   },
   "homepage": "https://github.com/Mohitsagar236/interview-ai",
-  "license": "MIT",
-  "copyright": "Copyright © 2025 Interview AI",
+  "license": "UNLICENSED",
+  "copyright": "Copyright (c) 2025-2026 Mohit Sagar. All rights reserved.",
   "main": "electron/main.js",
   "scripts": {
     "postinstall": "node ./scripts/postinstall.js",
-    "setup:py": "py -3 -m venv .venv && .\\.venv\\Scripts\\python.exe -m pip install -r python/requirements.txt",
+    "setup:py": "node ./scripts/prepare-build.js",
     "dev": "concurrently -k -n py,app \".\\.venv\\Scripts\\python.exe python/server.py\" \"electron .\"",
-    "prod": "concurrently -k -n py,app \".\\.venv\\Scripts\\python.exe python/launch_server.py\" \"electron .\"",
+    "prod": "concurrently -k -n py,app \".\\.venv\\Scripts\\python.exe python/server.py\" \"electron .\"",
     "serve": "node dev-server.js",
     "test": "node ./scripts/smoke-test.js",
-    "test:comprehensive": "cd python && python run_tests.py",
-    "check:env": "cd python && python check_environment.py",
+    "test:comprehensive": "python -m pytest python/tests",
     "cleanup:duplicates": "node ./scripts/cleanup-duplicates.js",
     "start": "node scripts/start-electron.js",
     "verify-build": "node ./scripts/verify-build.js",
     "verify-prod": "node ./scripts/verify-production-build.js",
     "generate-icons": "node ./scripts/generate-icons.js",
     "prebuild": "node ./scripts/prepare-build.js",
-    "build": "electron-builder",
-    "build:prod": "cross-env NODE_ENV=production electron-builder --config electron-builder-prod.json",
+    "build": "node ./scripts/build-python-standalone.js && electron-builder",
+    "build:prod": "node ./scripts/build-python-standalone.js && cross-env NODE_ENV=production electron-builder --config electron-builder-prod.json",
     "build:dev": "electron-builder",
     "build:standalone": "node ./scripts/build-python-standalone.js && electron-builder",
-    "build:win": "electron-builder --win",
-    "build:portable": "node ./scripts/build-python-standalone.js && electron-builder --win --config electron-builder-portable.json",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux",
+    "build:win": "node ./scripts/build-python-standalone.js && electron-builder --win",
     "build:compact-bar": "cd compact-bar-app && npm install && npm run build",
     "pack": "electron-builder --dir",
     "lint": "echo 'No linter configured'",
     "vercel:deploy": "vercel --prod",
-    "upload:r2": "node scripts/upload-to-r2.js",
-    "upload:github": "node scripts/upload-to-github.js",
     "verify:coupons": "node ./scripts/verify-coupons.js",
-    "release": "npm run build && npm run upload:r2"
+    "release": "npm run build:prod"
   },
   "vercel": {
     "builds": [
@@ -88,12 +82,11 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64", "ia32"]
-        },
-        "portable"
+          "arch": ["x64"]
+        }
       ],
       "icon": "assets/icon.ico",
-      "publisherName": "Interview AI",
+      "publisherName": "Mohit Sagar",
       "requestedExecutionLevel": "asInvoker",
       "artifactName": "Interview-AI-Setup-${version}-${arch}.${ext}"
     },
@@ -108,16 +101,6 @@
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico",
       "include": "build/installer.nsh"
-    },
-    "portable": {
-      "artifactName": "${productName}-Portable-${version}.exe"
-    },
-    "mac": {
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "category": "public.app-category.productivity"
     }
   },
   "dependencies": {
@@ -133,9 +116,7 @@
     "cross-env": "^7.0.3",
     "electron": "^31.7.7",
     "electron-builder": "^24.13.3",
-    "electron-icon-builder": "^2.0.1",
     "express": "^5.1.0",
-    "png-to-ico": "^3.0.1",
     "sharp": "^0.34.4",
     "to-ico": "^1.1.5",
     "wait-on": "^8.0.0"

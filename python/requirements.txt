@@ -1,3 +1,6 @@
+# Full developer requirements.
+# Production desktop packaging uses requirements-portable.txt.
+
 websockets==12.0
 python-dotenv==1.0.1
 numpy==1.26.4
@@ -21,18 +24,17 @@ deepgram-sdk==3.2.7
 
 # Windows screen capture
 pywin32>=306; sys_platform == 'win32'
+dxcam>=0.0.5; sys_platform == 'win32'
 
-# Local speech-to-text (optional – comment out to skip heavy download)
+# Optional local speech-to-text and semantic search for development.
 faster-whisper==1.0.3
-
-# Semantic search (optional – heavy)
 sentence-transformers==3.0.1
 faiss-cpu==1.8.0.post1
 
-# Local LLM support (optional)
+# Optional local LLM client for development.
 ollama>=0.1.7
 
-# Optional ML backends (comment out if not needed)
+# Optional GPU/local-ML backends are intentionally not installed by default.
 # torch>=2.0.0
 # transformers>=4.36.0
 # accelerate>=0.21.0

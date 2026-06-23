@@ -1,0 +1,71 @@
+/**
+ * Fast offline smoke tests for the free BYOK desktop app.
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const rootDir = path.join(__dirname, '..');
+const checks = [];
+
+function file(relativePath) {
+  return path.join(rootDir, relativePath);
+}
+
+function exists(relativePath) {
+  return fs.existsSync(file(relativePath));
+}
+
+function read(relativePath) {
+  return fs.readFileSync(file(relativePath), 'utf8');
+}
+
+function json(relativePath) {
+  return JSON.parse(read(relativePath));
+}
+
+function check(name, condition, help) {
+  checks.push({ name, ok: Boolean(condition), help });
+}
+
+const packageJson = json('package.json');
+const mainJs = read('electron/main.js');
+const preloadJs = read('electron/preload.js');
+const configJs = read('electron/config.js');
+const toolbarHtml = read('renderer/toolbar.html');
+const toolbarJs = read('renderer/toolbar.js');
+const settingsJs = read('renderer/settings.js');
+const serverPy = read('python/server.py');
+
+check('Electron main entry exists', exists(packageJson.main || 'electron/main.js'));
+check('Toolbar files exist', exists('renderer/toolbar.html') && exists('renderer/toolbar.js'));
+check('Settings files exist', exists('renderer/settings.html') && exists('renderer/settings.js'));
+check('Python backend exists', exists('python/server.py'));
+check('Desktop config is local-first', /useLocalServer:\s*true/.test(configJs) && /cloudMode:\s*false/.test(configJs));
+check('Activation is bypassed for free BYOK mode', /desktop-get-activation-status/.test(mainJs) && /activated:\s*true/.test(mainJs));
+check('Credits are bypassed for free BYOK mode', /FREE_BYOK_CREDITS/.test(mainJs) && /remaining:\s*9999/.test(mainJs));
+check('Preload exposes settings API', /settings:\s*\{/.test(preloadJs) && /saveApiKey/.test(preloadJs));
+check('Toolbar connects to local backend', /localhost/.test(toolbarJs) && /init_session/.test(toolbarJs));
+check('Settings saves BYO provider keys', /saveApiKey/.test(settingsJs) && /openrouter/.test(settingsJs));
+check('Backend accepts BYOK session config', /init_session/.test(serverPy) && /session_configs/.test(serverPy));
+check('Backend supports OCR messages', /mtype == "ocr"/.test(serverPy));
+check('Backend supports coach messages', /mtype == "coach"/.test(serverPy));
+check('Build script bundles standalone backend', /build-python-standalone\.js/.test(packageJson.scripts?.build || ''));
+check('Smoke target points at this script', packageJson.scripts?.test === 'node ./scripts/smoke-test.js');
+check('Toolbar markup has capture and Ask AI controls', /captureAnalyze/.test(toolbarHtml) && /askAI/.test(toolbarHtml));
+
+let passed = 0;
+for (const result of checks) {
+  const mark = result.ok ? 'OK' : 'FAIL';
+  console.log(`${mark.padEnd(5)} ${result.name}`);
+  if (!result.ok && result.help) {
+    console.log(`      ${result.help}`);
+  }
+  if (result.ok) passed++;
+}
+
+console.log(`\n${passed}/${checks.length} smoke checks passed.`);
+
+if (passed !== checks.length) {
+  process.exit(1);
+}

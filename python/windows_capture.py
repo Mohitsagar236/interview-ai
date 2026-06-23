@@ -8,7 +8,8 @@ import base64
 from io import BytesIO
 from typing import Optional, Dict, Tuple
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+DXCAM_AVAILABLE = False
 
 try:
     # Windows-specific imports
@@ -41,11 +42,11 @@ try:
 except ImportError:
     MSS_AVAILABLE = False
 
-    try:
-        import dxcam
-        DXCAM_AVAILABLE = True
-    except ImportError:
-        DXCAM_AVAILABLE = False
+try:
+    import dxcam
+    DXCAM_AVAILABLE = True
+except ImportError:
+    DXCAM_AVAILABLE = False
 
 
 def _encode_image(img: "Image.Image") -> Tuple[str, int, int]:

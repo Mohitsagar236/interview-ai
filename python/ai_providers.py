@@ -32,7 +32,7 @@ class AIConfig:
 @dataclass
 class UserProviderConfig:
     """Runtime provider config from init_session (BYOK mode)"""
-    provider: str = "openai"          # openai | anthropic | gemini | groq | openrouter | ollama | custom
+    provider: str = "openai"          # openai | anthropic | gemini | groq | openrouter | xai | ollama | custom
     api_key: str = ""
     model: str = ""
     base_url: str = ""
@@ -43,7 +43,8 @@ PROVIDER_BASE_URLS = {
     "anthropic":  "https://api.anthropic.com/v1",
     "gemini":     "https://generativelanguage.googleapis.com/v1beta/openai",
     "groq":       "https://api.groq.com/openai/v1",
-    "openrouter": "https://openrouter.ai/api/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "xai":        "https://api.x.ai/v1",
     "ollama":     "http://localhost:11434/v1",
     "custom":     "",
 }
@@ -53,7 +54,8 @@ PROVIDER_DEFAULT_MODELS = {
     "anthropic":  "claude-3-5-haiku-latest",
     "gemini":     "gemini-1.5-flash",
     "groq":       "llama3-70b-8192",
-    "openrouter": "openai/gpt-4o-mini",
+    "openrouter": "openai/gpt-4o-mini",
+    "xai":        "grok-beta",
     "ollama":     "llama3",
     "custom":     "",
 }
@@ -323,7 +325,13 @@ class OpenAIProvider:
     
     async def initialize(self):
         """Initialize the OpenAI provider"""
-        if not self.api_key:
+        no_auth_local = (
+            "localhost" in (self.config.base_url or "")
+            or "127.0.0.1" in (self.config.base_url or "")
+            or "::1" in (self.config.base_url or "")
+        )
+
+        if not self.api_key and not no_auth_local:
             logger.error("OpenRouter API key not set. Set OPENROUTER_API_KEY in environment.")
             self.initialized = False
             return

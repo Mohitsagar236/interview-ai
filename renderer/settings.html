@@ -300,6 +300,49 @@
       font-weight: 700;
     }
     .provider-card .provider-icon { font-size: 22px; margin-bottom: 6px; display: block; }
+
+    .resume-uploader {
+      border: 1px dashed var(--border2);
+      background: var(--bg);
+      border-radius: 9px;
+      padding: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .resume-uploader:hover,
+    .resume-uploader.dragover {
+      border-color: var(--accent);
+      background: rgba(16,185,129,.05);
+    }
+    .resume-main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .resume-title {
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .resume-meta {
+      color: var(--text2);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 420px;
+    }
+    .resume-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
   </style>
 </head>
 <body>
@@ -317,6 +360,9 @@
   </div>
   <div class="nav-item" data-section="behavior">
     <span class="icon">🧠</span> AI Behavior
+  </div>
+  <div class="nav-item" data-section="resume">
+    <span class="icon">CV</span> Resume
   </div>
   <div class="nav-item" data-section="app">
     <span class="icon">🖥</span> App
@@ -427,6 +473,7 @@
         <div class="provider-card" data-provider="gemini"><div class="provider-icon">🔵</div>Gemini</div>
         <div class="provider-card" data-provider="groq"><div class="provider-icon">⚡</div>Groq</div>
         <div class="provider-card" data-provider="openrouter"><div class="provider-icon">🔀</div>OpenRouter</div>
+        <div class="provider-card" data-provider="xai"><div class="provider-icon">xAI</div>xAI</div>
         <div class="provider-card" data-provider="ollama"><div class="provider-icon">🦙</div>Ollama</div>
         <div class="provider-card" data-provider="custom"><div class="provider-icon">🔧</div>Custom</div>
       </div>
@@ -517,6 +564,23 @@
       </div>
     </div>
 
+    <!-- xAI -->
+    <div class="card provider-section" id="ps-xai">
+      <div class="card-title">xAI</div>
+      <div class="form-row">
+        <label>API Key</label>
+        <div class="key-row">
+          <input type="password" id="xaiKey" placeholder="xai-..." autocomplete="off" />
+          <span class="status-badge idle" id="xaiStatus">Not set</span>
+          <button class="btn btn-secondary btn-sm" id="testXai">Test</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Model <span class="label-hint">Default: grok-beta</span></label>
+        <input type="text" id="xaiModel" placeholder="grok-beta" />
+      </div>
+    </div>
+
     <!-- Ollama -->
     <div class="card provider-section" id="ps-ollama">
       <div class="card-title">Ollama (local)</div>
@@ -579,6 +643,27 @@
   </section>
 
   <!-- ── D. App ── -->
+  <section class="section" id="section-resume">
+    <h2>Resume</h2>
+    <p class="section-desc">Upload a PDF, DOCX, or TXT resume for interview answers.</p>
+
+    <div class="card">
+      <div class="card-title">Current Resume</div>
+      <input type="file" id="resumeFileInput" accept=".pdf,.doc,.docx,.txt" style="display:none" />
+      <div class="resume-uploader" id="resumeDropZone">
+        <div class="resume-main">
+          <div class="resume-title" id="resumeTitle">No resume uploaded</div>
+          <div class="resume-meta" id="resumeMeta">PDF, DOCX, DOC, or TXT up to 10MB</div>
+        </div>
+        <div class="resume-actions">
+          <span class="status-badge idle" id="resumeStatus">Not set</span>
+          <button class="btn btn-secondary btn-sm" id="resumeBrowse" type="button">Upload</button>
+          <button class="btn btn-danger btn-sm" id="resumeRemove" type="button" style="display:none">Remove</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="section" id="section-app">
     <h2>App Preferences</h2>
     <p class="section-desc">General application settings.</p>
@@ -604,12 +689,12 @@
   <!-- ── E. About ── -->
   <section class="section" id="section-about">
     <h2>About</h2>
-    <p class="section-desc">Interview AI — open-source BYOK edition</p>
+    <p class="section-desc">Interview AI - free BYOK edition</p>
 
     <div class="card">
       <div class="about-info" id="aboutInfo">
         <strong>Version:</strong> loading…<br />
-        <strong>Mode:</strong> Open-source (BYOK)<br />
+        <strong>Mode:</strong> Free BYOK<br />
         <strong>Data location:</strong> loading…<br />
         <strong>Website:</strong> github.com/Mohitsagar236/interview-ai
       </div>

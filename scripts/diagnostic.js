@@ -29,7 +29,6 @@ async function runDiagnostics() {
       console.log('   Has OpenRouter key:', !!settingsCheck.data.openrouterApiKey);
       console.log('   Has OpenAI key:', !!settingsCheck.data.openaiApiKey);
       console.log('   Has Deepgram key:', !!settingsCheck.data.deepgramApiKey);
-      console.log('   Has AssemblyAI key:', !!settingsCheck.data.assemblyaiApiKey);
       console.log('   Default LLM:', settingsCheck.data.defaultLLM || 'not set');
     }
   } catch (e) {
@@ -73,8 +72,7 @@ async function runDiagnostics() {
   console.log('\n4️⃣ Validating API Keys...');
   const hasAIKey = results.environment.details.OPENROUTER_API_KEY || 
                    results.environment.details.OPENAI_API_KEY;
-  const hasTranscriptionKey = results.environment.details.DEEPGRAM_API_KEY || 
-                              results.environment.details.ASSEMBLYAI_API_KEY;
+  const hasTranscriptionKey = results.environment.details.DEEPGRAM_API_KEY;
   
   if (hasAIKey) {
     console.log('✅ At least one AI provider API key is configured');
@@ -85,9 +83,9 @@ async function runDiagnostics() {
   }
   
   if (hasTranscriptionKey) {
-    console.log('✅ At least one transcription API key is configured');
+    console.log('✅ Deepgram transcription key is configured');
   } else {
-    console.log('⚠️  No transcription API keys found (will use local Whisper)');
+    console.log('⚠️  No Deepgram key found (live transcription disabled)');
   }
   
   // Summary

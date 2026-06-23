@@ -84,6 +84,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openResume: (id) => ipcRenderer.invoke('resumes-open', id),
   parseResume: (id) => ipcRenderer.invoke('resume-parse', id),
   searchResumes: (query, limit) => ipcRenderer.invoke('resume-search', query, limit),
+  resume: {
+    getCurrent: () => ipcRenderer.invoke('resume-current:get'),
+    setCurrent: (payload) => ipcRenderer.invoke('resume-current:set', payload),
+    clearCurrent: (options) => ipcRenderer.invoke('resume-current:clear', options || {}),
+    onCurrentUpdated: (callback) => {
+      ipcRenderer.on('resume-current-updated', (_event, resume) => {
+        try { callback(resume); } catch (e) { console.error('onCurrentResumeUpdated handler error', e); }
+      });
+    },
+    onCurrentCleared: (callback) => {
+      ipcRenderer.on('resume-current-cleared', () => {
+        try { callback(); } catch (e) { console.error('onCurrentResumeCleared handler error', e); }
+      });
+    },
+  },
   // Settings
   loadSettings: () => ipcRenderer.invoke('settings-load'),
   saveSettings: (patch) => ipcRenderer.invoke('settings-save', patch),
@@ -98,8 +113,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   endInterviewSession: (id, options) => ipcRenderer.invoke('interview-end-session', id, options),
   appendInterviewNote: (id, note) => ipcRenderer.invoke('interview-append-note', id, note),
   coachSuggest: (id, question) => ipcRenderer.invoke('interview-coach-suggest', { id, question }),
-  // Dashboard
-  getDashboardStats: () => ipcRenderer.invoke('dashboard-stats'),
   // Activity Feed
   listActivities: (limit) => ipcRenderer.invoke('activity-list', limit),
   onActivityUpdated: (callback) => { ipcRenderer.on('activity-updated', (_e, entry) => { try { callback(entry); } catch(err){ console.error('onActivityUpdated handler error', err); } }); },
@@ -134,15 +147,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   },
 
-  // Activation stubs — open-source mode, always return success
+  // Activation stubs - free BYOK mode, always return success
   desktopIsActivated: () => Promise.resolve({ activated: true }),
-  desktopGetActivationStatus: () => Promise.resolve({ ok: true, activated: true, planType: 'open-source' }),
+  desktopGetActivationStatus: () => Promise.resolve({ ok: true, activated: true, planType: 'free-byok' }),
   desktopGetUser: () => Promise.resolve({ ok: true, user: null }),
   desktopActivate: () => Promise.resolve({ success: true }),
   desktopDeactivate: () => Promise.resolve({ ok: true }),
   desktopOpenActivation: () => ipcRenderer.invoke('settings:open-window'),
-  desktopGetCredits: () => Promise.resolve({ success: true, credits: { remaining: 9999, total: 9999, used: 0, planType: 'open-source' } }),
-  desktopSyncCredits: () => Promise.resolve({ success: true, credits: { remaining: 9999, total: 9999, used: 0, planType: 'open-source' } }),
+  desktopGetCredits: () => Promise.resolve({ success: true, credits: { remaining: 9999, total: 9999, used: 0, planType: 'free-byok' } }),
+  desktopSyncCredits: () => Promise.resolve({ success: true, credits: { remaining: 9999, total: 9999, used: 0, planType: 'free-byok' } }),
   closeActivationWindow: () => Promise.resolve({ ok: true }),
   desktopIsAuthenticated: () => Promise.resolve({ authenticated: true }),
   desktopLogin: () => ipcRenderer.invoke('settings:open-window'),

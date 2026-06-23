@@ -6,43 +6,11 @@
       "use": "@vercel/static"
     },
     {
-      "src": "api/activation.js",
-      "use": "@vercel/node"
-    },
-    {
       "src": "api/download.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "api/profile-data.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
-    {
-      "src": "/api/activation",
-      "dest": "/api/activation.js"
-    },
-    {
-      "src": "/api/generate-activation-code",
-      "dest": "/api/activation.js"
-    },
-    {
-      "src": "/api/activate-desktop",
-      "dest": "/api/activation.js"
-    },
-    {
-      "src": "/api/get-credits-by-code",
-      "dest": "/api/activation.js"
-    },
-    {
-      "src": "/api/update-credits-by-code",
-      "dest": "/api/activation.js"
-    },
-    {
-      "src": "/api/deactivate-code",
-      "dest": "/api/activation.js"
-    },
     {
       "src": "/api/(.*)",
       "dest": "/api/$1.js"

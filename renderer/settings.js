@@ -10,6 +10,7 @@ const PROVIDERS = {
   gemini:      { keyField: 'geminiKey',      modelField: 'geminiModel',      statusId: 'geminiStatus',      testId: 'testGemini',      storeKey: 'gemini',      defaultModel: 'gemini-1.5-flash' },
   groq:        { keyField: 'groqKey',        modelField: 'groqModel',        statusId: 'groqStatus',        testId: 'testGroq',        storeKey: 'groq',        defaultModel: 'llama3-70b-8192' },
   openrouter:  { keyField: 'openrouterKey',  modelField: 'openrouterModel',  statusId: 'openrouterStatus',  testId: 'testOpenrouter',  storeKey: 'openrouter',  defaultModel: 'openai/gpt-4o-mini' },
+  xai:         { keyField: 'xaiKey',         modelField: 'xaiModel',         statusId: 'xaiStatus',         testId: 'testXai',         storeKey: 'xai',         defaultModel: 'grok-beta' },
   ollama:      { keyField: null,             modelField: 'ollamaModel',      statusId: 'ollamaStatus',      testId: 'testOllama',      storeKey: 'ollama',      defaultModel: 'llama3' },
   custom:      { keyField: 'customKey',      modelField: 'customModel',      statusId: null,                testId: null,              storeKey: 'custom',      defaultModel: '' },
 };
@@ -31,6 +32,118 @@ function flashSaveStatus() {
   if (!el) return;
   el.classList.add('visible');
   setTimeout(() => el.classList.remove('visible'), 2500);
+}
+
+const MAX_RESUME_SIZE = 10 * 1024 * 1024;
+
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function updateResumeUi(resume) {
+  const hasResume = !!(resume && resume.name);
+  const title = $('resumeTitle');
+  const meta = $('resumeMeta');
+  const status = $('resumeStatus');
+  const remove = $('resumeRemove');
+
+  if (title) title.textContent = hasResume ? resume.name : 'No resume uploaded';
+  if (meta) {
+    meta.textContent = hasResume
+      ? [formatFileSize(resume.size), resume.updatedAt ? `Updated ${new Date(resume.updatedAt).toLocaleString()}` : ''].filter(Boolean).join(' · ')
+      : 'PDF, DOCX, DOC, or TXT up to 10MB';
+  }
+  if (status) {
+    status.className = `status-badge ${hasResume ? 'ok' : 'idle'}`;
+    status.textContent = hasResume ? 'Ready' : 'Not set';
+  }
+  if (remove) remove.style.display = hasResume ? 'inline-flex' : 'none';
+}
+
+async function loadResumeStatus() {
+  let resume = null;
+  try {
+    const result = await api?.resume?.getCurrent?.();
+    resume = result && result.ok ? result.resume : null;
+  } catch (e) {
+    console.warn('Failed to load resume status:', e);
+  }
+
+  if (!resume) {
+    const name = localStorage.getItem('uploaded_resume_name');
+    const content = localStorage.getItem('resume_content');
+    if (name && content) resume = { name };
+  }
+
+  updateResumeUi(resume);
+}
+
+async function saveResumeFile(file) {
+  const status = $('resumeStatus');
+  if (!file) return;
+  if (file.size > MAX_RESUME_SIZE) {
+    setStatus('resumeStatus', 'err', 'Too large');
+    return;
+  }
+
+  const allowed = /\.(pdf|doc|docx|txt)$/i.test(file.name);
+  if (!allowed) {
+    setStatus('resumeStatus', 'err', 'Unsupported');
+    return;
+  }
+
+  try {
+    if (status) {
+      status.className = 'status-badge testing';
+      status.textContent = 'Uploading...';
+    }
+    const content = arrayBufferToBase64(await file.arrayBuffer());
+    localStorage.setItem('uploaded_resume_name', file.name);
+    localStorage.setItem('resume_content', content);
+
+    const result = await api?.resume?.setCurrent?.({
+      name: file.name,
+      content,
+      size: file.size,
+      type: file.type || '',
+    });
+    if (result && !result.ok) throw new Error(result.error || 'Resume save failed');
+
+    updateResumeUi({
+      name: file.name,
+      size: file.size,
+      type: file.type || '',
+      updatedAt: new Date().toISOString(),
+    });
+    flashSaveStatus();
+  } catch (e) {
+    console.error('Resume upload failed:', e);
+    setStatus('resumeStatus', 'err', 'Failed');
+  }
+}
+
+async function clearResume() {
+  localStorage.removeItem('uploaded_resume_name');
+  localStorage.removeItem('resume_content');
+  try {
+    await api?.resume?.clearCurrent?.();
+  } catch (e) {
+    console.warn('Failed to clear stored resume:', e);
+  }
+  updateResumeUi(null);
+  flashSaveStatus();
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
@@ -120,10 +233,12 @@ async function loadSettings() {
     if (aboutEl) {
       aboutEl.innerHTML = `
         <strong>Version:</strong> ${all.appVersion || '1.0.0'}<br />
-        <strong>Mode:</strong> Open-source (BYOK)<br />
+        <strong>Mode:</strong> Free BYOK<br />
         <strong>Website:</strong> github.com/Mohitsagar236/interview-ai
       `;
     }
+
+    await loadResumeStatus();
   } catch (err) {
     console.error('Failed to load settings:', err);
   }
@@ -266,6 +381,18 @@ async function testOpenrouter() {
   } catch { setStatus('openrouterStatus', 'err', '✗ Network error'); }
 }
 
+async function testXai() {
+  const key = $('xaiKey') ? $('xaiKey').value.trim() : '';
+  if (!key) { setStatus('xaiStatus', 'warn', 'Enter key first'); return; }
+  setStatus('xaiStatus', 'testing', 'Testing...');
+  try {
+    const res = await fetch('https://api.x.ai/v1/models', {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    setStatus('xaiStatus', res.ok ? 'ok' : 'err', res.ok ? 'Valid' : `${res.status}`);
+  } catch { setStatus('xaiStatus', 'err', 'Network error'); }
+}
+
 async function testOllama() {
   const baseUrl = ($('ollamaBaseUrl') ? $('ollamaBaseUrl').value.trim() : '') || 'http://localhost:11434';
   setStatus('ollamaStatus', 'testing', 'Testing…');
@@ -353,6 +480,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('testGemini')     && $('testGemini').addEventListener('click', testGemini);
   $('testGroq')       && $('testGroq').addEventListener('click', testGroq);
   $('testOpenrouter') && $('testOpenrouter').addEventListener('click', testOpenrouter);
+  $('testXai')        && $('testXai').addEventListener('click', testXai);
   $('testOllama')     && $('testOllama').addEventListener('click', testOllama);
 
   $('claudeAccountOpenConsole') && $('claudeAccountOpenConsole').addEventListener('click', () => {
@@ -360,6 +488,45 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('claudeAccountSignIn')  && $('claudeAccountSignIn').addEventListener('click', handleClaudeAccountSignIn);
   $('claudeAccountSignOut') && $('claudeAccountSignOut').addEventListener('click', handleClaudeAccountSignOut);
+
+  const resumeInput = $('resumeFileInput');
+  const resumeDropZone = $('resumeDropZone');
+  const resumeBrowse = $('resumeBrowse');
+  const resumeRemove = $('resumeRemove');
+
+  const pickResume = () => resumeInput && resumeInput.click();
+  resumeBrowse && resumeBrowse.addEventListener('click', (event) => {
+    event.stopPropagation();
+    pickResume();
+  });
+  resumeDropZone && resumeDropZone.addEventListener('click', pickResume);
+  resumeInput && resumeInput.addEventListener('change', async (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (file) await saveResumeFile(file);
+    event.target.value = '';
+  });
+  resumeRemove && resumeRemove.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    await clearResume();
+  });
+  if (resumeDropZone) {
+    ['dragenter', 'dragover'].forEach(type => {
+      resumeDropZone.addEventListener(type, (event) => {
+        event.preventDefault();
+        resumeDropZone.classList.add('dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach(type => {
+      resumeDropZone.addEventListener(type, (event) => {
+        event.preventDefault();
+        if (type === 'drop') {
+          const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+          if (file) saveResumeFile(file);
+        }
+        resumeDropZone.classList.remove('dragover');
+      });
+    });
+  }
 
   $('saveAll') && $('saveAll').addEventListener('click', saveAll);
   $('cancelBtn') && $('cancelBtn').addEventListener('click', () => window.close());

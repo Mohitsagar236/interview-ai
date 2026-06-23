@@ -9,7 +9,8 @@ const path = require('path');
 const rootDir = path.join(__dirname, '..');
 const venvDir = path.join(rootDir, '.venv');
 const pythonDir = path.join(rootDir, 'python');
-const requirementsPath = path.join(pythonDir, 'requirements.txt');
+const fullRequirementsPath = path.join(pythonDir, 'requirements.txt');
+const portableRequirementsPath = path.join(pythonDir, 'requirements-portable.txt');
 
 function log(msg) {
   console.log(`[Prepare Build] ${msg}`);
@@ -57,12 +58,16 @@ async function checkVenv() {
 }
 
 async function installDependencies(pythonExe) {
+  const requirementsPath = fs.existsSync(portableRequirementsPath)
+    ? portableRequirementsPath
+    : fullRequirementsPath;
+
   if (!fs.existsSync(requirementsPath)) {
-    log('Warning: requirements.txt not found. Skipping dependency installation.');
+    log('Warning: no Python requirements file found. Skipping dependency installation.');
     return;
   }
   
-  log('Installing Python dependencies...');
+  log(`Installing Python dependencies from ${path.basename(requirementsPath)}...`);
   await runCommand(pythonExe, ['-m', 'pip', 'install', '--upgrade', 'pip']);
   await runCommand(pythonExe, ['-m', 'pip', 'install', '-r', requirementsPath]);
   log('Dependencies installed successfully.');
@@ -80,45 +85,19 @@ async function verifyBuild() {
   if (!packageJson.build.extraResources) {
     throw new Error('No extraResources configuration found');
   }
-  
-  // Dynamically find site-packages path
-  const libDir = path.join(venvDir, process.platform === 'win32' ? 'Lib' : 'lib');
-  let venvSitePackages = null;
-  if (fs.existsSync(libDir)) {
-    if (process.platform === 'win32') {
-      // On Windows, site-packages is directly under Lib
-      const candidate = path.join(libDir, 'site-packages');
-      if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
-        venvSitePackages = candidate;
-      }
-    } else {
-      // On Linux/Mac, site-packages is under lib/python*/site-packages
-      const entries = fs.readdirSync(libDir);
-      for (const entry of entries) {
-        if (entry.startsWith('python')) {
-          const candidate = path.join(libDir, entry, 'site-packages');
-          if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
-            venvSitePackages = candidate;
-            break;
-          }
-        }
-      }
-    }
+
+  const resources = packageJson.build.extraResources;
+  const hasPythonDist = resources.some(res => res.to === 'python-dist' && String(res.from || '').includes('python-dist'));
+  if (!hasPythonDist) {
+    throw new Error('Build must include python-dist as an extraResource. Run npm run build so the standalone backend is generated first.');
   }
-  if (!venvSitePackages) {
-    throw new Error(`Site-packages not found in ${libDir}`);
+
+  const hasTesseract = resources.some(res => res.to === 'tesseract' && String(res.from || '').includes('external-deps'));
+  if (!hasTesseract && process.platform === 'win32') {
+    log('Warning: bundled Tesseract resource not configured. OCR will rely on PaddleOCR/vision only.');
   }
-  
-  // Update package.json extraResources with correct site-packages path
-  if (packageJson.build && packageJson.build.extraResources) {
-    // Update the site-packages path
-    const sitePackagesResource = packageJson.build.extraResources.find(res => res.to === 'python/site-packages');
-    if (sitePackagesResource) {
-      sitePackagesResource.from = venvSitePackages + '/';
-    }
-    fs.writeFileSync(path.join(rootDir, 'package.json'), JSON.stringify(packageJson, null, 2));
-    log('Updated package.json extraResources with correct site-packages path.');
-  }
+
+  log('Build configuration is aligned with standalone Python packaging.');
 }
 
 function findSystemPythonCandidate() {
@@ -159,9 +138,9 @@ async function main() {
     await installDependencies(pythonExe);
     await verifyBuild();
     
-    log('✅ Build preparation complete! Run "npm run build" to create the installer.');
+    log('Build preparation complete. Run "npm run build:prod" to create the installer.');
   } catch (error) {
-    console.error('❌ Build preparation failed:', error.message);
+    console.error('Build preparation failed:', error.message);
     process.exit(1);
   }
 }

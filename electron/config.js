@@ -1,13 +1,13 @@
 /**
  * Electron Application Configuration
- * Open-source local-first mode: always use local Python backend
+ * Free BYOK local-first mode: always use local Python backend
  */
 
 const { app } = require('electron');
 
 const config = {
   development: {
-    // Always use local server for open-source mode
+    // Always use local server for free BYOK mode
     serverUrl: 'ws://localhost:8765',
     useLocalServer: true,
     cloudMode: false,
@@ -16,7 +16,7 @@ const config = {
   },
   
   production: {
-    // Open-source: production also uses local server (BYOK - Bring Your Own Keys)
+    // Production also uses local server (BYOK - Bring Your Own Keys)
     serverUrl: 'ws://localhost:8765',
     useLocalServer: true,
     cloudMode: false,
@@ -41,7 +41,7 @@ const env = (app && app.isPackaged) ? 'production' : (process.env.NODE_ENV || 'd
 // Export the appropriate configuration
 const currentConfig = config[env] || config.development;
 
-console.log(`[CONFIG] Running in ${env} mode (local-first / open-source)`);
+console.log(`[CONFIG] Running in ${env} mode (local-first / BYOK)`);
 console.log(`[CONFIG] Is Packaged: ${app && app.isPackaged}`);
 console.log(`[CONFIG] Server URL: ${currentConfig.serverUrl}`);
 console.log(`[CONFIG] Cloud Mode: ${currentConfig.cloudMode}`);

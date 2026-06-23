@@ -34,6 +34,31 @@ function goToStep(n) {
     if (line) line.className = `step-line${i < n ? ' done' : ''}`;
   }
   currentStep = n;
+  if (n === 4) updateDoneChecklist();
+}
+
+async function updateDoneChecklist() {
+  const list = $('doneChecklist');
+  const subtitle = $('doneSubtitle');
+  if (!list || !api || !api.settings) return;
+
+  const [hasDeepgram, hasAi] = await Promise.all([
+    api.settings.hasDeepgramKey(),
+    api.settings.hasAiKey(),
+  ]);
+
+  const item = (ok, label, detail) => `<li><span class="ck">${ok ? '✓' : '!'}</span> ${label}${detail ? ` <small>${detail}</small>` : ''}</li>`;
+  list.innerHTML = [
+    item(hasDeepgram, hasDeepgram ? 'Deepgram transcription configured' : 'Deepgram key missing', hasDeepgram ? '' : 'Add it in Settings for live transcription.'),
+    item(hasAi, hasAi ? 'AI provider configured' : 'AI provider key missing', hasAi ? '' : 'Add one provider key in Settings for answers.'),
+    item(true, 'Keys are stored encrypted locally', ''),
+  ].join('');
+
+  if (subtitle) {
+    subtitle.textContent = hasDeepgram && hasAi
+      ? 'Interview AI is configured and ready. You can change these settings anytime in Settings.'
+      : 'Setup is saved, but some keys are missing. Open Settings after launch to enable every feature.';
+  }
 }
 
 // ── Provider selector ──────────────────────────────────────────────────────
