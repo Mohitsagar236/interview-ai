@@ -41,10 +41,11 @@ The packaged app should include:
 - bundled Python backend
 - bundled Tesseract fallback assets
 - no `.env` file
-- no account/payment/activation dependency
+- no payment/activation dependency in the desktop app after installation
 
 ## Public Website
 
 The website is static marketing/docs/download content plus a lightweight
-`/api/download` redirect. The desktop app does not require a hosted API for
-normal local operation.
+Supabase-authenticated `/api/download` endpoint that returns the installer URL.
+The desktop app does not require a hosted API for normal local operation after
+installation.

@@ -36,6 +36,9 @@ const toolbarHtml = read('renderer/toolbar.html');
 const toolbarJs = read('renderer/toolbar.js');
 const settingsJs = read('renderer/settings.js');
 const serverPy = read('python/server.py');
+const downloadJs = read('public/download.js');
+const downloadHtml = read('public/download.html');
+const apiDownloadJs = read('api/download.js');
 
 check('Electron main entry exists', exists(packageJson.main || 'electron/main.js'));
 check('Toolbar files exist', exists('renderer/toolbar.html') && exists('renderer/toolbar.js'));
@@ -53,6 +56,8 @@ check('Backend supports coach messages', /mtype == "coach"/.test(serverPy));
 check('Build script bundles standalone backend', /build-python-standalone\.js/.test(packageJson.scripts?.build || ''));
 check('Smoke target points at this script', packageJson.scripts?.test === 'node ./scripts/smoke-test.js');
 check('Toolbar markup has capture and Ask AI controls', /captureAnalyze/.test(toolbarHtml) && /askAI/.test(toolbarHtml));
+check('Download page requires Supabase auth', /supabase-js@2/.test(downloadHtml) && /download-auth-modal/.test(downloadHtml) && /signInWithPassword/.test(downloadJs) && /signUp/.test(downloadJs));
+check('Download API verifies Supabase token', /auth\/v1\/user/.test(apiDownloadJs) && /Authorization/.test(apiDownloadJs) && /SUPABASE_ANON_KEY/.test(apiDownloadJs));
 
 let passed = 0;
 for (const result of checks) {

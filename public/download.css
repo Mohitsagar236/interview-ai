@@ -520,6 +520,169 @@ html.dark .btn-secondary {
     display: none;
 }
 
+/* Download Auth Modal */
+.download-auth-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+}
+
+.download-auth-modal.hidden {
+    display: none;
+}
+
+.download-auth-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(6px);
+}
+
+.download-auth-dialog {
+    position: relative;
+    width: min(440px, 100%);
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 28px;
+    box-shadow: 0 24px 80px rgba(15, 23, 42, 0.35);
+}
+
+html.dark .download-auth-dialog {
+    background: #111827;
+    border-color: #334155;
+}
+
+.download-auth-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 36px;
+    height: 36px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+}
+
+html.dark .download-auth-close {
+    border-color: #334155;
+    color: #cbd5e1;
+}
+
+.download-auth-header h2 {
+    color: #111827;
+    font-size: 24px;
+    margin: 0 36px 8px 0;
+}
+
+html.dark .download-auth-header h2 {
+    color: #f8fafc;
+}
+
+.download-auth-header p,
+.download-auth-message {
+    color: #64748b;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.download-auth-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 22px 0;
+    background: #f1f5f9;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+html.dark .download-auth-tabs {
+    background: #0f172a;
+}
+
+.download-auth-tab {
+    border: 0;
+    border-radius: 6px;
+    padding: 10px;
+    background: transparent;
+    color: #64748b;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.download-auth-tab.active {
+    background: #ffffff;
+    color: #059669;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+}
+
+html.dark .download-auth-tab.active {
+    background: #1e293b;
+    color: #10b981;
+}
+
+.download-auth-form {
+    display: grid;
+    gap: 10px;
+}
+
+.download-auth-form label {
+    color: #334155;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+html.dark .download-auth-form label {
+    color: #e2e8f0;
+}
+
+.download-auth-form input {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 12px 13px;
+    font: inherit;
+    color: #111827;
+    background: #ffffff;
+}
+
+html.dark .download-auth-form input {
+    border-color: #334155;
+    color: #f8fafc;
+    background: #0f172a;
+}
+
+.download-auth-form .btn-download-primary {
+    margin-top: 10px;
+}
+
+.download-auth-message {
+    min-height: 22px;
+    margin: 14px 0 0;
+}
+
+.download-auth-message.error {
+    color: #dc2626;
+}
+
+.download-auth-message.success {
+    color: #059669;
+}
+
+.download-auth-signout {
+    margin-top: 10px;
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    font-weight: 700;
+    cursor: pointer;
+}
+
 @keyframes slideInUp {
     from {
         transform: translateY(100px);

@@ -1,6 +1,6 @@
 # Vercel Deployment
 
-Vercel is used only for the public website and the installer download redirect.
+Vercel is used only for the public website and authenticated installer download.
 The desktop app runs locally on the user's machine.
 
 ## Required Environment Variables
@@ -9,8 +9,11 @@ The desktop app runs locally on the user's machine.
 | --- | --- |
 | `R2_PUBLIC_URL` | Public base URL where release installers are hosted |
 | `APP_VERSION` | Installer version, for example `0.1.0` |
+| `APP_BUILD_ID` | Build identifier appended to the installer URL |
+| `SUPABASE_URL` | Supabase project URL used for website login |
+| `SUPABASE_ANON_KEY` | Supabase anon key used by browser auth and token verification |
 
-No Supabase, Razorpay, activation, payment, profile, or credit variables are
+No Razorpay, activation, payment, profile, or credit variables are
 required for the free BYOK release path.
 
 ## Deploy
@@ -24,4 +27,5 @@ npm run vercel:deploy
 
 | Endpoint | Purpose |
 | --- | --- |
-| `/api/download` | Redirect to the published Windows x64 installer |
+| `/api/public-config` | Expose public Supabase auth config to the website |
+| `/api/download` | Require Supabase login, then return the Windows x64 installer URL |

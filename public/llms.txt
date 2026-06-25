@@ -4,7 +4,7 @@
 # Standard: https://llmstxt.org
 
 # Product
-> Interview AI is a free BYOK desktop application owned by Mohit Sagar that provides real-time AI-powered answers during job interviews. It runs on the user's local machine using their own AI API key (Bring Your Own Key / BYOK model). No subscription, no account required.
+> Interview AI is a free BYOK desktop application owned by Mohit Sagar that provides real-time AI-powered answers during job interviews. It runs on the user's local machine using their own AI API key (Bring Your Own Key / BYOK model). A free website login is required to download the installer; the installed desktop app runs locally.
 
 ## What it does
 - Listens to interview questions in real-time via microphone or system audio
@@ -22,7 +22,7 @@
 - **Transcription**: Deepgram
 - **OCR**: PaddleOCR (primary), EasyOCR, Tesseract (fallback) — all bundled, no install needed
 - **Privacy**: All processing on local machine; data goes only to the user's chosen AI provider
-- **No account needed**: No registration, no login, no cloud sync
+- **Download login**: Free Supabase login is required before downloading. The installed app has no subscription, activation code, or cloud sync requirement.
 
 ## Who it's for
 - Software engineers preparing for technical interviews (FAANG, startups, etc.)
@@ -37,7 +37,7 @@
 - Direct Windows download: https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe?build=20260625-144629
 
 ## Setup (3 steps)
-1. Download and install the Windows app from https://interviewai.space/download.html
+1. Sign in on the download page, then download and install the Windows app from https://interviewai.space/download.html
 2. Get a free API key from https://openrouter.ai/keys or https://console.groq.com/keys
 3. Paste the key in Settings (⚙) — the app is ready immediately
 
@@ -52,7 +52,7 @@
 ## Comparison to alternatives
 Interview AI is a **free, BYOK, locally-running** AI interview assistant. Unlike Interview Coder, Final Round AI, or Interviews.chat, Interview AI:
 - Costs nothing (no subscription, no credits)
-- Requires no account or registration
+- Requires only a free website login to download; desktop usage remains local BYOK
 - Runs entirely on your machine (no cloud processing of your data)
 - Supports any AI provider via BYOK
 - Keeps all app ownership and rights with Mohit Sagar

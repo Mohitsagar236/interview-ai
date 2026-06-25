@@ -1,9 +1,55 @@
-/**
- * Download endpoint.
- * Supports the currently published Windows x64 desktop build.
- */
+function supabaseConfig() {
+    return {
+        url: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+        anonKey: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+    };
+}
 
-export default function handler(req, res) {
+function bearerToken(req) {
+    const header = req.headers.authorization || req.headers.Authorization || '';
+    return header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
+}
+
+async function verifySupabaseUser(req) {
+    const { url, anonKey } = supabaseConfig();
+    if (!url || !anonKey) {
+        return { ok: false, status: 503, error: 'Download login is not configured' };
+    }
+
+    const token = bearerToken(req);
+    if (!token) {
+        return { ok: false, status: 401, error: 'Login required before download' };
+    }
+
+    const response = await fetch(`${url.replace(/\/+$/, '')}/auth/v1/user`, {
+        headers: {
+            apikey: anonKey,
+            Authorization: `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        return { ok: false, status: 401, error: 'Invalid or expired login session' };
+    }
+
+    return { ok: true, user: await response.json() };
+}
+
+/**
+ * Authenticated download endpoint.
+ * Requires a Supabase user session and returns the published Windows x64 URL.
+ */
+export default async function handler(req, res) {
+    if (req.method !== 'GET') {
+        res.setHeader('Allow', 'GET');
+        return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    const auth = await verifySupabaseUser(req);
+    if (!auth.ok) {
+        return res.status(auth.status).json({ error: auth.error });
+    }
+
     const { platform, arch } = req.query;
 
     // Configure this in Vercel for your release bucket or GitHub Releases URL.
@@ -30,6 +76,6 @@ export default function handler(req, res) {
         return res.status(400).json({ error: 'Invalid platform' });
     }
 
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.redirect(302, url);
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    return res.status(200).json({ url });
 }

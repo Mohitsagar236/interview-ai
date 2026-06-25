@@ -1,6 +1,6 @@
 # Quick Start
 
-Interview AI is designed for normal desktop users: install the app, add your own API keys, and use it locally. No account, activation code, subscription, database, or separate backend command is required.
+Interview AI is designed for normal desktop users: sign in on the website to download the installer, install the app, add your own API keys, and use it locally. No activation code, subscription, database, or separate backend command is required after installation.
 
 ## Install the Desktop App
 
