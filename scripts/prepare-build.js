@@ -11,6 +11,9 @@ const venvDir = path.join(rootDir, '.venv');
 const pythonDir = path.join(rootDir, 'python');
 const fullRequirementsPath = path.join(pythonDir, 'requirements.txt');
 const portableRequirementsPath = path.join(pythonDir, 'requirements-portable.txt');
+const appDataBackendPython = process.platform === 'win32' && process.env.APPDATA
+  ? path.join(process.env.APPDATA, 'interview-ai-assistant', 'backend-venv', 'Scripts', 'python.exe')
+  : null;
 
 function log(msg) {
   console.log(`[Prepare Build] ${msg}`);
@@ -42,18 +45,29 @@ async function checkVenv() {
     ? path.join(venvDir, 'Scripts', 'python.exe')
     : path.join(venvDir, 'bin', 'python');
     
-  if (!fs.existsSync(venvPython)) {
-    log('Virtual environment not found. Creating...');
-    const sysPy = await resolveSystemPython();
-    if (!sysPy) {
-      throw new Error('No system Python found. Please install Python 3.x.');
-    }
-    await runCommand(sysPy.cmd, [...sysPy.args, '-m', 'venv', '.venv']);
-    log('Virtual environment created.');
-  } else {
+  if (fs.existsSync(venvPython) && await trySpawnCheck(venvPython, ['-V'])) {
     log('Virtual environment found.');
+    return venvPython;
   }
-  
+
+  const externalCandidates = [
+    process.env.BUILD_PYTHON,
+    appDataBackendPython,
+  ].filter(Boolean);
+  for (const candidate of externalCandidates) {
+    if (fs.existsSync(candidate) && await trySpawnCheck(candidate, ['-V'])) {
+      log(`Using existing build Python: ${candidate}`);
+      return candidate;
+    }
+  }
+
+  log('Virtual environment not found or not runnable. Creating/repairing...');
+  const sysPy = await resolveSystemPython();
+  if (!sysPy) {
+    throw new Error('No system Python found. Please install Python 3.x.');
+  }
+  await runCommand(sysPy.cmd, [...sysPy.args, '-m', 'venv', '.venv']);
+  log('Virtual environment created.');
   return venvPython;
 }
 
@@ -102,7 +116,11 @@ async function verifyBuild() {
 
 function findSystemPythonCandidate() {
   // Prefer Windows launcher 'py -3' if available; else 'python', else 'python3'
-  const candidates = process.platform === 'win32' ? ['py', 'python'] : ['python3', 'python'];
+  const envPython = process.env.PYTHON ? [process.env.PYTHON] : [];
+  const bundledCandidates = process.platform === 'win32'
+    ? ['C:\\edb\\languagepack\\v3\\Python-3.10\\python.exe', 'py', 'python']
+    : ['python3', 'python'];
+  const candidates = [...envPython, ...bundledCandidates];
   return candidates;
 }
 

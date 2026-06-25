@@ -17,6 +17,9 @@ const pythonDir = path.join(rootDir, 'python');
 const distDir = path.join(rootDir, 'python-dist');
 const portableRequirementsPath = path.join(pythonDir, 'requirements-portable.txt');
 const fullRequirementsPath = path.join(pythonDir, 'requirements.txt');
+const appDataBackendPython = process.platform === 'win32' && process.env.APPDATA
+  ? path.join(process.env.APPDATA, 'interview-ai-assistant', 'backend-venv', 'Scripts', 'python.exe')
+  : null;
 
 function log(msg) { console.log(`[PyInstaller] ${msg}`); }
 function warn(msg) { console.warn(`[PyInstaller] Warning: ${msg}`); }
@@ -31,9 +34,15 @@ function run(cmd, args, cwd = rootDir) {
 }
 
 function findSystemPythonCandidates() {
-  return process.platform === 'win32'
-    ? [{ cmd: 'py', args: ['-3'] }, { cmd: 'python', args: [] }]
+  const envPython = process.env.PYTHON ? [{ cmd: process.env.PYTHON, args: [] }] : [];
+  const bundledCandidates = process.platform === 'win32'
+    ? [
+        { cmd: 'C:\\edb\\languagepack\\v3\\Python-3.10\\python.exe', args: [] },
+        { cmd: 'py', args: ['-3'] },
+        { cmd: 'python', args: [] }
+      ]
     : [{ cmd: 'python3', args: [] }, { cmd: 'python', args: [] }];
+  return [...envPython, ...bundledCandidates];
 }
 
 function canRun(cmd, args) {
@@ -57,10 +66,13 @@ function venvPy() {
   const exe = process.platform === 'win32'
     ? path.join(venvDir, 'Scripts', 'python.exe')
     : path.join(venvDir, 'bin', 'python');
-  if (!fs.existsSync(exe)) {
-    throw new Error(`Virtual environment not found at ${venvDir}. Run "npm run setup:py" first.`);
+  if (fs.existsSync(exe)) {
+    return exe;
   }
-  return exe;
+  const fallback = [process.env.BUILD_PYTHON, appDataBackendPython].filter(Boolean)
+    .find(candidate => fs.existsSync(candidate));
+  if (fallback) return fallback;
+  throw new Error(`No build Python found. Set BUILD_PYTHON or run "npm run setup:py" first.`);
 }
 
 async function ensureVenv() {
@@ -68,8 +80,19 @@ async function ensureVenv() {
     ? path.join(venvDir, 'Scripts', 'python.exe')
     : path.join(venvDir, 'bin', 'python');
 
-  if (fs.existsSync(exe)) {
+  if (fs.existsSync(exe) && await canRun(exe, [])) {
     return exe;
+  }
+
+  const externalCandidates = [
+    process.env.BUILD_PYTHON,
+    appDataBackendPython,
+  ].filter(Boolean);
+  for (const candidate of externalCandidates) {
+    if (fs.existsSync(candidate) && await canRun(candidate, [])) {
+      log(`Using existing build Python: ${candidate}`);
+      return candidate;
+    }
   }
 
   const sysPy = await resolveSystemPython();

@@ -297,7 +297,13 @@ async function ensureCoachWS() {
         try {
           const msg = JSON.parse(data.toString());
           if (msg && msg.type === 'coach') {
-            sendToUi('coach-update', { text: msg.text || '', reset: !!msg.reset });
+            sendToUi('coach-update', {
+              text: msg.text || '',
+              reset: !!msg.reset,
+              replace: !!msg.replace,
+              complete: !!msg.complete,
+              error: msg.error || null
+            });
           }
         } catch (err) { /* ignore parse errors */ }
       });
@@ -2668,6 +2674,7 @@ function registerGlobalShortcuts() {
                 image: imageData,
                 captureIndex: Date.now(), // Use timestamp as index
                 autoAnalyze: true, // Flag for automatic analysis
+                fastVision: true,
                 meta: typeof image === 'object' ? {
                   width: image.width,
                   height: image.height,

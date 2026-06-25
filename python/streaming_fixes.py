@@ -8,6 +8,71 @@ import re
 from typing import Set
 
 
+def _format_code_block(lang: str, code: str) -> str:
+    """Expand compressed brace-style code into readable lines."""
+    if code is None:
+        return code
+
+    normalized_lang = (lang or "").lower()
+    brace_languages = {
+        "cpp", "c", "java", "javascript", "typescript", "js", "ts",
+        "csharp", "cs", "go", "rust", "php", "swift", "kotlin", "scala"
+    }
+    if normalized_lang not in brace_languages:
+        return code.lstrip("\n")
+
+    stripped = code.strip()
+    if not stripped:
+        return ""
+    if stripped.count("\n") >= 3:
+        return code.lstrip("\n")
+    if stripped.count(";") + stripped.count("{") + stripped.count("}") < 3:
+        return code.lstrip("\n")
+
+    stripped = re.sub(
+        r"\s*(#\s*include\s*(?:<[^>]+>|\"[^\"]+\"))\s*",
+        r"\1\n",
+        stripped,
+    )
+
+    chars = []
+    paren_depth = 0
+    quote = None
+    escaped = False
+    for ch in stripped:
+        chars.append(ch)
+        if quote:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == quote:
+                quote = None
+            continue
+
+        if ch in {"'", '"'}:
+            quote = ch
+        elif ch == "(":
+            paren_depth += 1
+        elif ch == ")" and paren_depth:
+            paren_depth -= 1
+        elif ch in "{}" or (ch == ";" and paren_depth == 0):
+            chars.append("\n")
+
+    rough_lines = [line.strip() for line in "".join(chars).splitlines() if line.strip()]
+    formatted = []
+    indent = 0
+    for line in rough_lines:
+        if line.startswith("}"):
+            indent = max(indent - 1, 0)
+        formatted.append("    " * indent + line)
+        opens = line.count("{")
+        closes = line.count("}")
+        indent = max(indent + opens - closes, 0)
+
+    return "\n".join(formatted)
+
+
 def format_markdown_blocks(response: str) -> str:
     """
     Automatically format markdown code blocks with proper newlines.
@@ -81,11 +146,13 @@ def format_markdown_blocks(response: str) -> str:
                         # Use the matched language
                         lang = part[:len(matched_lang)]
                         code = part[len(matched_lang):]
+                        code = _format_code_block(lang, code)
                         result_parts.append(f"\n\n```{lang}\n{code}")
                     elif lang_end <= 15:
                         # Short enough to be a language (but not recognized), use it anyway
                         lang = part[:lang_end]
                         code = part[lang_end:]
+                        code = _format_code_block(lang, code)
                         result_parts.append(f"\n\n```{lang}\n{code}")
                     else:
                         # Too long, probably not a language
@@ -105,6 +172,7 @@ def format_markdown_blocks(response: str) -> str:
                         lang_len = len(matched_lang)
                         lang = part[:lang_len]
                         code = part[lang_len:]
+                        code = _format_code_block(lang, code)
                         result_parts.append(f"\n\n```{lang}\n{code}")
                     else:
                         # No match - treat as no language specifier

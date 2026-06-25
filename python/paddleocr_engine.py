@@ -8,7 +8,7 @@ This is the ONLY OCR engine used by the application.
 
 import io
 import logging
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,34 @@ np = None
 _has_paddleocr: Optional[bool] = None
 
 
+def _collect_legacy_paddle_lines(node: Any, texts: List[str], scores: List[float], polys: List, include_polys: bool) -> None:
+    # Collect text from PaddleOCR 2.x nested ocr output.
+    if isinstance(node, (list, tuple)) and len(node) >= 2:
+        text_score = node[1]
+        if (
+            isinstance(text_score, (list, tuple))
+            and len(text_score) >= 1
+            and isinstance(text_score[0], str)
+        ):
+            text = text_score[0].strip()
+            if text:
+                texts.append(text)
+                try:
+                    scores.append(float(text_score[1] if len(text_score) > 1 else 0.0))
+                except (TypeError, ValueError):
+                    scores.append(0.0)
+                if include_polys:
+                    poly = node[0]
+                    if hasattr(poly, "tolist"):
+                        poly = poly.tolist()
+                    polys.append(poly or [])
+            return
+
+    if isinstance(node, (list, tuple)):
+        for child in node:
+            _collect_legacy_paddle_lines(child, texts, scores, polys, include_polys)
+
+
 def check_paddleocr_available() -> bool:
     """Check if PaddleOCR is importable."""
     global _has_paddleocr
@@ -152,32 +180,68 @@ class PaddleOCREngine:
     #  Internal
     # ------------------------------------------------------------------ #
 
-    def _run_predict(self, img_array, return_polys=False):
-        """Run PaddleOCR predict and return (texts, scores[, polys])."""
-        texts: List[str] = []
-        scores: List[float] = []
-        polys: List = []
-
-        for result in self.ocr.predict(img_array):
-            res = result.json
-            if isinstance(res, dict) and "res" in res:
-                res = res["res"]
-
-            rec_texts = res.get("rec_texts", [])
-            rec_scores = res.get("rec_scores", [])
-            rec_polys = res.get("rec_polys", res.get("dt_polys", []))
-
-            for i, (txt, sc) in enumerate(zip(rec_texts, rec_scores)):
-                texts.append(txt)
-                scores.append(sc)
-                if return_polys:
-                    poly = rec_polys[i] if i < len(rec_polys) else []
-                    if hasattr(poly, "tolist"):
-                        poly = poly.tolist()
-                    polys.append(poly)
-
-        if return_polys:
-            return texts, scores, polys
+    def _run_predict(self, img_array, return_polys=False):
+        # Run PaddleOCR and return (texts, scores[, polys]).
+        texts: List[str] = []
+        scores: List[float] = []
+        polys: List = []
+
+        if not hasattr(self.ocr, "predict") and hasattr(self.ocr, "ocr"):
+            try:
+                legacy_result = self.ocr.ocr(img_array, cls=False)
+            except TypeError:
+                legacy_result = self.ocr.ocr(img_array)
+            _collect_legacy_paddle_lines(legacy_result, texts, scores, polys, return_polys)
+            if return_polys:
+                return texts, scores, polys
+            return texts, scores
+
+        try:
+            predict_results = self.ocr.predict(img_array)
+        except Exception as exc:
+            if not hasattr(self.ocr, "ocr"):
+                raise
+            logger.debug("PaddleOCR predict API failed; trying legacy OCR API: %s", exc)
+            try:
+                legacy_result = self.ocr.ocr(img_array, cls=False)
+            except TypeError:
+                legacy_result = self.ocr.ocr(img_array)
+            _collect_legacy_paddle_lines(legacy_result, texts, scores, polys, return_polys)
+            if return_polys:
+                return texts, scores, polys
+            return texts, scores
+
+        for result in predict_results:
+            res = getattr(result, "json", result)
+            if callable(res):
+                res = res()
+            if isinstance(res, dict) and "res" in res:
+                res = res["res"]
+            if not isinstance(res, dict):
+                _collect_legacy_paddle_lines(res, texts, scores, polys, return_polys)
+                continue
+
+            rec_texts = res.get("rec_texts") or res.get("texts") or []
+            rec_scores = res.get("rec_scores") or res.get("scores") or []
+            rec_polys = res.get("rec_polys", res.get("dt_polys", []))
+
+            for idx, txt in enumerate(rec_texts):
+                clean_text = str(txt or "").strip()
+                if not clean_text:
+                    continue
+                texts.append(clean_text)
+                try:
+                    scores.append(float(rec_scores[idx] if idx < len(rec_scores) else 0.0))
+                except (TypeError, ValueError):
+                    scores.append(0.0)
+                if return_polys:
+                    poly = rec_polys[idx] if idx < len(rec_polys) else []
+                    if hasattr(poly, "tolist"):
+                        poly = poly.tolist()
+                    polys.append(poly or [])
+
+        if return_polys:
+            return texts, scores, polys
         return texts, scores
 
 

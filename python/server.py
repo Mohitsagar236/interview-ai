@@ -62,13 +62,20 @@ from streaming_fixes import (
 # Lazy loaded: pypdf, docx, PIL, pytesseract
 ImageFile = None # Will be imported with PIL
 
-# Import PaddleOCR engine (primary and only OCR engine)
+# Import OCR engines. PaddleOCR is primary; Tesseract is the local fallback.
 try:
     from paddleocr_engine import process_ocr_paddleocr, get_paddle_ocr_engine, check_paddleocr_available
     _has_paddleocr = True
 except ImportError as e:
-    logger.error(f"PaddleOCR module not found: {e} - OCR will not work!")
+    logger.warning(f"PaddleOCR module not found: {e} - will try Tesseract fallback")
     _has_paddleocr = False
+
+try:
+    from ocr_utils import OCRConfig, OCRProcessor
+    _has_tesseract_ocr = True
+except ImportError as e:
+    logger.warning(f"Tesseract OCR fallback module not available: {e}")
+    _has_tesseract_ocr = False
 
 # Import our new AI providers system
 from ai_providers import initialize_ai, generate_ai_response, get_ai_status, generate_ai_response_for, UserProviderConfig, create_provider_from_config
@@ -199,13 +206,6 @@ def get_or_create_session_history(session_id: str) -> Dict[str, List[Dict[str, s
         }
     return conversation_history[session_id]
 
-def get_combined_ocr_text():
-    """Get all captured OCR texts combined"""
-    if not captured_ocr_texts:
-        return ""
-    return "\n\n".join([f"Screen {i+1}: {text}" for i, text in enumerate(captured_ocr_texts) if text.strip()])
-
-
 def get_company_brief_text():
     """Return concatenated company brief context"""
     if not company_brief_chunks:
@@ -261,6 +261,74 @@ session_configs: Dict[str, dict] = {}
 # Transcription state
 partial_text = ""
 captured_ocr_texts: List[str] = []
+session_runtime_state: Dict[str, Dict[str, object]] = {}
+
+
+def _session_state_key(session_id: Optional[str]) -> str:
+    return session_id or "__global__"
+
+
+def get_session_runtime_state(session_id: Optional[str] = None) -> Dict[str, object]:
+    key = _session_state_key(session_id)
+    if key not in session_runtime_state:
+        session_runtime_state[key] = {"partial_text": "", "captured_ocr_texts": []}
+    return session_runtime_state[key]
+
+
+def get_session_captured_ocr_texts(session_id: Optional[str] = None) -> List[str]:
+    if not session_id:
+        return captured_ocr_texts
+    state = get_session_runtime_state(session_id)
+    texts = state.setdefault("captured_ocr_texts", [])
+    return texts  # type: ignore[return-value]
+
+
+def set_session_captured_ocr_text(session_id: Optional[str], capture_index: int, text: str) -> None:
+    texts = get_session_captured_ocr_texts(session_id)
+    while capture_index >= len(texts):
+        texts.append("")
+    texts[capture_index] = text or ""
+
+
+def clear_session_captures(session_id: Optional[str] = None) -> None:
+    if session_id:
+        get_session_runtime_state(session_id)["captured_ocr_texts"] = []
+    else:
+        captured_ocr_texts.clear()
+
+
+def get_combined_ocr_text(session_id: Optional[str] = None) -> str:
+    """Get captured OCR text for one UI session."""
+    texts = get_session_captured_ocr_texts(session_id)
+    if not texts:
+        return ""
+    return "\n\n".join([f"Screen {i+1}: {text}" for i, text in enumerate(texts) if str(text).strip()])
+
+
+def get_session_partial_text(session_id: Optional[str] = None) -> str:
+    if not session_id:
+        return partial_text or ""
+    return str(get_session_runtime_state(session_id).get("partial_text") or "")
+
+
+def set_session_partial_text(session_id: Optional[str], text: str) -> None:
+    global partial_text
+    clean_text = text or ""
+    if session_id:
+        get_session_runtime_state(session_id)["partial_text"] = clean_text
+    else:
+        partial_text = clean_text
+
+
+def append_session_partial_text(session_id: Optional[str], text: str) -> str:
+    current = get_session_partial_text(session_id)
+    if current and not current.endswith((" ", "\n")):
+        current += " "
+    current += text or ""
+    if len(current) > 12000:
+        current = current[-8000:]
+    set_session_partial_text(session_id, current)
+    return current
 
 # Company brief context chunks (fed into embedding store)
 company_brief_chunks: List[str] = []
@@ -298,7 +366,9 @@ def get_or_create_resume_data(session_id: str) -> Dict:
             "index": None,
             "emb_texts": [],
             "emb_matrix": None,
-            "embedder": None
+            "embedder": None,
+            "profile": empty_resume_profile(),
+            "raw_text": ""
         }
     return session_resume_data[session_id]
 
@@ -331,6 +401,317 @@ def retrieve_text_context(chunks: List[str], query: str, limit: int = 5) -> List
 
     ranked.sort(key=lambda item: (-item[0], item[1]))
     return [chunk for _, _, chunk in ranked[:limit]] or chunks[:limit]
+
+
+def empty_resume_profile() -> Dict:
+    """Return the structured resume profile shape used for answer generation."""
+    return {
+        "name": "",
+        "education": [],
+        "skills": {
+            "programming_languages": [],
+            "frameworks": [],
+            "ml_ai": [],
+            "databases": [],
+            "tools": []
+        },
+        "projects": [],
+        "internships": [],
+        "achievements": [],
+        "certifications": [],
+        "courses": [],
+        "leadership": []
+    }
+
+
+RESUME_SECTION_ALIASES = {
+    "education": ("education", "academic background", "academics"),
+    "skills": ("skills", "technical skills", "technologies", "tools and technologies"),
+    "projects": ("projects", "personal projects", "academic projects", "selected projects"),
+    "internships": ("internships", "experience", "work experience", "professional experience"),
+    "achievements": ("achievements", "awards", "honors", "accomplishments"),
+    "certifications": ("certifications", "certificates"),
+    "courses": ("courses", "coursework", "relevant coursework"),
+    "leadership": ("leadership", "positions of responsibility", "responsibilities", "activities")
+}
+
+
+SKILL_KEYWORDS = {
+    "programming_languages": (
+        "python", "java", "c++", "cpp", "c", "javascript", "typescript", "go",
+        "golang", "rust", "sql", "r", "matlab", "kotlin", "swift"
+    ),
+    "frameworks": (
+        "react", "node", "node.js", "express", "django", "flask", "fastapi",
+        "spring", "next.js", "angular", "vue", "tailwind", "bootstrap"
+    ),
+    "ml_ai": (
+        "machine learning", "deep learning", "nlp", "computer vision", "tensorflow",
+        "pytorch", "scikit-learn", "sklearn", "keras", "opencv", "pandas", "numpy"
+    ),
+    "databases": (
+        "mysql", "postgresql", "postgres", "mongodb", "redis", "sqlite",
+        "firebase", "dynamodb", "elasticsearch"
+    ),
+    "tools": (
+        "git", "github", "docker", "kubernetes", "aws", "azure", "gcp",
+        "linux", "postman", "figma", "tableau", "power bi", "jupyter"
+    )
+}
+
+
+def _normalize_resume_line(line: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"^[\s\-*]+", "", line or "")).strip()
+
+
+def _dedupe_preserve_order(items: List[str], limit: int = 20) -> List[str]:
+    seen = set()
+    out = []
+    for item in items:
+        clean = _normalize_resume_line(str(item))
+        key = clean.lower()
+        if clean and key not in seen:
+            seen.add(key)
+            out.append(clean)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _resume_section_for_line(line: str) -> Optional[str]:
+    normalized = re.sub(r"[^a-z0-9&/ ]+", "", (line or "").strip().lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip(" :")
+    if not normalized or len(normalized.split()) > 5:
+        return None
+    for section, aliases in RESUME_SECTION_ALIASES.items():
+        if normalized in aliases:
+            return section
+    return None
+
+
+def _split_resume_sections(text: str) -> Dict[str, List[str]]:
+    sections = {key: [] for key in RESUME_SECTION_ALIASES}
+    current = None
+    for raw_line in (text or "").splitlines():
+        line = _normalize_resume_line(raw_line)
+        if not line:
+            continue
+        section = _resume_section_for_line(line)
+        if section:
+            current = section
+            continue
+        if current:
+            sections[current].append(line)
+    return sections
+
+
+def _guess_resume_name(text: str) -> str:
+    section_headers = {alias for aliases in RESUME_SECTION_ALIASES.values() for alias in aliases}
+    header_like_terms = {
+        "achievement", "achievements", "scholastic", "education", "skills", "projects",
+        "internship", "internships", "experience", "responsibility", "responsibilities",
+        "coursework", "certifications", "technical", "profile", "summary",
+        "objective", "career objective", "professional summary", "core competency",
+        "competencies", "academic", "work experience", "personal details", "contact",
+        "awards", "honors", "publications", "activities", "interests"
+    }
+    education_like_terms = {
+        "b.tech", "btech", "bachelor", "master", "m.tech", "mtech", "degree",
+        "engineering", "science", "computer science", "university", "college",
+        "institute", "iit", "school", "cgpa", "gpa", "semester"
+    }
+    for raw_line in (text or "").splitlines()[:12]:
+        line = _normalize_resume_line(raw_line)
+        if not line:
+            continue
+        lowered = line.lower().strip(":")
+        if lowered in section_headers:
+            continue
+        if any(term in lowered for term in header_like_terms):
+            continue
+        if any(term in lowered for term in education_like_terms):
+            continue
+        if any(marker in lowered for marker in ("@", "http", "linkedin", "github")):
+            continue
+        if any(separator in line for separator in (",", "|", "•", "·", ";")):
+            continue
+        if line.endswith(".") or re.search(r"^(to|seeking|looking|aiming|aspiring)\b", lowered):
+            continue
+        if re.search(r"\b(build|develop|work|learn|contribute|leverage|seeking|pursue)\b", lowered):
+            continue
+        if len(line) > 60 or sum(ch.isdigit() for ch in line) > 3:
+            continue
+        skill_hits = 0
+        for keywords in SKILL_KEYWORDS.values():
+            for keyword in keywords:
+                pattern = r"(?<![a-z0-9+#.])" + re.escape(keyword.lower()) + r"(?![a-z0-9+#.])"
+                if re.search(pattern, lowered):
+                    skill_hits += 1
+                    if skill_hits >= 2:
+                        break
+            if skill_hits >= 2:
+                break
+        if skill_hits >= 2:
+            continue
+        words = re.findall(r"[A-Za-z][A-Za-z.'-]*", line)
+        if 2 <= len(words) <= 5:
+            return line
+    return ""
+
+
+def _extract_skills_from_text(text: str) -> Dict[str, List[str]]:
+    haystack = (text or "").lower()
+    skills = empty_resume_profile()["skills"]
+    for category, keywords in SKILL_KEYWORDS.items():
+        found = []
+        for keyword in keywords:
+            pattern = r"(?<![a-z0-9+#.])" + re.escape(keyword.lower()) + r"(?![a-z0-9+#.])"
+            if re.search(pattern, haystack):
+                label = "C++" if keyword in ("c++", "cpp") else keyword
+                label = "Node.js" if keyword == "node.js" else label
+                label = "Next.js" if keyword == "next.js" else label
+                found.append(label)
+        skills[category] = _dedupe_preserve_order(found, limit=30)
+    return skills
+
+
+def _section_items(lines: List[str], limit: int = 12) -> List[str]:
+    items: List[str] = []
+    buffer: List[str] = []
+    for line in lines:
+        starts_new = bool(re.match(r"^[-*]|\b(20\d{2}|19\d{2})\b", line)) or len(line) < 90
+        if starts_new and buffer:
+            items.append(" ".join(buffer))
+            buffer = []
+        buffer.append(line)
+        if len(" ".join(buffer)) > 500:
+            items.append(" ".join(buffer))
+            buffer = []
+        if len(items) >= limit:
+            break
+    if buffer and len(items) < limit:
+        items.append(" ".join(buffer))
+    return _dedupe_preserve_order(items, limit=limit)
+
+
+def extract_structured_resume_profile(text: str) -> Dict:
+    """Extract a conservative structured profile from resume text without inventing values."""
+    profile = empty_resume_profile()
+    clean_text = re.sub(r"\r\n?", "\n", text or "")
+    sections = _split_resume_sections(clean_text)
+
+    profile["name"] = _guess_resume_name(clean_text)
+    profile["skills"] = _extract_skills_from_text("\n".join(sections.get("skills") or []) or clean_text)
+
+    for key in ("education", "projects", "internships", "achievements", "certifications", "courses", "leadership"):
+        profile[key] = _section_items(sections.get(key, []), limit=16 if key == "projects" else 10)
+
+    return profile
+
+
+def _flatten_resume_profile(profile: Dict) -> List[tuple[str, str]]:
+    entries: List[tuple[str, str]] = []
+    if not profile:
+        return entries
+    if profile.get("name"):
+        entries.append(("name", f"Name: {profile['name']}"))
+    for section in ("education", "projects", "internships", "achievements", "certifications", "courses", "leadership"):
+        for item in profile.get(section, []) or []:
+            entries.append((section, f"{section.replace('_', ' ').title()}: {item}"))
+    skills = profile.get("skills") or {}
+    for category, values in skills.items():
+        if values:
+            label = category.replace("_", " ").title()
+            entries.append((f"skills.{category}", f"{label}: {', '.join(values)}"))
+    return entries
+
+
+def resume_profile_to_context(profile: Dict, question: str, question_type: str) -> str:
+    """Format only the resume profile facts likely to be relevant to the question."""
+    entries = _flatten_resume_profile(profile)
+    if not entries:
+        return ""
+
+    q_terms = tokenize_context_text(question or "")
+    preferred_sections = {
+        "resume_hr": {"name", "education", "projects", "internships", "achievements", "leadership", "skills.programming_languages", "skills.frameworks", "skills.ml_ai", "skills.databases", "skills.tools"},
+        "behavioral": {"projects", "internships", "achievements", "leadership"},
+        "resume_specific": {"education", "projects", "internships", "achievements", "certifications", "courses", "leadership", "skills.programming_languages", "skills.frameworks", "skills.ml_ai", "skills.databases", "skills.tools"},
+        "unsupported_resume_claim_check": {"name", "education", "projects", "internships", "achievements", "certifications", "courses", "leadership", "skills.programming_languages", "skills.frameworks", "skills.ml_ai", "skills.databases", "skills.tools"},
+    }.get(question_type, set())
+
+    ranked = []
+    for idx, (section, text) in enumerate(entries):
+        terms = tokenize_context_text(text)
+        score = len(q_terms & terms) * 5
+        if section in preferred_sections:
+            score += 2
+        if question_type == "resume_hr" and section in {"name", "education"}:
+            score += 3
+        if question_type == "behavioral" and section in {"projects", "internships"}:
+            score += 3
+        if score > 0:
+            ranked.append((score, idx, text))
+
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    if not ranked:
+        ranked = [(1, idx, text) for idx, (_, text) in enumerate(entries[:8])]
+
+    selected = [text for _, _, text in ranked[:10]]
+    return "Structured resume profile facts:\n" + "\n".join(f"- {item}" for item in selected)
+
+
+def _claim_terms(question: str) -> Set[str]:
+    claim_stopwords = {
+        "did", "do", "does", "have", "has", "had", "resume", "cv", "intern", "interned",
+        "internship", "work", "worked", "company", "which", "where", "claim", "the", "a",
+        "an", "at", "for", "from", "to", "in", "on", "with", "about", "tell", "me", "my",
+        "i", "you", "your", "it", "is", "are", "was", "were", "of", "experience", "see",
+        "year", "years"
+    }
+    return {
+        token for token in tokenize_context_text(question or "")
+        if token not in claim_stopwords and len(token) > 2 and not token.isdigit()
+    }
+
+
+def build_context(
+    question: str,
+    resume_profile: Dict,
+    conversation_history_for_session: Dict[str, List[Dict[str, str]]],
+    question_type: str,
+    resume_chunks: Optional[List[str]] = None,
+) -> List[str]:
+    """Build compact, question-aware context for the answer-generation prompt."""
+    del conversation_history_for_session
+    if question_type not in {"resume_hr", "behavioral", "resume_specific", "unsupported_resume_claim_check"}:
+        return []
+
+    contexts: List[str] = []
+    profile_context = resume_profile_to_context(resume_profile or empty_resume_profile(), question, question_type)
+    if profile_context:
+        contexts.append(profile_context[:2200])
+
+    chunks = resume_chunks or []
+    if chunks:
+        relevant_chunks = retrieve_text_context(chunks, question, limit=3)
+        for chunk in relevant_chunks:
+            if chunk and chunk not in contexts:
+                contexts.append(chunk[:900])
+
+    if question_type == "unsupported_resume_claim_check":
+        resume_terms = tokenize_context_text("\n".join(contexts + chunks))
+        terms = _claim_terms(question)
+        found_terms = sorted(terms & resume_terms)
+        if not terms or not found_terms:
+            contexts.insert(0, "Claim check result: the requested claim was not found in the available resume facts.")
+        else:
+            contexts.insert(0, f"Claim check result: matching resume terms found: {', '.join(found_terms[:8])}.")
+
+    return contexts[:4]
+
+
+buildContext = build_context
 
 # Initialize Vision Provider
 vision_provider = VisionProvider()
@@ -366,6 +747,104 @@ HOST = os.getenv('HOST') or ('0.0.0.0' if (CLOUD_MODE or os.getenv('PORT')) else
 # Use PORT if provided by the environment (platform buildpacks usually set PORT)
 PORT = int(os.getenv('PORT') or '8765')
 DEFAULT_LLM = os.getenv("DEFAULT_LLM", "openai/gpt-4o-mini")
+FAST_SCREEN_VISION_FIRST = os.getenv("FAST_SCREEN_VISION_FIRST", "1").lower() in ("1", "true", "yes", "on")
+FAST_SCREEN_MAX_SIDE = int(os.getenv("FAST_SCREEN_MAX_SIDE", "1800"))
+FAST_SCREEN_JPEG_QUALITY = int(os.getenv("FAST_SCREEN_JPEG_QUALITY", "82"))
+
+
+def _truthy(value) -> bool:
+    return str(value).lower() in ("1", "true", "yes", "on")
+
+
+def _model_looks_vision_capable(model: str) -> bool:
+    lower = (model or "").lower()
+    return any(
+        marker in lower
+        for marker in (
+            "gpt-4o",
+            "gpt-4.1",
+            "gemini",
+            "vision",
+            "llava",
+            "pixtral",
+            "qwen-vl",
+            "qwen2-vl",
+            "qwen2.5-vl",
+            "claude-3",
+        )
+    )
+
+
+def _vision_model_for_provider(provider: str, requested_model: str = "") -> str:
+    explicit = os.getenv("FAST_SCREEN_MODEL") or os.getenv("VISION_MODEL")
+    if explicit:
+        return explicit
+    if _model_looks_vision_capable(requested_model):
+        return requested_model
+    defaults = {
+        "openrouter": "openai/gpt-4o-mini",
+        "openai": "gpt-4o-mini",
+        "gemini": "gemini-1.5-flash",
+        "groq": requested_model,
+        "custom": requested_model or "gpt-4o-mini",
+        "ollama": requested_model or "llava",
+    }
+    return defaults.get((provider or "").lower(), requested_model or "gpt-4o-mini")
+
+
+def _select_fast_screen_provider_config(session_id: Optional[str] = None) -> Optional[UserProviderConfig]:
+    """Pick a vision-capable provider for fast screenshot answering."""
+    session_cfg = session_configs.get(session_id) if session_id else None
+    if session_cfg:
+        provider = (session_cfg.get("ai_provider") or "openai").lower()
+        base_url = session_cfg.get("ai_base_url", "")
+        api_key = session_cfg.get("ai_api_key", "")
+        requested_model = session_cfg.get("ai_model", "")
+        explicit_fast_model = bool(os.getenv("FAST_SCREEN_MODEL") or os.getenv("VISION_MODEL"))
+        provider_can_try_vision = provider in {"openai", "openrouter", "gemini", "custom", "ollama"} or (
+            provider == "groq" and (explicit_fast_model or _model_looks_vision_capable(requested_model))
+        )
+        local_no_key = provider == "ollama" or (
+            provider == "custom" and any(host in base_url for host in ("localhost", "127.0.0.1", "::1"))
+        )
+        if provider_can_try_vision and (api_key or local_no_key):
+            model = _vision_model_for_provider(provider, requested_model)
+            return UserProviderConfig(
+                provider=provider,
+                api_key=api_key or "local-no-auth",
+                model=model,
+                base_url=base_url,
+            )
+
+    if os.getenv("OPENROUTER_API_KEY"):
+        return UserProviderConfig(
+            provider="openrouter",
+            api_key=os.getenv("OPENROUTER_API_KEY", ""),
+            model=_vision_model_for_provider("openrouter", DEFAULT_LLM),
+            base_url=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        )
+    if os.getenv("OPENAI_API_KEY"):
+        return UserProviderConfig(
+            provider="openai",
+            api_key=os.getenv("OPENAI_API_KEY", ""),
+            model=_vision_model_for_provider("openai", DEFAULT_LLM),
+            base_url="https://api.openai.com/v1",
+        )
+    if os.getenv("GEMINI_API_KEY"):
+        return UserProviderConfig(
+            provider="gemini",
+            api_key=os.getenv("GEMINI_API_KEY", ""),
+            model=_vision_model_for_provider("gemini", DEFAULT_LLM),
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+        )
+    if os.getenv("GROQ_API_KEY") and (os.getenv("FAST_SCREEN_MODEL") or os.getenv("VISION_MODEL")):
+        return UserProviderConfig(
+            provider="groq",
+            api_key=os.getenv("GROQ_API_KEY", ""),
+            model=_vision_model_for_provider("groq", os.getenv("FAST_SCREEN_MODEL") or os.getenv("VISION_MODEL", "")),
+            base_url="https://api.groq.com/openai/v1",
+        )
+    return None
 
 # CORS configuration for cloud deployment
 # If ALLOWED_ORIGINS is '*', set to None to accept all origins
@@ -402,6 +881,52 @@ def _is_blank_image_from_bytes(image_bytes: bytes) -> bool:
         return False
 
 
+def _prepare_image_for_fast_vision(image_bytes: bytes) -> tuple[bytes, str]:
+    """Resize and encode screenshots for low-latency vision-model reading."""
+    try:
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(image_bytes))
+        img.load()
+        if img.mode in ("RGBA", "LA", "P"):
+            background = Image.new("RGB", img.size, "white")
+            if img.mode == "P":
+                img = img.convert("RGBA")
+            background.paste(img, mask=img.getchannel("A") if "A" in img.getbands() else None)
+            img = background
+        else:
+            img = img.convert("RGB")
+
+        max_side = max(900, FAST_SCREEN_MAX_SIDE)
+        width, height = img.size
+        scale = min(1.0, max_side / max(width, height))
+        if scale < 1.0:
+            img = img.resize((max(1, int(width * scale)), max(1, int(height * scale))), Image.LANCZOS)
+
+        output = io.BytesIO()
+        quality = min(95, max(60, FAST_SCREEN_JPEG_QUALITY))
+        img.save(output, format="JPEG", quality=quality, optimize=True)
+        prepared = output.getvalue()
+        if prepared and len(prepared) < len(image_bytes):
+            return prepared, "jpeg"
+    except Exception as exc:
+        logger.debug("Fast vision image preparation skipped: %s", exc)
+
+    image_format = "jpeg" if len(image_bytes) >= 3 and image_bytes[:3] == b"\xff\xd8\xff" else "png"
+    return image_bytes, image_format
+
+
+def _decode_capture_image_payload(payload) -> Optional[bytes]:
+    """Decode renderer capture payloads into raw image bytes."""
+    if isinstance(payload, Mapping):
+        payload = payload.get("image_b64") or payload.get("image")
+    if isinstance(payload, str):
+        return base64.b64decode(payload)
+    if payload is not None:
+        return bytes(bytearray(payload))
+    return None
+
+
 async def preload_ocr_engines():
     """Pre-initialize PaddleOCR engine in background to avoid first-capture delay"""
     loop = asyncio.get_event_loop()
@@ -425,43 +950,54 @@ def _warmup_paddleocr():
 
 
 def process_ocr_image(image_bytes: bytes) -> str:
-    """Process OCR using PaddleOCR (primary and only engine)."""
+    """Process OCR using PaddleOCR first, then local Tesseract as fallback."""
 
-    if not _has_paddleocr:
-        return "[OCR unavailable: PaddleOCR not installed. Run: pip install paddleocr paddlepaddle]"
-
-    # OPTIMIZATION: Check cache first for instant results
     start_time = time.perf_counter()
     cached_text = get_cached_ocr(image_bytes)
     if cached_text is not None:
         cache_time = (time.perf_counter() - start_time) * 1000
-        logger.info(f"⚡ OCR cache HIT: {len(cached_text)} chars in {cache_time:.1f}ms")
+        logger.info(f"OCR cache HIT: {len(cached_text)} chars in {cache_time:.1f}ms")
         return cached_text
 
-    try:
-        logger.info("Using PaddleOCR engine")
-        text = process_ocr_paddleocr(image_bytes)
-        processing_time_ms = (time.perf_counter() - start_time) * 1000
-        
-        if text and len(text.strip()) > 0:
-            logger.info(f"✅ PaddleOCR: {len(text)} chars in {processing_time_ms:.1f}ms")
-            cache_ocr_result(image_bytes, text, "paddleocr", processing_time_ms)
-            return text
-        else:
-            logger.warning("PaddleOCR returned no text — trying vision fallback")
-            vision_text = analyze_image_with_vision(
-                image_bytes,
-                "Extract all text and describe the content visible in this screenshot.",
-            )
-            if vision_text:
-                logger.info(f"✅ Vision fallback: {len(vision_text)} chars")
-                cache_ocr_result(image_bytes, vision_text, "vision", processing_time_ms)
-                return vision_text
-            return ""
-    except Exception as exc:
-        logger.exception("OCR processing error")
-        return f"[OCR error: {str(exc)}]"
+    errors: List[str] = []
 
+    if _has_paddleocr:
+        try:
+            logger.info("Using PaddleOCR engine")
+            text = process_ocr_paddleocr(image_bytes)
+            processing_time_ms = (time.perf_counter() - start_time) * 1000
+            if text and text.strip():
+                logger.info(f"PaddleOCR: {len(text)} chars in {processing_time_ms:.1f}ms")
+                cache_ocr_result(image_bytes, text, "paddleocr", processing_time_ms)
+                return text
+            logger.warning("PaddleOCR returned no text; trying Tesseract fallback")
+        except Exception as exc:
+            logger.warning("PaddleOCR processing failed; trying Tesseract fallback: %s", exc)
+            errors.append(f"PaddleOCR: {exc}")
+
+    if _has_tesseract_ocr:
+        try:
+            config = OCRConfig()
+            config.use_paddle = False
+            config.clean_text_only = True
+            processor = OCRProcessor(config)
+            if hasattr(processor, "process_image"):
+                text = processor.process_image(image_bytes)
+            else:
+                text = processor.process(image_bytes)
+            processing_time_ms = (time.perf_counter() - start_time) * 1000
+            if text and text.strip():
+                logger.info(f"Tesseract OCR: {len(text)} chars in {processing_time_ms:.1f}ms")
+                cache_ocr_result(image_bytes, text, "tesseract", processing_time_ms)
+                return text
+            logger.warning("Tesseract OCR returned no text")
+        except Exception as exc:
+            logger.warning("Tesseract OCR fallback failed: %s", exc)
+            errors.append(f"Tesseract: {exc}")
+
+    if errors:
+        return f"[OCR error: {'; '.join(errors)}]"
+    return "[OCR unavailable: install PaddleOCR or configure bundled/system Tesseract]"
 
 def ensure_asr():
     # Whisper ASR removed permanently; enforce Deepgram streaming usage
@@ -844,12 +1380,27 @@ async def handle_ui(ws):
                             except Exception:
                                 pass
 
-                        # When the "Capture & Analyze" button is clicked (autoAnalyze=True),
-                        # send the screenshot directly to the LLM via vision API so the model
-                        # sees the actual image instead of OCR-extracted text.
-                        if msg.get("autoAnalyze"):
+                        # Fast screen path: answer from the screenshot directly before OCR.
+                        # OCR remains as fallback when no vision-capable provider is configured.
+                        fast_vision_requested = (
+                            _truthy(msg.get("autoAnalyze"))
+                            or _truthy(msg.get("fastVision"))
+                            or FAST_SCREEN_VISION_FIRST
+                        )
+                        if fast_vision_requested:
+                            await broadcast({
+                                "type": "ocr_status",
+                                "stage": "fast_vision",
+                                "message": "Reading screen with vision model",
+                                "captureIndex": msg.get("captureIndex"),
+                            }, session_id=session_id)
                             vision_ok = await stream_vision_to_llm(
-                                DEFAULT_LLM, arr, session_id=session_id
+                                DEFAULT_LLM,
+                                arr,
+                                session_id=session_id,
+                                coaching_mode=str(
+                                    msg.get("coachingMode", msg.get("coaching_mode", "false"))
+                                ).lower() in ("1", "true", "yes", "on"),
                             )
                             if vision_ok:
                                 # Acknowledge to client so it resets its autoTriggerAI flag
@@ -858,7 +1409,7 @@ async def handle_ui(ws):
                                         "type": "ocr_result",
                                         "text": "",
                                         "captureIndex": msg.get("captureIndex", 0),
-                                        "totalCaptures": len(captured_ocr_texts),
+                                        "totalCaptures": len(get_session_captured_ocr_texts(session_id)),
                                     },
                                     session_id=session_id,
                                 )
@@ -926,13 +1477,10 @@ async def handle_ui(ws):
                                 pass
                         
                         # Store this OCR result
-                        capture_index = msg.get("captureIndex", len(captured_ocr_texts))
+                        capture_index = msg.get("captureIndex", len(get_session_captured_ocr_texts(session_id)))
                         auto_analyze = msg.get("autoAnalyze", False)
-                        
-                        if capture_index >= len(captured_ocr_texts):
-                            captured_ocr_texts.append(text or "")
-                        else:
-                            captured_ocr_texts[capture_index] = text or ""
+
+                        set_session_captured_ocr_text(session_id, int(capture_index), text or "")
 
                         # Metadata from client (optional)
                         meta = msg.get("meta") or {}
@@ -1056,9 +1604,9 @@ async def handle_ui(ws):
                                 logger.info(f"Retrying OCR with Windows native capture{' (Teams)' if target_window else ''}")
                                 result = capture_window_windows(window_title=target_window) if target_window else capture_window_windows()
                                 
-                                if result and not _is_blank_image_from_bytes(result['image']):
+                                img_bytes = base64.b64decode(result['image']) if result and result.get('image') else b""
+                                if img_bytes and not _is_blank_image_from_bytes(img_bytes):
                                     # Re-process with OCR
-                                    img_bytes = base64.b64decode(result['image'])
                                     
                                     try:
                                         text = process_ocr_image(img_bytes)
@@ -1067,10 +1615,7 @@ async def handle_ui(ws):
                                         text = ""
                                     
                                     # Update stored text
-                                    if capture_index >= len(captured_ocr_texts):
-                                        captured_ocr_texts.append(text or "")
-                                    else:
-                                        captured_ocr_texts[capture_index] = text or ""
+                                    set_session_captured_ocr_text(session_id, int(capture_index), text or "")
                                     
                                     logger.info(f"✅ Windows capture retry successful: {len(text or '')} characters")
                                     
@@ -1120,7 +1665,7 @@ async def handle_ui(ws):
                             "type": "ocr_result" if structured else "ocr",
                             "text": text or "",
                             "captureIndex": capture_index,
-                            "totalCaptures": len(captured_ocr_texts)
+                            "totalCaptures": len(get_session_captured_ocr_texts(session_id))
                         }
                         
                         if structured:
@@ -1192,17 +1737,14 @@ async def handle_ui(ws):
                                     text = ""
                                 
                                 # Store captured text
-                                capture_index = msg.get("captureIndex", len(captured_ocr_texts))
-                                if capture_index >= len(captured_ocr_texts):
-                                    captured_ocr_texts.append(text or "")
-                                else:
-                                    captured_ocr_texts[capture_index] = text or ""
+                                capture_index = msg.get("captureIndex", len(get_session_captured_ocr_texts(session_id)))
+                                set_session_captured_ocr_text(session_id, int(capture_index), text or "")
                                 
                                 await broadcast({
                                     "type": "ocr",
                                     "text": text or "[No text detected]",
                                     "captureIndex": capture_index,
-                                    "totalCaptures": len(captured_ocr_texts),
+                                    "totalCaptures": len(get_session_captured_ocr_texts(session_id)),
                                     "method": result.get('method', 'windows')
                                 }, session_id=session_id)
                                 
@@ -1278,8 +1820,17 @@ async def handle_ui(ws):
                     try:
                         resume_text = msg.get("resume_text", "")
                         if resume_text:
-                            # Process the resume text (simplified for testing)
-                            chunks = [resume_text]
+                            clean_resume_text = re.sub(r"\r\n?", "\n", resume_text)
+                            clean_resume_text = re.sub(r"\n{3,}", "\n\n", clean_resume_text).strip()
+                            chunks = [chunk.strip() for chunk in clean_resume_text.split("\n\n") if chunk.strip()] or [clean_resume_text]
+                            session_data = get_or_create_resume_data(session_id)
+                            session_data.update({
+                                "index": None,
+                                "emb_texts": chunks[:1500],
+                                "emb_matrix": None,
+                                "profile": extract_structured_resume_profile(clean_resume_text),
+                                "raw_text": clean_resume_text,
+                            })
                             await broadcast({"type": "resume_parsed", "success": True, "text": f"Processed {len(chunks)} resume chunks"}, session_id=session_id)
                         else:
                             await broadcast({"type": "resume_parsed", "success": False, "error": "No resume text provided"}, session_id=session_id)
@@ -1291,6 +1842,9 @@ async def handle_ui(ws):
                     q = msg.get("question") or ""
                     llm = DEFAULT_LLM
                     strict = bool(msg.get("strict"))
+                    coaching_mode = str(
+                        msg.get("coachingMode", msg.get("coaching_mode", "false"))
+                    ).lower() in ("1", "true", "yes", "on")
                     question_channel = (msg.get("question_channel") or "auto").lower()
                     valid_channels = {"auto", "capture", "ocr", "transcription", "transcript", "speech", "general"}
                     if question_channel not in valid_channels:
@@ -1363,7 +1917,7 @@ async def handle_ui(ws):
                             # Send error notification to client
                             await broadcast({"type": "error", "message": f"Failed to process file: {str(e)}"}, session_id=session_id)
 
-                    use_capture_context = question_channel in ("capture", "ocr")
+                    use_capture_context = question_channel in ("capture", "ocr", "screen_capture")
                     use_transcript_context = question_channel in ("transcription", "transcript", "speech")
                     use_general_context = question_channel == "general"
 
@@ -1386,32 +1940,52 @@ async def handle_ui(ws):
                         use_transcript_context = True
 
                     # Handle captured screens if provided
+                    current_capture_ocr_texts: List[str] = []
                     captured_screens = msg.get("capturedScreens", []) if use_capture_context else []
                     if captured_screens:
-                        captured_ocr_texts = []
+                        fast_vision_requested = _truthy(msg.get("fastVision")) or _truthy(msg.get("autoAnalyze")) or FAST_SCREEN_VISION_FIRST
+                        if fast_vision_requested:
+                            try:
+                                latest_screen = captured_screens[-1]
+                                arr = _decode_capture_image_payload(latest_screen)
+                                if arr:
+                                    await broadcast({
+                                        "type": "ocr_status",
+                                        "stage": "fast_vision",
+                                        "message": "Reading captured screen with vision model",
+                                    }, session_id=session_id)
+                                    vision_prompt = (q or "").strip() or "Please solve or answer the interview question shown in this screen capture."
+                                    vision_ok = await stream_vision_to_llm(
+                                        DEFAULT_LLM,
+                                        arr,
+                                        user_prompt=vision_prompt,
+                                        session_id=session_id,
+                                        coaching_mode=coaching_mode,
+                                    )
+                                    if vision_ok:
+                                        continue
+                            except Exception as vision_err:
+                                logger.warning("Fast screen vision failed for coach capture; falling back to OCR: %s", vision_err)
+
+                        current_capture_ocr_texts = []
                         for i, screen_img in enumerate(captured_screens):
                             try:
                                 # Process each captured screen for OCR
-                                if isinstance(screen_img, str):
-                                    # Base64 image
-                                    arr = base64.b64decode(screen_img)
-                                elif isinstance(screen_img, list):
-                                    # Byte array
-                                    arr = bytes(bytearray(screen_img))
-                                else:
+                                arr = _decode_capture_image_payload(screen_img)
+                                if not arr:
                                     continue
 
                                 loop = asyncio.get_event_loop()
                                 text = await loop.run_in_executor(None, process_ocr_image, arr)
-                                captured_ocr_texts.append(text or "")
+                                current_capture_ocr_texts.append(text or "")
                                 logger.info(f"Processed captured screen {i+1}: {len(text or '')} characters")
                             except Exception as e:
                                 logger.exception(f"Error processing captured screen {i+1}: {e}")
-                                captured_ocr_texts.append("")
+                                current_capture_ocr_texts.append("")
 
                     # Get inputs from various sources
                     provided_question = (q or "").strip()
-                    transcript_q = extract_last_question(partial_text or "") if use_transcript_context else ""
+                    transcript_q = extract_last_question(get_session_partial_text(session_id) or "") if use_transcript_context else ""
                     ocr_q = ""
                     ocr_content = ""
                     interviewer_recent = msg.get("interviewer_recent") or []
@@ -1421,9 +1995,9 @@ async def handle_ui(ws):
                     # Get the latest OCR content (prioritize most recent capture)
                     if use_capture_context:
                         try:
-                            if captured_ocr_texts:
+                            if current_capture_ocr_texts:
                                 # Use the most recent OCR text first
-                                for ocr_text in reversed(captured_ocr_texts):
+                                for ocr_text in reversed(current_capture_ocr_texts):
                                     if ocr_text and ocr_text.strip():
                                         ocr_content = ocr_text.strip()
                                         potential = extract_last_question(ocr_text)
@@ -1530,16 +2104,10 @@ async def handle_ui(ws):
                         if question_source == "general":
                             question_source = "capture"  # File upload adds capture-like context
 
-                    if context_chunks:
-                        actual_question = actual_question.strip()
-                        actual_question = actual_question + "\n\n" + "\n\n".join(chunk.strip() for chunk in context_chunks if chunk.strip())
-                    
                     # Check if capture context was requested but no screen content is available
-                    if question_source == "capture" and not ocr_content and not file_context:
-                        ocr_text_available = get_combined_ocr_text()
-                        if not ocr_text_available:
-                            logger.warning("Capture context requested but no screen content available")
-                            await broadcast({
+                    if question_source == "capture" and not ocr_content and not file_context and not provided_question:
+                        logger.warning("Capture context requested but no current screen content available")
+                        await broadcast({
                                 "type": "status", 
                                 "message": "⚠️ No screen content captured. Please capture the screen first using the capture button."
                             })
@@ -1566,27 +2134,29 @@ async def handle_ui(ws):
                         "contextLabel": context_label
                     }, session_id=session_id)
                     # Pass the actual question directly, not prefixed with "Last question:"
-                    extra_company_ctx = [company_context_text] if company_context_text else None
+                    supporting_ctx = [chunk.strip() for chunk in context_chunks if chunk and chunk.strip()]
+                    if company_context_text and _is_company_related(actual_question, company_context_text):
+                        supporting_ctx.append(company_context_text)
                     await stream_llm(
                         llm,
-                        actual_question,
+                        actual_question.strip(),
                         out_type="coach",
                         mode="coach",
                         strict=strict,
                         context_type=question_source,
-                        extra_ctx=extra_company_ctx,
+                        extra_ctx=supporting_ctx or None,
                         session_id=session_id,
+                        coaching_mode=coaching_mode,
                     )
                 elif mtype == "clear_captures":
                     # Clear all captured OCR texts
-                    captured_ocr_texts = []
-                    logger.info("Cleared all captured OCR texts")
+                    clear_session_captures(session_id)
+                    logger.info(f"[Session {session_id}] Cleared all captured OCR texts")
                     await broadcast({"type": "captures_cleared"}, session_id=session_id)
                 elif mtype == "clear_transcript":
                     # Clear the accumulated transcript (partial_text) on server
-                    # global partial_text  <-- Redundant, already declared at top
-                    old_len = len(partial_text) if partial_text else 0
-                    partial_text = ""
+                    old_len = len(get_session_partial_text(session_id))
+                    set_session_partial_text(session_id, "")
                     logger.info(f"[Session {session_id}] Cleared transcript (was {old_len} chars)")
                     await broadcast({"type": "transcript_cleared"}, session_id=session_id)
                 elif mtype == "clear_conversation":
@@ -1619,15 +2189,15 @@ async def handle_ui(ws):
                             "speaker": speaker,
                             "recording_mode": recording_mode
                         }
-                    })
+                    }, session_id=session_id)
                 elif mtype == "stop_audio":
                     # Reset recording mode to prevent further transcript accumulation
                     globals()['current_recording_mode'] = None
                     try:
                         # Optionally trim partial_text to reduce repeats next session
-                        if 'partial_text' in globals() and isinstance(partial_text, str):
-                            if len(partial_text) > 1200:
-                                partial_text = partial_text[-800:]
+                        current_partial = get_session_partial_text(session_id)
+                        if len(current_partial) > 1200:
+                            set_session_partial_text(session_id, current_partial[-800:])
                     except Exception:
                         pass
                     await broadcast({"type": "status", "data": {"audio": "stopped"}}, session_id=session_id)
@@ -1653,7 +2223,7 @@ async def handle_ui(ws):
                             "initialized": ai_initialized,
                             **status
                         }
-                    })
+                    }, session_id=session_id)
                 elif mtype == "set_language":
                     # Change transcription language
                     language = msg.get("language", "en-US")
@@ -1765,6 +2335,15 @@ async def ingest_resume(name: str, raw: bytes, session_id: str = None):
     # Initialize session data if not exists
     global SentenceTransformer, session_resume_data
     session_data = get_or_create_resume_data(session_id)
+    existing_embedder = session_data.get("embedder")
+    session_data.update({
+        "index": None,
+        "emb_texts": [],
+        "emb_matrix": None,
+        "embedder": existing_embedder,
+        "profile": extract_structured_resume_profile(text),
+        "raw_text": text
+    })
     
     try:
         if SentenceTransformer is None:
@@ -1776,16 +2355,12 @@ async def ingest_resume(name: str, raw: bytes, session_id: str = None):
         vectors = session_data["embedder"].encode(chunks, normalize_embeddings=True)
         
         if _has_faiss:
-            if session_data["index"] is None:
-                session_data["index"] = faiss.IndexFlatIP(vectors.shape[1])  # type: ignore
+            session_data["index"] = faiss.IndexFlatIP(vectors.shape[1])  # type: ignore
             session_data["index"].add(np.asarray(vectors, dtype='float32'))
         else:
             # Simple numpy-based store
             vecs = np.asarray(vectors, dtype='float32')
-            if session_data["emb_matrix"] is None:
-                session_data["emb_matrix"] = vecs
-            else:
-                session_data["emb_matrix"] = np.vstack([session_data["emb_matrix"], vecs])
+            session_data["emb_matrix"] = vecs
         
         session_data["emb_texts"].extend(chunks)
         logger.info("✅ Ingested %d resume chunks for session %s", len(chunks), session_id)
@@ -1878,11 +2453,9 @@ def enhance_response_formatting(text: str) -> str:
     # 5. Structure interview answers better
     # Look for common interview answer patterns and format them
     patterns = [
-        (r'Answer Structure\s*1\.', r'\n\n**Answer Structure:**\n\n**1.**'),
         (r'Current Position:', r'\n\n**Current Position:**'),
         (r'Contextual Explanation:', r'\n\n**Contextual Explanation:**'),
         (r'Next Steps:', r'\n\n**Next Steps:**'),
-        (r'Suggested Key Phrases\s*-', r'\n\n**Suggested Key Phrases:**\n\n'),
     ]
     
     for pattern, replacement in patterns:
@@ -1979,9 +2552,9 @@ def _extract_company_names(text: str) -> List[str]:
     if not text:
         return names
     try:
-        # Look for lines like "Company: NAME"
+        # Look for lines like "Company: NAME", "Company Name: NAME", or "Organization: NAME"
         for line in text.splitlines():
-            m = re.match(r"\s*Company\s*:\s*(.+)$", line.strip(), flags=re.IGNORECASE)
+            m = re.match(r"\s*(?:Company(?:\s+Name)?|Organization)\s*:\s*(.+)$", line.strip(), flags=re.IGNORECASE)
             if m:
                 name = m.group(1).strip()
                 if name:
@@ -2023,7 +2596,14 @@ def _is_company_related(question_or_text: str, company_text: str) -> bool:
         # If the question mentions the company name, it's relevant
         names = _extract_company_names(company_text)
         for name in names:
-            if name and name.strip() and name.lower() in ql:
+            clean_name = name.strip()
+            company_base = re.sub(
+                r"\b(inc\.?|corp\.?|corporation|llc|ltd\.?|limited|technologies|technology)\b",
+                "",
+                clean_name,
+                flags=re.IGNORECASE,
+            ).strip(" .,-")
+            if clean_name and (clean_name.lower() in ql or (company_base and company_base.lower() in ql)):
                 return True
         
         # Expanded patterns for company-related questions
@@ -2055,6 +2635,7 @@ def _is_company_related(question_or_text: str, company_text: str) -> bool:
             r"\bwhat\s+would\s+you\s+change\s+about\s+(our|the)\s+(product|service|website)\b",
             
             # Company-specific terminology
+            r"\bwhy\s+are\s+you\s+interested\s+in\s+(this|the|our)\s+(company|organization)\b",
             r"\bwhy\s+(are\s+you\s+interested\s+in|this)\s+(company|organization|role\s+at)\b",
         ]
         
@@ -2069,7 +2650,191 @@ def _is_company_related(question_or_text: str, company_text: str) -> bool:
         return False
 
 
-def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, context_type: str = "general"):
+def _requested_code_language(question: str) -> str:
+    q = (question or "").lower()
+    language_patterns = [
+        ("cpp", r"\b(c\+\+|cpp)\b"),
+        ("python", r"\bpython\b"),
+        ("java", r"\bjava\b"),
+        ("javascript", r"\b(javascript|js)\b"),
+        ("typescript", r"\b(typescript|ts)\b"),
+        ("go", r"\b(golang|go)\b"),
+        ("sql", r"\bsql\b"),
+        ("c", r"\bc language\b|\bin c\b"),
+    ]
+    for language, pattern in language_patterns:
+        if re.search(pattern, q):
+            return language
+    return "cpp"
+
+
+def _build_interview_prompt(
+    question: str,
+    ctx: List[str],
+    question_type: str,
+    strict: bool = False,
+    context_type: str = "general",
+    additional_context: str = "",
+    coaching_mode: bool = False,
+) -> tuple[str, str]:
+    del context_type
+    supporting_context = "\n\n".join(chunk.strip() for chunk in (ctx or []) if chunk and chunk.strip())
+    if additional_context.strip():
+        supporting_context = (
+            f"{supporting_context}\n\n{additional_context.strip()}"
+            if supporting_context else additional_context.strip()
+        )
+
+    shared_guardrails = (
+        "You are an Interview AI copilot. Answer the current interviewer question directly. "
+        "Use provided candidate/resume context only when the question type requires it. "
+        "Never invent companies, internships, CGPA, metrics, achievements, certifications, technologies, or outcomes. "
+        "If a fact is missing, say it conservatively or leave it out. "
+        "Do not mix in unrelated prior topics unless the question asks for them."
+    )
+    if strict:
+        shared_guardrails += " Keep the answer especially focused and avoid optional background."
+    if coaching_mode:
+        shared_guardrails += (
+            " Start with the direct final answer. After that, you may add a short coaching section with key points or follow-up questions. "
+            "Avoid canned coaching labels and keep any coaching addendum short."
+        )
+    else:
+        shared_guardrails += (
+            " Coaching mode is off: show only the direct interview answer. "
+            "Do not include coaching notes, tips, answer-planning language, or follow-up questions."
+        )
+
+    context_block = ""
+    if supporting_context:
+        label = "Relevant candidate context" if question_type in {
+            "resume_hr", "behavioral", "resume_specific", "unsupported_resume_claim_check"
+        } else "Supporting question context"
+        context_block = f"\n\n{label}:\n{supporting_context[:3500]}"
+
+    if question_type in {"resume_hr", "resume_specific"}:
+        system = (
+            f"{shared_guardrails} "
+            "Generate a natural, interview-ready answer in first person, as if the candidate is speaking. "
+            "Use resume facts from the context, keep it around 45-90 seconds, and write in polished paragraphs. "
+            "Do not provide coaching notes or bullet-only answers."
+        )
+        user = (
+            f"Interview question: {question}{context_block}\n\n"
+            "Answer in first person using only supported resume facts. If relevant facts are missing, give a concise conservative answer without making them up."
+        )
+        return system, user
+
+    if question_type == "behavioral":
+        behavioral_missing_detail_rule = (
+            "If resume facts are insufficient for a specific story, ask up to two short clarification questions after a brief note."
+            if coaching_mode else
+            "If resume facts are insufficient for a specific story, give a conservative first-person answer based only on known facts."
+        )
+        system = (
+            f"{shared_guardrails} "
+            "Use STAR reasoning internally, but output a natural spoken answer with Situation, Task, Action, Result, and Learning woven into paragraphs. "
+            "Answer in first person as the candidate and do not label STAR sections. "
+            "Prefer real projects, internships, leadership roles, hackathons, or achievements from the resume context. "
+            "Do not invent numeric impact; use qualitative impact if exact results are not provided."
+        )
+        user = (
+            f"Behavioral interview question: {question}{context_block}\n\n"
+            f"Give one specific, conservative interview answer. {behavioral_missing_detail_rule}"
+        )
+        return system, user
+
+    if question_type == "coding":
+        language = _requested_code_language(question)
+        system = (
+            f"{shared_guardrails} "
+            "You are a precise coding interview assistant. Do not use resume context. "
+            "Return clean, syntactically correct code with proper line breaks and indentation. "
+            "Always use fenced markdown code blocks with a language tag."
+        )
+        user = (
+            f"Coding question: {question}{context_block}\n\n"
+            "Return exactly these sections:\n"
+            "1. Problem restatement\n"
+            "2. Approach\n"
+            f"3. Clean code in a fenced markdown block tagged `{language}`\n"
+            "4. Edge cases\n"
+            "5. Time complexity\n"
+            "6. Space complexity\n\n"
+            "If no language is specified by the question, use C++17. The code must compile and must not be compressed into one line. "
+            "For C++ answers, include valid headers such as `#include <bits/stdc++.h>` or exact standard headers; never write a bare `#include`. "
+            "For C++ virtual-function/OOP examples, include required headers and demonstrate polymorphism with a pointer, reference, or smart pointer."
+        )
+        return system, user
+
+    if question_type == "system_design":
+        q_lower = (question or "").lower()
+        messaging_design = bool(re.search(r"\b(whatsapp|chat|messag(?:e|ing|er)?|dm|direct message|telegram|signal)\b", q_lower))
+        domain_specific_depth = (
+            "For messaging apps, explicitly cover real-time messaging, persistent WebSocket connections, queues, delivery status, online/offline handling, media storage, push notifications, group chat handling, end-to-end encryption, database schema, and horizontal scaling. "
+            if messaging_design else
+            "Keep domain-specific components tied to the actual product in the question; do not add unrelated chat or messaging sections unless the product needs them. "
+        )
+        system = (
+            f"{shared_guardrails} "
+            "You are a senior system design interviewer. Do not use resume context unless explicitly requested. "
+            "Give a deep but interview-practical design answer. State assumptions clearly and keep them conservative."
+        )
+        user = (
+            f"System design question: {question}{context_block}\n\n"
+            "Cover: requirements and assumptions, rough APIs, data model, high-level architecture, storage choices, caching, scaling, consistency, reliability/failure handling, security/privacy where relevant, bottlenecks, and tradeoffs. "
+            f"{domain_specific_depth}"
+            "Avoid fake traffic numbers unless the question provides them."
+        )
+        return system, user
+
+    if question_type == "technical":
+        system = (
+            f"{shared_guardrails} "
+            "Answer as a strong technical interview candidate. Do not use resume context unless the question explicitly asks to connect the answer to the candidate's project or resume."
+        )
+        user = (
+            f"Technical interview question: {question}{context_block}\n\n"
+            "Give a clear explanation with examples when useful. Keep it accurate, concise, and interview-ready. "
+            "For browser URL flow questions, cover DNS, TCP/TLS, HTTP request/response, and browser rendering."
+        )
+        return system, user
+
+    if question_type == "unsupported_resume_claim_check":
+        system = (
+            f"{shared_guardrails} "
+            "This is a resume claim-check. Search only the provided resume facts/context. "
+            "If the claim is not found, say it is not found in the resume context. Never invent missing experience."
+        )
+        user = (
+            f"Claim-check question: {question}{context_block}\n\n"
+            "Answer directly: say whether the claim is supported by the resume facts shown, and cite the matching fact if present. "
+            "If it is not supported, say it is not found in the resume context."
+        )
+        return system, user
+
+    system = (
+        f"{shared_guardrails} "
+        "Answer using general AI knowledge. Do not use resume context unless the question explicitly asks about the candidate."
+    )
+    user = (
+        f"Question: {question}{context_block}\n\n"
+        "Give a direct, accurate answer. Avoid unsupported assumptions and unrelated context."
+    )
+    return system, user
+
+
+def build_prompts(
+    mode: str,
+    facts: str,
+    ctx: List[str],
+    strict: bool = False,
+    context_type: str = "general",
+    classification=None,
+    resume_profile: Optional[Dict] = None,
+    coaching_mode: bool = False,
+    session_id: Optional[str] = None,
+):
     base_ctx = chr(10).join(ctx)
     company_context = get_company_brief_text()
     
@@ -2107,7 +2872,15 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
 
     # Core response guidelines: Always respond directly with clear, polished, complete answers
     # For transcription context, enforce brevity and conciseness
-    if context_type == "transcription":
+    if not coaching_mode:
+        core_guidelines = (
+            "\n\nDIRECT ANSWER STYLE:\n"
+            "Answer as the candidate in first person for HR, resume, and behavioral questions.\n"
+            "Use short natural paragraphs. Avoid headings and bullets unless the question asks for code, a technical comparison, or a list.\n"
+            "Do not include coaching notes, answer structures, talking points, suggested phrases, or generic interview advice.\n"
+            "Never invent resume facts, metrics, companies, internships, achievements, or technologies."
+        )
+    elif context_type == "transcription":
         core_guidelines = (
             "\n\nRESPONSE GUIDELINES FOR INTERVIEW TRANSCRIPTION:\n"
             "🎯 DIRECT ANSWERS ONLY: Answer EXACTLY the current interviewer question.\n"
@@ -2166,14 +2939,15 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
     # Determine what context to include based on context_type
     # This prevents mixing transcription and capture contexts
     additional_context = ""
+    session_partial_text = get_session_partial_text(session_id)
     if context_type == "transcription":
         # For transcription-related questions, only include speech/audio context
         # For live interviewer Q&A we avoid injecting long transcript history by default
-        if partial_text:
+        if session_partial_text:
             additional_context = f""
     elif context_type == "capture":
         # For capture-related questions, only include OCR/screen context
-        ocr_text = get_combined_ocr_text()
+        ocr_text = "" if mode == "coach" else get_combined_ocr_text(session_id)
         if ocr_text:
             # Include more context for capture (up to 2000 chars for better question extraction)
             additional_context = f"Screen capture context:\n{ocr_text[:2000]}\n\n"
@@ -2184,13 +2958,30 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
     else:
         # For general questions, include both contexts but labeled clearly
         contexts = []
-        if partial_text:
-            contexts.append(f"Transcription context: {partial_text[:500]}")
-        ocr_text = get_combined_ocr_text()
+        if session_partial_text:
+            contexts.append(f"Transcription context: {session_partial_text[:500]}")
+        ocr_text = "" if mode == "coach" else get_combined_ocr_text(session_id)
         if ocr_text:
             contexts.append(f"Screen context: {ocr_text[:500]}")
         if contexts:
             additional_context = "\n\n".join(contexts) + "\n\n"
+
+    routed_question_type = None
+    if classification is not None:
+        routed_question_type = getattr(classification, "question_type", None)
+        if not routed_question_type and isinstance(classification, dict):
+            routed_question_type = classification.get("question_type")
+    if mode == "coach" and routed_question_type:
+        prompt_extra_context = additional_context if context_type in {"capture", "transcription"} else ""
+        return _build_interview_prompt(
+            facts.strip() if facts else "",
+            ctx,
+            routed_question_type,
+            strict=strict,
+            context_type=context_type,
+            additional_context=prompt_extra_context,
+            coaching_mode=coaching_mode,
+        )
     
     if mode == "coach":
         # For transcription context, emphasize brevity in the system prompt
@@ -2267,14 +3058,14 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
             "❌ DON'T SAY:\n"
             "- 'I don't have access to the screen capture'\n"
             "- 'Please capture the screen content first'\n"
-            "- 'I'll provide a structured response template'\n"
+            "- 'I'll provide a response template'\n"
             "- 'Once you have the details of the problem'\n"
             "- 'The captured text appears to be fragmented'\n"
             "- 'Analysis of the Captured Screen'\n"
             "- 'Content Overview: The captured text appears...'\n"
             "- 'Key Observations: Fragmentation...'\n"
             "- 'Data Integrity concerns...'\n"
-            "- 'Suggested Key Phrases...'\n"
+            "- Canned phrase lists or coaching-note labels\n"
             "- Any meta-analysis of poor OCR quality\n"
             "- Any variation of asking the user to capture first\n\n"
             "❌ DON'T DO:\n"
@@ -2485,18 +3276,23 @@ def build_prompts(mode: str, facts: str, ctx: List[str], strict: bool = False, c
                         "- NO long explanations unless the question specifically asks for details"
                     )
                 else:
-                    user = (
-                        f"The interviewer just asked: \"{question}\"\n\n"
-                        f"Based on this candidate's resume/background: {base_ctx}\n\n"
-                        f"{additional_context}"
-                        f"Provide specific, actionable talking points to answer this exact question: \"{question}\"\n\n"
-                        "Requirements:\n"
-                        "- Give bullet points specific to this question only\n"
-                        "- Include suggested key phrases the candidate can use\n"
-                        "- Provide a clear answer structure\n"
-                        "- Make it practical and immediately usable\n"
-                        "- Do NOT give generic advice that applies to any interview question"
-                    )
+                    if coaching_mode:
+                        user = (
+                            f"The interviewer just asked: \"{question}\"\n\n"
+                            f"Candidate resume/background context: {base_ctx}\n\n"
+                            f"{additional_context}"
+                            f"Start with the direct answer to this exact question: \"{question}\". "
+                            "After that, add a short coaching note only if it helps the candidate improve delivery. "
+                            "Keep every point specific to this question and avoid generic interview advice."
+                        )
+                    else:
+                        user = (
+                            f"The interviewer just asked: \"{question}\"\n\n"
+                            f"Candidate resume/background context: {base_ctx}\n\n"
+                            f"{additional_context}"
+                            "Provide the answer the candidate should say out loud. Use first-person voice when the question is about the candidate. "
+                            "Write in concise natural paragraphs, use only supported resume facts, and do not add coaching notes or generic advice."
+                        )
                     
                     # Extra emphasis for capture context
                     if context_type == "capture":
@@ -2581,6 +3377,163 @@ def should_retry_response(response: str, original_question: str) -> bool:
     return False
 
 
+def sanitize_provider_error_text(text: str) -> str:
+    """Convert raw AI-provider failures into a user-safe message."""
+    if not text:
+        return text
+
+    lowered = text.lower()
+    looks_like_provider_error = (
+        text.strip().startswith("[ERROR:")
+        or "rate_limit" in lowered
+        or "rate limit" in lowered
+        or "too many requests" in lowered
+        or "status 429" in lowered
+        or "http 429" in lowered
+        or "groq" in lowered
+        or "openai api returned" in lowered
+    )
+    if not looks_like_provider_error:
+        return text
+
+    if any(marker in lowered for marker in ("rate", "429", "too many requests")):
+        return "The AI provider is temporarily rate-limited. Please try again in a moment or switch providers."
+    return "The AI provider is temporarily unavailable. Please try again in a moment or check your AI provider settings."
+
+
+def _is_followup_question(question: str) -> bool:
+    """Detect short follow-up prompts that need the previous Q&A turn."""
+    q = re.sub(r"\s+", " ", (question or "").strip().lower())
+    if not q:
+        return False
+
+    word_count = len(re.findall(r"[a-z0-9+#.]+", q))
+    followup_patterns = [
+        r"\b(previous|last answer|last question|above|same|that answer|that approach|that project)\b",
+        r"\b(lld|low[- ]level design|class diagram|object model|schema design)\b",
+        r"\b(explain more|elaborate|go deeper|more detail|clarify|can you explain|continue)\b",
+        r"\b(give (me )?(an )?example|show example|dry run|walk through|trace it)\b",
+        r"\b(time complexity|space complexity|complexity|edge cases|optimi[sz]e|improve it|code for it)\b",
+        r"^(why|how)\??$",
+        r"^(why|how)\s+(is|does|do|can|would|should|so|that|this|it|they|them)\b",
+    ]
+    if any(re.search(pattern, q) for pattern in followup_patterns):
+        return True
+    return word_count <= 8 and bool(re.search(r"^(why|how|example|examples|complexity|code|continue)\b", q))
+
+
+def _compact_history_messages(messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    compact: List[Dict[str, str]] = []
+    for msg in messages:
+        role = msg.get("role")
+        if role not in {"user", "assistant"}:
+            continue
+        content = (msg.get("content") or "").strip()
+        if not content:
+            continue
+        limit = 700 if role == "user" else 1400
+        compact.append({"role": role, "content": content[:limit]})
+    return compact
+
+
+def _recent_followup_history(
+    session_hist: Dict[str, List[Dict[str, str]]],
+    history_key: str,
+    turns: int = 1,
+) -> List[Dict[str, str]]:
+    """Return the latest compact Q&A turns for a follow-up, preferring the same context."""
+    turns = max(1, min(turns, 2))
+
+    def last_turns(key: str) -> List[Dict[str, str]]:
+        return _compact_history_messages((session_hist.get(key) or [])[-turns * 2:])
+
+    same_context = last_turns(history_key)
+    if same_context:
+        return same_context
+
+    for key in ("coach_capture", "coach_transcription", "coach_general", "coach"):
+        if key != history_key:
+            fallback = last_turns(key)
+            if fallback:
+                return fallback
+    return []
+
+
+def _repair_cpp_snippet(code: str, question: str = "") -> str:
+    repaired = (code or "").strip()
+    if not repaired:
+        return repaired
+
+    repaired = re.sub(r"^\s*#\s*include\s*(?=\n|$)", "#include <bits/stdc++.h>", repaired, count=1)
+    if "#include" not in repaired and re.search(r"\b(std::|vector<|int\s+\w+\s*\()", repaired):
+        repaired = "#include <bits/stdc++.h>\nusing namespace std;\n\n" + repaired
+    if "#include" in repaired and "using namespace std;" not in repaired and "std::" not in repaired:
+        repaired = re.sub(r"(#\s*include\s*<[^>]+>\s*)", r"\1\nusing namespace std;\n", repaired, count=1)
+
+    if "remove duplicate" in (question or "").lower():
+        repaired = re.sub(
+            r"\bstd::vector\s+([A-Za-z_]\w*)\s*\(\s*std::vector\s*&\s*([A-Za-z_]\w*)\s*\)",
+            r"vector<int> \1(vector<int>& \2)",
+            repaired,
+        )
+        repaired = re.sub(
+            r"\bvector\s+([A-Za-z_]\w*)\s*\(\s*vector\s*&\s*([A-Za-z_]\w*)\s*\)",
+            r"vector<int> \1(vector<int>& \2)",
+            repaired,
+        )
+
+    return repaired
+
+
+def _repair_fenced_cpp_blocks(answer: str, question: str = "") -> str:
+    if not answer or "```" not in answer:
+        return answer
+
+    def replace_block(match: re.Match) -> str:
+        lang = (match.group(1) or "").strip().lower()
+        code = match.group(2) or ""
+        is_cpp = lang in {"cpp", "c++", "cxx", "cc"} or (
+            not lang and _requested_code_language(question) == "cpp"
+        )
+        if not is_cpp:
+            return match.group(0)
+        repaired = _repair_cpp_snippet(code, question).strip()
+        return f"```cpp\n{repaired}\n```"
+
+    return re.sub(r"```([A-Za-z0-9_+#.-]*)\s*\n?([\s\S]*?)```", replace_block, answer)
+
+
+def _ensure_coding_answer_has_fenced_code(answer: str, question: str) -> str:
+    """Wrap unfenced code sections so the UI can render valid markdown code blocks."""
+    if not answer:
+        return answer
+    if "```" in answer:
+        return _repair_fenced_cpp_blocks(answer, question)
+
+    language = _requested_code_language(question)
+    if language != "cpp":
+        fence_language = language
+    else:
+        fence_language = "cpp"
+
+    code_section_pattern = re.compile(
+        r"(?P<header>\bClean\s+Code\b\s*:?\s*)(?P<code>.*?)(?=\n\s*(?:Edge\s+Cases|Time\s+Complexity|Space\s+Complexity)\b)",
+        re.IGNORECASE | re.DOTALL,
+    )
+    match = code_section_pattern.search(answer)
+    if not match:
+        return answer
+
+    code = match.group("code").strip()
+    if not re.search(r"(#\s*include|std::|vector<|for\s*\(|while\s*\(|return\b|class\s+\w+)", code):
+        return answer
+    if fence_language == "cpp":
+        code = _repair_cpp_snippet(code, question)
+
+    fenced = format_markdown_blocks(f"```{fence_language}\n{code}\n```")
+    return answer[:match.start()] + "Clean Code\n" + fenced + "\n\n" + answer[match.end():].lstrip()
+
+
 async def ensure_ai_initialized():
     """Ensure AI providers and heavy modules are initialized in background"""
     global ai_initialized
@@ -2620,33 +3573,41 @@ async def stream_vision_to_llm(
     user_prompt: str = None,
     out_type: str = "coach",
     session_id: str = None,
+    coaching_mode: bool = False,
 ) -> bool:
     """Send screenshot directly to LLM via vision API and stream the response.
 
     Returns True on success, False if the model/provider doesn't support vision
     so the caller can fall back to OCR.
     """
-    image_format = "png"
-    if len(image_bytes) >= 3 and image_bytes[:3] == b'\xff\xd8\xff':
-        image_format = "jpeg"
+    del llm_id
+    provider_cfg = _select_fast_screen_provider_config(session_id)
+    if not provider_cfg:
+        logger.info("Fast screen vision skipped: no vision-capable provider configured")
+        return False
 
-    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    prepared_image, image_format = _prepare_image_for_fast_vision(image_bytes)
+    image_b64 = base64.b64encode(prepared_image).decode("utf-8")
 
     prompt = user_prompt or (
         "Analyze this screenshot carefully. "
         "If it shows a coding problem or algorithm question, solve it completely with working code, "
         "explanation, and time/space complexity. "
         "If it shows a system design question, provide a thorough design. "
-        "If it shows a behavioral or HR interview question, answer using the STAR framework. "
+        "If it shows a behavioral or HR interview question, use STAR reasoning internally but answer in first person as the candidate without labeling STAR sections. "
         "If it shows a technical concept, diagram, or text, explain or summarize it clearly. "
         "Give a direct, comprehensive answer suitable for a technical interview."
     )
+    if coaching_mode:
+        prompt += " You may add a short coaching note after the direct answer if it improves delivery."
+    else:
+        prompt += " Do not include coaching notes, answer templates, or generic interview advice."
 
     system_prompt = (
         "You are an expert AI interview assistant. Analyze the provided screenshot and give a clear, "
         "accurate, complete answer. For coding problems provide working code with complexity analysis. "
-        "Use proper formatting: **bold**, `code`, LaTeX math ($O(n)$). "
-        "Structure with headers and bullet points."
+        "Use proper markdown for code and math. For HR, resume, and behavioral questions, answer naturally in first person. "
+        "Avoid headers and bullets unless they are useful for code, technical comparisons, or system design."
     )
 
     messages = [
@@ -2663,11 +3624,6 @@ async def stream_vision_to_llm(
         },
     ]
 
-    await ensure_ai_initialized()
-    if not ai_initialized:
-        broadcast_sync({"type": out_type, "text": "[AI system not initialized]"}, session_id=session_id)
-        return False
-
     # Signal start of new response
     broadcast_sync(
         {
@@ -2681,19 +3637,9 @@ async def stream_vision_to_llm(
     )
 
     # Resolve generator — respect BYOK session config
-    session_cfg = session_configs.get(session_id) if session_id else None
     try:
-        if session_cfg and session_cfg.get("ai_api_key"):
-            user_prov_cfg = UserProviderConfig(
-                provider=session_cfg.get("ai_provider", "openai"),
-                api_key=session_cfg["ai_api_key"],
-                model=session_cfg.get("ai_model", "") or llm_id or "",
-                base_url=session_cfg.get("ai_base_url", ""),
-            )
-            byok_provider = create_provider_from_config(user_prov_cfg)
-            gen = byok_provider.generate_stream(messages)
-        else:
-            gen = generate_ai_response_for(llm_id, messages) if llm_id else generate_ai_response(messages)
+        vision_provider_instance = create_provider_from_config(provider_cfg)
+        gen = vision_provider_instance.generate_stream(messages)
 
         collected: List[str] = []
         async for token in gen:
@@ -2708,9 +3654,47 @@ async def stream_vision_to_llm(
             broadcast_sync({"type": out_type, "text": token}, session_id=session_id)
             await asyncio.sleep(0)
 
+        streamed_raw_text = "".join(collected)
+        full_text = clean_streamed_response(
+            collected_tokens=collected,
+            enable_formatting=True,
+        )
+        full_text = sanitize_provider_error_text(full_text)
+        try:
+            vision_classification = classify_question(user_prompt or streamed_raw_text)
+            vision_question_type = getattr(vision_classification, "question_type", "general_knowledge")
+        except Exception:
+            vision_question_type = "general_knowledge"
+        looks_like_code_answer = "```" in full_text or bool(re.search(
+            r"(#\s*include|std::|vector<|def\s+\w+\s*\(|class\s+\w+|time complexity|space complexity)",
+            full_text,
+            re.IGNORECASE,
+        ))
+        if vision_question_type == "coding" or looks_like_code_answer:
+            full_text = _ensure_coding_answer_has_fenced_code(full_text, user_prompt or "")
+        if _has_answer_quality and os.getenv("ENABLE_POSTPROCESSING", "true").lower() in ("true", "1", "yes"):
+            try:
+                full_text = postprocess_answer(full_text, create_seen_tokens_log(streamed_raw_text[:256]))
+            except Exception as e:
+                logger.warning("Vision response postprocessing failed: %s", e)
+        full_text = enhance_response_formatting(full_text)
+        if vision_question_type == "coding" or looks_like_code_answer:
+            full_text = _ensure_coding_answer_has_fenced_code(full_text, user_prompt or "")
+        if full_text and full_text.strip() != streamed_raw_text.strip():
+            logger.info("Sending final formatted replacement for fast vision response")
+            broadcast_sync({"type": out_type, "text": full_text, "replace": True}, session_id=session_id)
+
         broadcast_sync({"type": out_type, "text": "", "complete": True}, session_id=session_id)
-        logger.info(f"Vision LLM stream complete: {len(''.join(collected))} chars")
-        return True
+        total_chars = len(full_text or streamed_raw_text)
+        logger.info(
+            "Fast screen vision complete: %d chars via %s/%s (%d bytes -> %d bytes)",
+            total_chars,
+            provider_cfg.provider,
+            provider_cfg.model,
+            len(image_bytes),
+            len(prepared_image),
+        )
+        return total_chars > 0
 
     except Exception as exc:
         logger.error(f"stream_vision_to_llm error: {exc}")
@@ -2726,6 +3710,7 @@ async def stream_llm(
     context_type: str = "general",
     extra_ctx: Optional[List[str]] = None,
     session_id: str = None,
+    coaching_mode: bool = False,
 ):
     """Stream LLM response using open source AI providers
     
@@ -2741,27 +3726,10 @@ async def stream_llm(
         try:
             is_duplicate, prev_answer_hash = check_duplicate_question(facts)
             if is_duplicate:
-                logger.info(f"🔄 Duplicate question detected, skipping processing")
-                
-                # Send duplicate notice to UI
-                duplicate_message = "⚠️ Duplicate question detected; using previous answer context."
-                broadcast_sync({
-                    "type": out_type,
-                    "text": "",
-                    "reset": True
-                }, session_id=session_id)
-                broadcast_sync({
-                    "type": out_type,
-                    "text": duplicate_message
-                }, session_id=session_id)
-                broadcast_sync({
-                    "type": "duplicate_detected",
-                    "data": {
-                        "message": duplicate_message,
-                        "previous_hash": prev_answer_hash
-                    }
-                }, session_id=session_id)
-                return  # Skip processing
+                logger.info(
+                    "Duplicate question detected (previous hash: %s); continuing silently",
+                    prev_answer_hash,
+                )
         except Exception as e:
             logger.warning(f"⚠️  Duplicate detection failed: {e}")
     
@@ -2780,17 +3748,22 @@ async def stream_llm(
     classification = None
     original_llm_id = llm_id  # Store original for logging
     model_params = {}
-    
-    if _has_intelligent_routing and os.getenv("ENABLE_MODEL_ROUTING", "true").lower() in ("true", "1", "yes"):
+
+    try:
+        classification = classify_question(facts)
+        logger.info(
+            "Question classified: %s (confidence: %.2f, complexity: %s, needs_resume: %s)",
+            classification.question_type,
+            classification.confidence,
+            classification.complexity,
+            classification.needs_resume,
+        )
+    except Exception as e:
+        logger.warning("Question classification failed, using generic routing: %s", e)
+        classification = None
+
+    if classification and _has_intelligent_routing and os.getenv("ENABLE_MODEL_ROUTING", "true").lower() in ("true", "1", "yes"):
         try:
-            # Classify the question to understand its type
-            classification = classify_question(facts)
-            logger.info(
-                f"📊 Question classified: {classification.primary_type.value} "
-                f"(confidence: {classification.confidence:.2f}, "
-                f"complexity: {classification.complexity})"
-            )
-            
             # Route to optimal model based on question type
             context_dict = {
                 "mode": mode,
@@ -2803,22 +3776,23 @@ async def stream_llm(
                 logger.info(f"🔄 Model routing: {original_llm_id} → {llm_id}")
                 logger.info(f"📝 Model params: {model_params}")
             
-            # Broadcast classification info to UI
-            await broadcast({
-                "type": "question_classified",
-                "data": {
-                    "question_type": classification.primary_type.value,
-                    "confidence": classification.confidence,
-                    "complexity": classification.complexity,
-                    "suggested_model": llm_id,
-                    "tags": classification.tags
-                }
-            })
-            
         except Exception as e:
             logger.warning(f"⚠️  Intelligent routing failed, using default: {e}")
             llm_id = original_llm_id  # Fallback to original
     
+    if classification:
+        await broadcast({
+            "type": "question_classified",
+            "data": {
+                **classification.to_interview_dict(),
+                "legacy_question_type": classification.primary_type.value,
+                "legacy_confidence": classification.confidence,
+                "complexity": classification.complexity,
+                "suggested_model": llm_id,
+                "tags": classification.tags
+            }
+        }, session_id=session_id)
+
     # Apply smart truncation to facts if it's too long
     # This intelligently reduces content while keeping relevant parts
     original_length = len(facts)
@@ -2831,76 +3805,93 @@ async def stream_llm(
     # 🎯 ENHANCEMENT 2: ENHANCED RAG WITH RERANKING & QUERY EXPANSION
     # ============================================================================
     ctx: List[str] = []
-    
+    question_type = getattr(classification, "question_type", "general_knowledge") if classification else "general_knowledge"
+    needs_resume = bool(getattr(classification, "needs_resume", False))
+
     # Get session-specific resume data
     session_data = session_resume_data.get(session_id, {}) if session_id else {}
     embedder = session_data.get("embedder")
     index = session_data.get("index")
     emb_matrix = session_data.get("emb_matrix")
     emb_texts = session_data.get("emb_texts", [])
-    
-    if embedder is not None and (index is not None or emb_matrix is not None):
-        query_text = (partial_text or "").strip() or (facts or "").strip() or (get_combined_ocr_text() or "").strip()
-        
+    resume_profile = session_data.get("profile") or empty_resume_profile()
+    retrieved_resume_chunks: List[str] = []
+
+    if needs_resume and embedder is not None and (index is not None or emb_matrix is not None):
+        query_text = (facts or "").strip()
         if _has_intelligent_routing and os.getenv("ENABLE_ENHANCED_RAG", "true").lower() in ("true", "1", "yes"):
             try:
-                # Use enhanced context manager with reranking
                 context_mgr = create_context_manager(embedder, emb_matrix, emb_texts, index)
-                
-                # Retrieve with reranking and query expansion
                 resume_chunks = context_mgr.retrieve(
-                    query=query_text or facts,
-                    top_k=5,
+                    query=query_text,
+                    top_k=3,
                     rerank=True,
-                    expand_query=True
+                    expand_query=False
                 )
-                
-                ctx = [chunk.text for chunk in resume_chunks]
-                
-                # Log retrieval quality
+                retrieved_resume_chunks = [chunk.text for chunk in resume_chunks]
                 if resume_chunks:
                     avg_score = sum(c.relevance_score for c in resume_chunks) / len(resume_chunks)
                     logger.info(
-                        f"📚 Retrieved {len(resume_chunks)} resume chunks for session {session_id} "
-                        f"(avg relevance: {avg_score:.3f}, "
-                        f"sections: {set(c.section for c in resume_chunks)})"
+                        "Retrieved %d resume chunks for session %s (avg relevance: %.3f)",
+                        len(resume_chunks),
+                        session_id,
+                        avg_score,
                     )
-                
             except Exception as e:
-                logger.warning(f"⚠️  Enhanced RAG failed, falling back to basic retrieval: {e}")
-                # Fallback to original logic
+                logger.warning("Enhanced resume RAG failed, falling back to basic retrieval: %s", e)
                 if query_text:
-                    q = embedder.encode([query_text], normalize_embeddings=True).astype('float32')
+                    q = embedder.encode([query_text], normalize_embeddings=True).astype("float32")
                     if index is not None and _has_faiss:
-                        D, I = index.search(q, 5)
-                        ctx = [emb_texts[i] for i in I[0] if 0 <= i < len(emb_texts)]
+                        D, I = index.search(q, 3)
+                        retrieved_resume_chunks = [emb_texts[i] for i in I[0] if 0 <= i < len(emb_texts)]
                     elif emb_matrix is not None:
                         sims = emb_matrix @ q[0]
-                        topk = np.argsort(-sims)[:5]
-                        ctx = [emb_texts[i] for i in topk if 0 <= i < len(emb_texts)]
-        else:
-            # Original basic retrieval logic
-            if query_text:
-                q = embedder.encode([query_text], normalize_embeddings=True).astype('float32')
-                if index is not None and _has_faiss:
-                    D, I = index.search(q, 5)
-                    ctx = [emb_texts[i] for i in I[0] if 0 <= i < len(emb_texts)]
-                elif emb_matrix is not None:
-                    # cosine similarity with normalized embeddings reduces to dot product
-                    sims = emb_matrix @ q[0]
-                    topk = np.argsort(-sims)[:5]
-                    ctx = [emb_texts[i] for i in topk if 0 <= i < len(emb_texts)]
-            else:
-                # Fallback to first few chunks if no query context yet
-                ctx = emb_texts[:5]
-    elif emb_texts:
-        query_text = (partial_text or "").strip() or (facts or "").strip() or (get_combined_ocr_text() or "").strip()
-        ctx = retrieve_text_context(emb_texts, query_text, limit=5)
+                        topk = np.argsort(-sims)[:3]
+                        retrieved_resume_chunks = [emb_texts[i] for i in topk if 0 <= i < len(emb_texts)]
+        elif query_text:
+            q = embedder.encode([query_text], normalize_embeddings=True).astype("float32")
+            if index is not None and _has_faiss:
+                D, I = index.search(q, 3)
+                retrieved_resume_chunks = [emb_texts[i] for i in I[0] if 0 <= i < len(emb_texts)]
+            elif emb_matrix is not None:
+                sims = emb_matrix @ q[0]
+                topk = np.argsort(-sims)[:3]
+                retrieved_resume_chunks = [emb_texts[i] for i in topk if 0 <= i < len(emb_texts)]
+    elif needs_resume and emb_texts:
+        retrieved_resume_chunks = retrieve_text_context(emb_texts, facts, limit=3)
+
+    if needs_resume:
+        context_chunks_source = emb_texts if question_type == "unsupported_resume_claim_check" else (retrieved_resume_chunks or emb_texts[:5])
+        ctx = build_context(
+            facts,
+            resume_profile,
+            {},
+            question_type,
+            resume_chunks=context_chunks_source,
+        )
+        logger.info(
+            "Resume context selected for %s: %d compact blocks from %d chunks",
+            question_type,
+            len(ctx),
+            len(context_chunks_source),
+        )
+    else:
+        logger.info("Skipping resume context for %s question", question_type)
     
     if extra_ctx:
         ctx.extend([chunk for chunk in extra_ctx if chunk])
 
-    system, user = build_prompts(mode, facts, ctx, strict=strict, context_type=context_type)
+    system, user = build_prompts(
+        mode,
+        facts,
+        ctx,
+        strict=strict,
+        context_type=context_type,
+        classification=classification,
+        resume_profile=resume_profile,
+        coaching_mode=coaching_mode,
+        session_id=session_id,
+    )
     
     # Log final prompt sizes for debugging
     logger.info(f"Prompt sizes - System: {len(system)} chars, User: {len(user)} chars, Total: {len(system) + len(user)} chars, Context: {context_type}")
@@ -2930,8 +3921,23 @@ async def stream_llm(
     isolate = os.getenv("ISOLATE_CURRENT_QUESTION", "1").lower() in ("1", "true", "yes", "on")
     # Default to disabling history for coach mode to avoid drift; can be enabled via env
     disable_history = (mode == "coach" and os.getenv("DISABLE_HISTORY_FOR_COACH", "1").lower() in ("1", "true", "yes", "on")) or isolate
-    if session_hist[history_key] and not disable_history:
-        raw_recent = [m for m in session_hist[history_key][-MAX_HISTORY_TURNS*2:] if m["role"] != "system"]
+    followup_context_enabled = os.getenv("ENABLE_FOLLOWUP_CONTEXT", "1").lower() in ("1", "true", "yes", "on")
+    is_followup = mode == "coach" and followup_context_enabled and _is_followup_question(facts)
+    followup_history: List[Dict[str, str]] = []
+    if is_followup:
+        try:
+            turns = int(os.getenv("FOLLOWUP_HISTORY_TURNS", "1"))
+        except ValueError:
+            turns = 1
+        followup_history = _recent_followup_history(session_hist, history_key, turns=turns)
+        if followup_history:
+            logger.info("Including %d compact prior messages for follow-up context", len(followup_history))
+
+    if (session_hist[history_key] and not disable_history) or followup_history:
+        if followup_history and disable_history:
+            raw_recent = followup_history
+        else:
+            raw_recent = [m for m in session_hist[history_key][-MAX_HISTORY_TURNS*2:] if m["role"] != "system"]
 
         # Context-specific history handling for transcription and capture
         def smart_filter_history(raw_recent, facts, min_sim):
@@ -2952,7 +3958,9 @@ async def stream_llm(
             return filtered
 
         # Transcription context
-        if context_type == "transcription":
+        if followup_history and disable_history:
+            logger.info("Smart history filters skipped for explicit follow-up context")
+        elif context_type == "transcription":
             trans_mode = os.getenv("TRANSCRIPTION_HISTORY_MODE", "smart").lower()
             if trans_mode == "off":
                 logger.info("Transcription history suppressed (TRANSCRIPTION_HISTORY_MODE=off)")
@@ -3026,7 +4034,10 @@ async def stream_llm(
             messages.append(hist_msg)
         logger.info(f"Including {len(raw_recent)} prior messages (context: {context_type}, history disabled={disable_history})")
     elif disable_history:
-        logger.info("Conversation history disabled for coach mode (DISABLE_HISTORY_FOR_COACH=on)")
+        if is_followup:
+            logger.info("Follow-up detected, but no prior history was available")
+        else:
+            logger.info("Conversation history disabled for coach mode (DISABLE_HISTORY_FOR_COACH=on)")
     
     # Add current user message
     messages.append({"role": "user", "content": user})
@@ -3086,6 +4097,13 @@ async def stream_llm(
                     truncated_by_length = True
                     logger.warning("⚠️  Received truncation marker")
                     continue
+                if token.strip().startswith("[ERROR:"):
+                    safe_error = sanitize_provider_error_text(token)
+                    logger.warning("Provider error token sanitized before broadcasting")
+                    collected.append(safe_error)
+                    token_count += 1
+                    broadcast_sync({"type": out_type, "text": safe_error}, session_id=session_id)
+                    break
                 collected.append(token)
                 token_count += 1
                 
@@ -3113,10 +4131,14 @@ async def stream_llm(
         # 🎯 COMBINE AND CLEAN STREAMED TOKENS
         # ============================================================================
         # Use streaming_fixes helper to clean and format the collected tokens
+        streamed_raw_text = "".join(collected)
         full_text = clean_streamed_response(
             collected_tokens=collected,
             enable_formatting=True  # Apply markdown formatting
         )
+        full_text = sanitize_provider_error_text(full_text)
+        if question_type == "coding":
+            full_text = _ensure_coding_answer_has_fenced_code(full_text, facts)
 
         # ============================================================================
         # 🎯 POSTPROCESSING: CLEAN UP STREAMED ANSWER
@@ -3193,7 +4215,7 @@ async def stream_llm(
                                 "score": confidence_value,
                                 "label": confidence_label
                             }
-                        })
+                        }, session_id=session_id)
                         
                         # Retry with strict mode
                         return await stream_llm(
@@ -3205,6 +4227,7 @@ async def stream_llm(
                             context_type=context_type,
                             extra_ctx=extra_ctx,
                             session_id=session_id,
+                            coaching_mode=coaching_mode,
                         )
                     else:
                         logger.warning("⚠️ Max enhanced retries reached")
@@ -3262,7 +4285,7 @@ async def stream_llm(
                         "issues": confidence_score.issues[:3],  # Top 3 issues
                         "question_type": classification.primary_type.value if classification else "unknown"
                     }
-                })
+                }, session_id=session_id)
                 
                 # Auto-retry if confidence is very low and retry is enabled
                 if (confidence_score.recommendation == "retry" and 
@@ -3283,7 +4306,7 @@ async def stream_llm(
                                 "score": confidence_score.overall_score,
                                 "issues": confidence_score.issues[:2]
                             }
-                        })
+                        }, session_id=session_id)
                         
                         # Retry with strict mode for better quality
                         return await stream_llm(
@@ -3295,6 +4318,7 @@ async def stream_llm(
                             context_type=context_type,
                             extra_ctx=extra_ctx,
                             session_id=session_id,
+                            coaching_mode=coaching_mode,
                         )
                     else:
                         logger.warning("⚠️ Max retries reached, accepting low-confidence answer")
@@ -3355,7 +4379,17 @@ async def stream_llm(
                     enhanced_user = user + "\n\n🚨 CRITICAL: Provide a complete, specific, helpful answer. Avoid generic responses or deflections."
                     
                     # Recursive call with enhanced prompt
-                    await stream_llm(llm_id, facts, out_type, mode, strict, context_type, extra_ctx, session_id=session_id)
+                    await stream_llm(
+                        llm_id=llm_id,
+                        facts=facts,
+                        out_type=out_type,
+                        mode=mode,
+                        strict=strict,
+                        context_type=context_type,
+                        extra_ctx=extra_ctx,
+                        session_id=session_id,
+                        coaching_mode=coaching_mode,
+                    )
                     return
                 else:
                     logger.warning(f"⚠️ Max retries reached, proceeding with current response")
@@ -3366,6 +4400,8 @@ async def stream_llm(
             
             # Enhance response with formatting improvements
             full_text = enhance_response_formatting(full_text)
+            if question_type == "coding":
+                full_text = _ensure_coding_answer_has_fenced_code(full_text, facts)
         
         logger.info(f"📝 Full response collected: {len(full_text)} chars, first 100: '{full_text[:100]}'")
         
@@ -3375,8 +4411,8 @@ async def stream_llm(
                 session_hist[history_key] = []
             
             # Add user message and assistant response to history
-            session_hist[history_key].append({"role": "user", "content": user})
-            session_hist[history_key].append({"role": "assistant", "content": full_text})
+            session_hist[history_key].append({"role": "user", "content": (facts or "")[:1000]})
+            session_hist[history_key].append({"role": "assistant", "content": (full_text or "")[:3000]})
             
             # Trim history to max turns (keep only recent exchanges)
             if len(session_hist[history_key]) > MAX_HISTORY_TURNS * 2:
@@ -3419,7 +4455,55 @@ async def stream_llm(
                 # Do NOT send again - user already received streamed version
                 # completion_sent remains False so completion signal below is sent
 
-        
+        if full_text and full_text.strip() != (streamed_raw_text or "").strip():
+            logger.info("Sending final formatted replacement for streamed response")
+            broadcast_sync({"type": out_type, "text": full_text, "replace": True}, session_id=session_id)
+
+        auto_continue_enabled = os.getenv('AI_AUTO_CONTINUE', '0').lower() not in ('0','false','no','off')
+        if auto_continue_enabled and full_text:
+            try:
+                max_passes = int(os.getenv('AI_CONTINUE_PASSES', '3'))
+            except ValueError:
+                max_passes = 3
+            passes = 0
+            aggregate_text = full_text
+            while passes < max_passes:
+                trimmed = aggregate_text.rstrip()
+                incomplete = (
+                    truncated_by_length
+                    or trimmed.count("```") % 2 == 1
+                    or bool(re.search(r"\.\.\.$", trimmed))
+                )
+                if not incomplete:
+                    break
+                passes += 1
+                logger.info("Auto-continue pass %d before final completion", passes)
+                cont_messages = [
+                    {"role": "system", "content": "Continue the prior answer seamlessly. Only provide the missing remainder. Do NOT repeat previously sent content."},
+                    {"role": "user", "content": f"Tail context to continue from (do not repeat):\n{aggregate_text[-1200:]}\n\nContinue:"}
+                ]
+                broadcast_sync({"type": out_type, "text": "", "reset": False, "continuation_pass": passes}, session_id=session_id)
+                cont_gen = generate_ai_response_for(llm_id, cont_messages) if use_override else generate_ai_response(cont_messages)
+                cont_collected: List[str] = []
+                truncated_by_length = False
+                async for ctoken in cont_gen:
+                    if ctoken == "[[TRUNCATED_BY_LENGTH]]":
+                        truncated_by_length = True
+                        continue
+                    if ctoken:
+                        cont_collected.append(ctoken)
+                        broadcast_sync({"type": out_type, "text": ctoken}, session_id=session_id)
+                addition = "".join(cont_collected).strip()
+                if not addition:
+                    break
+                aggregate_text += "\n" + addition
+            if aggregate_text != full_text:
+                full_text = aggregate_text
+                if question_type == "coding":
+                    full_text = _ensure_coding_answer_has_fenced_code(full_text, facts)
+                if session_hist.get(history_key) and session_hist[history_key][-1].get("role") == "assistant":
+                    session_hist[history_key][-1]["content"] = (full_text or "")[:3000]
+
         # ============================================================================
         # 🎯 SEND FINAL COMPLETION SIGNAL (EXACTLY ONCE)
         # ============================================================================
@@ -3523,7 +4607,7 @@ async def stream_llm(
                 "retry_after": retry_after,
                 "text": f"[Rate limit: retry in {retry_after}s]",
                 "complete": True
-            })
+            }, session_id=session_id)
         else:
             logger.error(f"AI generation error: {e}")
             broadcast_sync({"type": out_type, "text": f"[AI Error: {e}]", "complete": True}, session_id=session_id)
@@ -3537,14 +4621,13 @@ async def handle_audio_streaming(ws, session_id=None):
     Streams audio directly to provider and forwards interim/final results to UI immediately.
     """
     import numpy as np
-    global partial_text, current_speaker, listen_student_enabled, last_processed_student_utterance, last_student_time
+    global current_speaker, listen_student_enabled, last_processed_student_utterance, last_student_time
     streaming_engine_local = None
     
     logger.info(f"[Streaming] Audio WebSocket connected - session_id: {session_id}")
     
-    # Initialize partial_text if it doesn't exist
-    if 'partial_text' not in globals() or partial_text is None:
-        partial_text = ""
+    # Initialize session transcript buffer
+    set_session_partial_text(session_id, get_session_partial_text(session_id))
     
     # Broadcast that audio websocket connected
     await broadcast({"type": "status", "data": {"audio": "socket_open", "mode": "streaming"}}, session_id=session_id)
@@ -3616,7 +4699,7 @@ async def handle_audio_streaming(ws, session_id=None):
     # Callback for final results (confirmed transcriptions)
     def on_final_result(result: TranscriptResult):
         nonlocal last_final_text, interim_buffer, results_received
-        global partial_text, last_processed_student_utterance, last_student_time
+        global last_processed_student_utterance, last_student_time
         
         results_received += 1
         text = result.text.strip()
@@ -3624,15 +4707,9 @@ async def handle_audio_streaming(ws, session_id=None):
         if not text:
             return
         
-        # Append to rolling partial_text without injecting speaker tags
-        # Keep the aggregated transcript clean; UI gets speaker via message fields
-        if partial_text and not partial_text.endswith((" ", "\n")):
-            partial_text += " "
-        partial_text += text
-        
-        # Trim if too long (keep last 8000 chars)
-        if len(partial_text) > 12000:
-            partial_text = partial_text[-8000:]
+        # Append to rolling transcript without injecting speaker tags.
+        # Keep the aggregated transcript clean; UI gets speaker via message fields.
+        full_transcript = append_session_partial_text(session_id, text)
         
         last_final_text = text
         interim_buffer = ""  # Clear interim buffer
@@ -3645,7 +4722,7 @@ async def handle_audio_streaming(ws, session_id=None):
         asyncio.create_task(broadcast({
             "type": "transcript",
             "text": text,
-            "full": partial_text,
+            "full": full_transcript,
             "interim": False,
             "is_final": True,
             "speaker": current_speaker,
@@ -4085,8 +5162,7 @@ async def maybe_trigger_auto_coach():
     recent_questions = [(qq, ts) for (qq, ts) in recent_questions if (now - ts) <= recent_window]
     for qq, ts in recent_questions:
         if _is_similar(nq, qq, 0.92):
-            # Inform UI (optional)
-            await broadcast({"type": "status", "data": {"coach_suppressed": True, "reason": "duplicate_question"}})
+            logger.info("Auto-coach duplicate question suppressed silently")
             return
     # Throttle minimum spacing between triggers
     if (now - last_coach_time) < 8.0:

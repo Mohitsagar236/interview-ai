@@ -141,7 +141,21 @@ def postprocess_answer(text: str, seen_tokens_log: Set[str]) -> str:
                 logger.info(f"🔄 Removed duplicate prefix ({len(seen_prefix)} chars)")
                 break
     
-    # Step 2: Remove repeated consecutive paragraphs
+    code_blocks = []
+    code_fence_pattern = r'```(\w*)'
+    fences = re.findall(code_fence_pattern, text)
+    if len(fences) % 2 != 0:
+        text += '\n```'
+        logger.info(f"âœ… Balanced code fences (added closing fence)")
+
+    def stash_code_block(match):
+        placeholder = f"@@CODE_BLOCK_{len(code_blocks)}@@"
+        code_blocks.append(match.group(0))
+        return f"\n\n{placeholder}\n\n"
+
+    text = re.sub(r'```[\s\S]*?```', stash_code_block, text)
+
+    # Step 2: Remove repeated consecutive paragraphs
     paragraphs = text.split('\n\n')
     unique_paragraphs = []
     prev_para = None
@@ -222,7 +236,10 @@ def postprocess_answer(text: str, seen_tokens_log: Set[str]) -> str:
     # Remove duplicate bullet points
     text = re.sub(r'(^|\n)([-*•])\s*\2+\s*', r'\1\2 ', text)
     
-    final_length = len(text)
+    for idx, block in enumerate(code_blocks):
+        text = text.replace(f"@@CODE_BLOCK_{idx}@@", block)
+
+    final_length = len(text)
     if final_length != original_length:
         logger.info(f"📝 Postprocessed answer: {original_length} → {final_length} chars")
     

@@ -8,6 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const R2_BASE_URL = (process.env.R2_PUBLIC_URL || 'https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev').replace(/\/+$/, '');
 const VERSION = process.env.APP_VERSION || '0.1.0';
+const BUILD_ID = process.env.APP_BUILD_ID || '20260625-144629';
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -38,7 +39,7 @@ app.get('/api/download', (req, res) => {
   }
 
   res.setHeader('Cache-Control', 'public, max-age=3600');
-  res.redirect(302, `${R2_BASE_URL}/releases/v${VERSION}/Interview-AI-Setup-${VERSION}-x64.exe`);
+  res.redirect(302, `${R2_BASE_URL}/releases/v${VERSION}/Interview-AI-Setup-${VERSION}-x64.exe?build=${encodeURIComponent(BUILD_ID)}`);
 });
 
 // Catch-all: serve index.html for client-side routing

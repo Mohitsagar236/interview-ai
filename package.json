@@ -15,11 +15,11 @@
   "scripts": {
     "postinstall": "node ./scripts/postinstall.js",
     "setup:py": "node ./scripts/prepare-build.js",
-    "dev": "concurrently -k -n py,app \".\\.venv\\Scripts\\python.exe python/server.py\" \"electron .\"",
-    "prod": "concurrently -k -n py,app \".\\.venv\\Scripts\\python.exe python/server.py\" \"electron .\"",
+    "dev": "node scripts/start-electron.js",
+    "prod": "node scripts/start-electron.js",
     "serve": "node dev-server.js",
     "test": "node ./scripts/smoke-test.js",
-    "test:comprehensive": "python -m pytest python/tests",
+    "test:comprehensive": "node ./scripts/run-python-tests.js",
     "cleanup:duplicates": "node ./scripts/cleanup-duplicates.js",
     "start": "node scripts/start-electron.js",
     "verify-build": "node ./scripts/verify-build.js",
@@ -82,7 +82,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.ico",
@@ -127,5 +129,6 @@
   },
   "bugs": {
     "url": "https://github.com/Mohitsagar236/interview-ai/issues"
-  }
+  },
+  "packageManager": "pnpm@11.8.0+sha512.c1f5e7c4cb241c8f174b743851d82f42b802324afc8b0f116b96adb15aa06664948dde36960a3ba1079ba5b4b29dd0140135b94b5b5f5263592249d68e555f26"
 }

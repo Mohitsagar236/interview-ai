@@ -176,6 +176,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       callback(imageData);
     });
   },
+  onToggleInterviewerRecording: (callback) => {
+    ipcRenderer.on('toggle-interviewer-recording', () => {
+      try { callback(); } catch (err) { console.error('onToggleInterviewerRecording handler error', err); }
+    });
+  },
+  onTriggerAskAI: (callback) => {
+    ipcRenderer.on('trigger-ask-ai', () => {
+      try { callback(); } catch (err) { console.error('onTriggerAskAI handler error', err); }
+    });
+  },
   
   onStealthToggled: (callback) => {
     ipcRenderer.on('stealth-toggled', (event, isActive) => {

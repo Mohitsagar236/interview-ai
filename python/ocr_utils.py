@@ -56,33 +56,51 @@ class OCRConfig:
         except (ValueError, TypeError):
             return default
     
-    def _find_tesseract(self) -> Optional[str]:
-        """Find Tesseract executable"""
-        # Check environment variable first
-        if os.getenv('TESSERACT_CMD'):
-            path = os.getenv('TESSERACT_CMD')
-            if os.path.exists(path):
-                return path
-            else:
-                logger.warning(f"TESSERACT_CMD set but file not found: {path}")
-        
-        # Search common Windows locations
-        if os.name == 'nt':
-            candidates = [
-                r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-                r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-                os.path.join(os.environ.get('USERPROFILE', ''), r"AppData\Local\Tesseract-OCR\tesseract.exe"),
-                os.path.join(os.environ.get('USERPROFILE', ''), r"AppData\Local\Programs\Tesseract-OCR\tesseract.exe"),
-                r"C:\Tesseract-OCR\tesseract.exe",
-                r"D:\Tesseract-OCR\tesseract.exe",
-            ]
-            
-            for candidate in candidates:
-                if os.path.exists(candidate):
-                    logger.info(f"Found Tesseract at: {candidate}")
-                    return candidate
-        
-        # On Unix-like systems, assume it's in PATH
+    def _find_tesseract(self) -> Optional[str]:
+        """Find Tesseract executable."""
+        env_path = os.getenv("TESSERACT_CMD")
+        if env_path:
+            if os.path.exists(env_path):
+                return env_path
+            logger.warning(f"TESSERACT_CMD set but file not found: {env_path}")
+
+        candidates = []
+        if os.name == "nt":
+            candidates.extend([
+                r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+                r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+                os.path.join(os.environ.get("USERPROFILE", ""), r"AppData\Local\Tesseract-OCR\tesseract.exe"),
+                os.path.join(os.environ.get("USERPROFILE", ""), r"AppData\Local\Programs\Tesseract-OCR\tesseract.exe"),
+                r"C:\Tesseract-OCR\tesseract.exe",
+                r"D:\Tesseract-OCR\tesseract.exe",
+            ])
+
+            module_dir = os.path.dirname(os.path.abspath(__file__))
+            repo_root = os.path.dirname(module_dir)
+            cwd = os.getcwd()
+            local_roots = [repo_root, cwd, os.path.dirname(cwd)]
+            for root in local_roots:
+                if not root:
+                    continue
+                candidates.append(os.path.join(root, "external-deps", "tesseract", "tesseract.exe"))
+                candidates.append(os.path.join(root, "tesseract", "tesseract.exe"))
+
+        seen = set()
+        for candidate in candidates:
+            if not candidate:
+                continue
+            candidate = os.path.normpath(candidate)
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            if os.path.exists(candidate):
+                tessdata = os.path.join(os.path.dirname(candidate), "tessdata")
+                if os.path.isdir(tessdata):
+                    os.environ.setdefault("TESSDATA_PREFIX", tessdata)
+                logger.info(f"Found Tesseract at: {candidate}")
+                return candidate
+
+        # On Unix-like systems, assume it is in PATH.
         return None
 
 
@@ -427,14 +445,14 @@ class OCRProcessor:
         result = re.sub(r'(\w)!=(\w)', r'\1 != \2', result)  # Add spaces around !=
         
         # 6. Remove common OCR artifacts
-        result = result.replace('|', 'I')  # Vertical bar often misread as I in text
         result = result.replace('`', "'")  # Backtick to apostrophe in regular text
         
         # 7. Fix multiple consecutive spaces that might have been missed
         result = re.sub(r' {2,}', ' ', result)
         
         # 8. Remove standalone single characters that are likely noise
-        # But keep common single letters like "I" or "a"
+        # But keep common single letters and code/math operators.
+        allowed_single_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-*/=%<>!?&|.,:;()[]{}#_~^')
         lines = result.split('\n')
         cleaned_lines = []
         for line in lines:
@@ -442,7 +460,7 @@ class OCRProcessor:
             # Filter out likely noise characters
             filtered_words = []
             for word in words:
-                if len(word) == 1 and word not in 'IaiAo0123456789':
+                if len(word) == 1 and word not in allowed_single_chars:
                     # Likely OCR noise
                     continue
                 filtered_words.append(word)

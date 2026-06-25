@@ -22,6 +22,7 @@ public/downloads/*.deb
 # Logs
 logs/
 *.log
+.server-port
 
 # Environment
 .env
@@ -33,6 +34,8 @@ logs/
 
 # Python
 .venv/
+.venv.broken-*/
+.py310-deps/
 venv/
 __pycache__/
 *.py[cod]

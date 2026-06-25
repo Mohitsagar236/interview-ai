@@ -3,7 +3,7 @@ Unit tests for Question Classifier
 """
 
 import pytest
-from question_classifier import classify_question, QuestionType, QuestionClassifier
+from question_classifier import classify_question, classify_interview_question, QuestionType, QuestionClassifier
 
 
 class TestQuestionClassifier:
@@ -182,6 +182,27 @@ class TestConvenienceFunctions:
         classifier2 = get_classifier()
         
         assert classifier1 is classifier2  # Same instance
+
+
+class TestInterviewRoutingClassification:
+    """Test resume-aware interview copilot routing metadata."""
+
+    @pytest.mark.parametrize("question,expected_type,needs_resume,needs_general_ai", [
+        ("Tell me about yourself.", "resume_hr", True, False),
+        ("Tell me about your internship experience.", "resume_specific", True, False),
+        ("Which company did I intern at Microsoft for?", "unsupported_resume_claim_check", True, False),
+        ("Explain Docker to a beginner.", "technical", False, True),
+        ("Find the largest element in an array.", "coding", False, True),
+        ("Design WhatsApp.", "system_design", False, True),
+        ("Why should we hire you for an ML Engineer role?", "resume_hr", True, False),
+    ])
+    def test_requested_classifier_examples(self, question, expected_type, needs_resume, needs_general_ai):
+        result = classify_interview_question(question)
+
+        assert result["question_type"] == expected_type
+        assert result["needs_resume"] is needs_resume
+        assert result["needs_general_ai"] is needs_general_ai
+        assert 0 <= result["confidence"] <= 100
 
 
 if __name__ == "__main__":

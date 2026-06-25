@@ -81,6 +81,17 @@ class TestMarkdownFormatting:
         assert format_markdown_blocks("") == ""
         assert format_markdown_blocks(None) == None
 
+    def test_expands_compressed_cpp_code(self):
+        """Test one-line C++ blocks get readable indentation."""
+        input_text = "```cpp#include <bits/stdc++.h>using namespace std;int main(){int x=1;if(x){cout<<x;}return 0;}```"
+        result = format_markdown_blocks(input_text)
+
+        assert "```cpp\n#include <bits/stdc++.h>\nusing namespace std;" in result
+        assert "\nint main()" in result
+        assert "\n    int x=1;" in result
+        assert "\n    if(x)" in result
+        assert "\n        cout<<x;" in result
+
 
 class TestDuplicateDetection:
     """Test duplicate content removal."""
@@ -207,18 +218,62 @@ class TestStreamedResponseCleaning:
         
         # Should have max 2 newlines
         assert '\n\n\n' not in result
-    
+
     def test_empty_token_list(self):
         """Test empty token list returns empty string."""
         result = clean_streamed_response([], enable_formatting=True)
         assert result == ""
-    
+
     def test_strip_leading_trailing_whitespace(self):
         """Test leading and trailing whitespace is stripped."""
         tokens = [" ", " ", "Content", " ", " "]
         result = clean_streamed_response(tokens, enable_formatting=False)
-        
+
         assert result == "Content"
+
+
+def test_server_wraps_unfenced_coding_answer():
+    import server
+
+    raw = (
+        "Problem Restatement\nRemove duplicates from a sorted array.\n\n"
+        "Clean Code\n"
+        "#include \nstd::vector removeDuplicates(std::vector& nums) {    if (nums.empty()) {        return nums;    }\n"
+        "int writeIndex = 1;    for (int readIndex = 1; readIndex < nums.size(); ++readIndex) {        if (nums[readIndex] != nums[readIndex - 1]) {            nums[writeIndex] = nums[readIndex];            ++writeIndex;        }    }\n"
+        "nums.resize(writeIndex);    return nums;}\n\n"
+        "Edge Cases\nEmpty array."
+    )
+
+    result = server._ensure_coding_answer_has_fenced_code(
+        raw,
+        "Remove duplicates from a sorted array.",
+    )
+
+    assert "```cpp" in result
+    assert "#include <bits/stdc++.h>" in result
+    assert "vector<int> removeDuplicates(vector<int>& nums)" in result
+    assert "Edge Cases" in result
+
+
+def test_answer_postprocess_preserves_fenced_cpp_code():
+    from answer_quality import postprocess_answer
+
+    raw = (
+        "Approach: Use a vector.\n\n"
+        "```cpp\n"
+        "#include <bits/stdc++.h>\n"
+        "using namespace std;\n\n"
+        "std::vector<int> values = {1, 2, 3};\n"
+        "```\n\n"
+        "Time complexity: O(n)."
+    )
+
+    result = postprocess_answer(raw, set())
+
+    assert "#include <bits/stdc++.h>" in result
+    assert "std::vector<int>" in result
+    assert "bits/stdc++. h" not in result
+    assert "std: : vector" not in result
 
 
 class TestTokenNormalization:

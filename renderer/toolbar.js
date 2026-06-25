@@ -1285,6 +1285,22 @@
     requestScrollBottom();
   }
 
+  function replaceAIStream(finalText) {
+    if (!finalText) return;
+    if (!streamingAIEl) {
+      startAIStream();
+    }
+    state.currentAIResponse = finalText;
+    const bodyEl = streamingAIEl
+      ? streamingAIEl.querySelector(".chat-body")
+      : null;
+    if (bodyEl) {
+      bodyEl.innerHTML = formatAIResponse(finalText);
+      applySyntaxHighlighting(streamingAIEl);
+    }
+    requestScrollBottom();
+  }
+
   function completeAIStream() {
     console.log(
       "[AI Stream] Completing AI stream, response length:",
@@ -2705,11 +2721,23 @@
         const text = msg.text || "";
         const isReset = !!msg.reset;
         const isComplete = !!msg.complete;
+        const isReplace = !!msg.replace;
+
+        if (msg.error) {
+          console.warn("[AI Stream] Error signal received:", msg.error);
+          return;
+        }
 
         if (isReset) {
           console.log("[AI Stream] Reset signal received, starting new stream");
           if (streamingAIEl) completeAIStream();
           startAIStream();
+          if (!text && !isComplete) return;
+        }
+
+        if (isReplace && text) {
+          console.log("[AI Stream] Replacing stream with formatted final response");
+          replaceAIStream(text);
           return;
         }
 
@@ -2771,9 +2799,19 @@
             );
           }
         }
-      } else if (msg.type === "stream" && msg.text) {
-        if (!streamingAIEl) startAIStream();
-        updateAIStream(msg.text);
+      } else if (msg.type === "stream") {
+        if (msg.error) {
+          console.warn("[AI Stream] Error signal received:", msg.error);
+          return;
+        }
+        if (msg.replace && msg.text) {
+          replaceAIStream(msg.text);
+          return;
+        }
+        if (msg.text) {
+          if (!streamingAIEl) startAIStream();
+          updateAIStream(msg.text);
+        }
         if (msg.complete) completeAIStream();
       }
 
@@ -3914,6 +3952,8 @@
             type: "ocr",
             image: img,
             captureIndex: state.captureCount - 1,
+            autoAnalyze: true,
+            fastVision: true,
             meta:
               capResult && typeof capResult === "object"
                 ? {
@@ -5161,6 +5201,7 @@
           type: "coach",
           question_channel: "capture",
           question: finalContext,
+          fastVision: true,
           // DO NOT include queue context - focus only on current question
           interviewer_recent: [],
           student_recent: [],
@@ -5364,49 +5405,30 @@
 
   // Listen for global shortcut from main process to toggle interviewer recording
   try {
-    if (window.electron && window.electron.ipcRenderer) {
-      window.electron.ipcRenderer.on("toggle-interviewer-recording", () => {
-        if (!state.connected) {
-          ensureServerAndConnect().then((ok) => {
-            if (ok) startInterviewerRecording();
-          });
-        } else {
-          startInterviewerRecording();
-        }
-      });
-      
-      // Listen for Ask AI shortcut (Ctrl+Q)
-      window.electron.ipcRenderer.on("trigger-ask-ai", () => {
-        log.info("Ask AI triggered via Ctrl+Q shortcut");
-        // Click the capture and analyze button
-        if (captureAnalyzeBtn && !captureAnalyzeBtn.disabled) {
-          captureAnalyzeBtn.click();
-        } else {
-          log.warn("Capture button not available or disabled");
-        }
-      });
-    } else if (window.require) {
-      // Fallback if contextIsolation disabled (unlikely here)
-      try {
-        const { ipcRenderer } = window.require("electron");
-        ipcRenderer.on("toggle-interviewer-recording", () => {
-          if (!state.connected) {
-            ensureServerAndConnect().then((ok) => {
-              if (ok) startInterviewerRecording();
-            });
-          } else {
-            startInterviewerRecording();
-          }
+    const toggleInterviewerRecording = () => {
+      if (!state.connected) {
+        ensureServerAndConnect().then((ok) => {
+          if (ok) startInterviewerRecording();
         });
-        
-        // Listen for Ask AI shortcut (Ctrl+Q)
-        ipcRenderer.on("trigger-ask-ai", () => {
-          log.info("Ask AI triggered via Ctrl+Q shortcut");
-          if (captureAnalyzeBtn && !captureAnalyzeBtn.disabled) {
-            captureAnalyzeBtn.click();
-          }
-        });
-      } catch {}
+      } else {
+        startInterviewerRecording();
+      }
+    };
+
+    const triggerAskAIShortcut = () => {
+      log.info("Ask AI triggered via global shortcut");
+      if (captureAnalyzeBtn && !captureAnalyzeBtn.disabled) {
+        captureAnalyzeBtn.click();
+      } else {
+        log.warn("Capture button not available or disabled");
+      }
+    };
+
+    if (window.electronAPI?.onToggleInterviewerRecording) {
+      window.electronAPI.onToggleInterviewerRecording(toggleInterviewerRecording);
+    }
+    if (window.electronAPI?.onTriggerAskAI) {
+      window.electronAPI.onTriggerAskAI(triggerAskAIShortcut);
     }
   } catch (e) {
     console.warn("Could not wire interviewer toggle shortcut listener:", e);
@@ -5483,6 +5505,7 @@
             image: img,
             captureIndex: state.captureCount - 1,
             autoAnalyze: true, // Flag for automatic analysis
+            fastVision: true,
             meta:
               capResult && typeof capResult === "object"
                 ? {
@@ -5819,6 +5842,35 @@
         updateCaptureUI();
         
         showNotification("Quick capture completed - AI analyzing...", "success");
+      });
+    }
+
+    if (window.electronAPI && window.electronAPI.onCoachUpdate) {
+      window.electronAPI.onCoachUpdate((msg) => {
+        const data = msg || {};
+        const text = data.text || "";
+        if (data.error) {
+          console.warn("[AI Stream] Coach update error:", data.error);
+          showNotification(`AI error: ${data.error}`, "error");
+          if (streamingAIEl) completeAIStream();
+          return;
+        }
+        if (data.reset) {
+          if (streamingAIEl) completeAIStream();
+          startAIStream();
+          if (!text && !data.complete) return;
+        }
+        if (data.replace && text) {
+          replaceAIStream(text);
+          return;
+        }
+        if (text) {
+          if (!streamingAIEl) startAIStream();
+          updateAIStream(text);
+        }
+        if (data.complete) {
+          completeAIStream();
+        }
       });
     }
 

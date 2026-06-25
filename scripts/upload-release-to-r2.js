@@ -170,6 +170,35 @@ function uploadFile({ filePath, key, client }) {
   });
 }
 
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function uploadFileWithRetry({ filePath, key, client, attempts = 3 }) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      if (attempt > 1) {
+        console.log(`Retrying upload attempt ${attempt}/${attempts}`);
+      }
+
+      return await uploadFile({ filePath, key, client });
+    } catch (error) {
+      lastError = error;
+      console.warn(`Upload attempt ${attempt}/${attempts} failed: ${error.message}`);
+
+      if (attempt < attempts) {
+        await delay(5000 * attempt);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 function releaseArtifacts() {
   const names = [
     `Interview-AI-Setup-${VERSION}-x64.exe`,
@@ -200,7 +229,7 @@ async function main() {
   for (const artifact of artifacts) {
     const sizeMiB = fs.statSync(artifact.filePath).size / 1024 / 1024;
     console.log(`Uploading ${artifact.name} (${sizeMiB.toFixed(1)} MiB)`);
-    const url = await uploadFile({ filePath: artifact.filePath, key: artifact.key, client });
+    const url = await uploadFileWithRetry({ filePath: artifact.filePath, key: artifact.key, client });
     console.log(`Uploaded ${url}`);
     urls.push(url);
   }
