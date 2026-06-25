@@ -581,6 +581,16 @@ nav {
     gap: 12px;
 }
 
+.auth-section .hidden {
+    display: none !important;
+}
+
+.site-auth-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
 .btn-login {
     display: inline-flex;
     align-items: center;
@@ -630,6 +640,35 @@ nav {
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s;
+}
+
+.site-profile-summary {
+    min-width: 0;
+    display: grid;
+    text-align: left;
+}
+
+.site-profile-email {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.site-profile-expiry {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+html.dark .site-profile-expiry {
+    color: #cbd5e1;
 }
 
 html.dark .profile-trigger {
@@ -748,6 +787,28 @@ html.dark .profile-menu .profile-name {
     margin: 8px 0;
 }
 
+.profile-detail-row {
+    display: grid;
+    gap: 3px;
+    padding: 10px 20px;
+}
+
+.profile-detail-row span {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.profile-detail-row strong {
+    color: #111827;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+html.dark .profile-detail-row strong {
+    color: #f9fafb;
+}
+
 html.dark .profile-menu-divider {
     background: #334155;
 }
@@ -762,6 +823,15 @@ html.dark .profile-menu-divider {
     font-size: 14px;
     font-weight: 500;
     transition: all 0.2s;
+}
+
+.profile-logout-button {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
 }
 
 html.dark .profile-menu-item {
@@ -798,6 +868,28 @@ html.dark .profile-menu-item:last-of-type {
 html.dark .profile-menu-item:last-of-type:hover {
     background: rgba(239, 68, 68, 0.1);
     color: #f87171;
+}
+
+.profile-menu .profile-download-link,
+.profile-menu .profile-download-link:last-of-type {
+    color: #374151;
+}
+
+.profile-menu .profile-download-link:hover,
+.profile-menu .profile-download-link:last-of-type:hover {
+    background: #f9fafb;
+    color: #10b981;
+}
+
+html.dark .profile-menu .profile-download-link,
+html.dark .profile-menu .profile-download-link:last-of-type {
+    color: #d1d5db;
+}
+
+html.dark .profile-menu .profile-download-link:hover,
+html.dark .profile-menu .profile-download-link:last-of-type:hover {
+    background: #334155;
+    color: #10b981;
 }
 
 .profile-menu-item i {

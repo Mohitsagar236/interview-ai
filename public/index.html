@@ -226,8 +226,48 @@
                     <i class="fas fa-sun"></i>
                 </button>
                 <div class="auth-section">
-                    <a href="download.html?auth=signin" class="btn-login btn-login-secondary" id="header-login-btn">Login</a>
-                    <a href="download.html?auth=signup" class="btn-login" id="header-signup-btn">Sign up</a>
+                    <div class="site-auth-actions" data-site-auth-logged-out>
+                        <a href="download.html?auth=signin" class="btn-login btn-login-secondary" id="header-login-btn">Login</a>
+                        <a href="download.html?auth=signup" class="btn-login" id="header-signup-btn">Sign up</a>
+                    </div>
+                    <div class="user-profile-dropdown hidden" data-site-auth-profile>
+                        <button class="profile-trigger" type="button" data-site-profile-toggle aria-expanded="false">
+                            <i class="fas fa-user-circle"></i>
+                            <span class="site-profile-summary">
+                                <span class="site-profile-email" data-site-profile-email>Signed in</span>
+                                <span class="site-profile-expiry" data-site-profile-expiry>Expires in 60 min</span>
+                            </span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="profile-menu">
+                            <div class="profile-menu-header">
+                                <div class="profile-avatar">
+                                    <i class="fas fa-user-circle"></i>
+                                </div>
+                                <div class="profile-info">
+                                    <div class="profile-name" data-site-profile-name>Interview AI user</div>
+                                    <div class="profile-email" data-site-profile-email>Signed in</div>
+                                </div>
+                            </div>
+                            <div class="profile-detail-row">
+                                <span>Session</span>
+                                <strong data-site-profile-expiry>Expires in 60 min</strong>
+                            </div>
+                            <div class="profile-detail-row">
+                                <span>Download access</span>
+                                <strong>Unlocked</strong>
+                            </div>
+                            <div class="profile-menu-divider"></div>
+                            <a href="download.html" class="profile-menu-item profile-download-link">
+                                <i class="fas fa-download"></i>
+                                Download app
+                            </a>
+                            <button class="profile-menu-item profile-logout-button" type="button" data-site-auth-logout>
+                                <i class="fas fa-right-from-bracket"></i>
+                                Logout
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
             <button class="mobile-menu-button" aria-label="Toggle menu">
@@ -984,6 +1024,8 @@
     </footer>
 
     <!-- JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="site-auth.js"></script>
     <script src="main.js"></script>
     <!-- Video modal script -->
     <script src="js/video-modal.js"></script>
