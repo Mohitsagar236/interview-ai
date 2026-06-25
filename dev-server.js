@@ -10,9 +10,16 @@ const R2_BASE_URL = (process.env.R2_PUBLIC_URL || 'https://pub-25ab7498cafd4a708
 const VERSION = process.env.APP_VERSION || '0.1.0';
 const BUILD_ID = process.env.APP_BUILD_ID || '20260625-144629';
 
+function normalizeSupabaseUrl(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\/+(rest\/v1|auth\/v1)\/?$/i, '')
+    .replace(/\/+$/, '');
+}
+
 function supabaseConfig() {
   return {
-    url: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    url: normalizeSupabaseUrl(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
     anonKey: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
   };
 }
@@ -33,7 +40,7 @@ async function verifySupabaseUser(req) {
     return { ok: false, status: 401, error: 'Login required before download' };
   }
 
-  const response = await fetch(`${url.replace(/\/+$/, '')}/auth/v1/user`, {
+  const response = await fetch(`${url}/auth/v1/user`, {
     headers: {
       apikey: anonKey,
       Authorization: `Bearer ${token}`

@@ -582,15 +582,32 @@ nav {
 }
 
 .btn-login {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     padding: 10px 24px;
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     color: white;
+    border: 1px solid transparent;
     text-decoration: none;
     border-radius: 8px;
     font-weight: 600;
     font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
     transition: all 0.3s;
     box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+}
+
+.btn-login-secondary {
+    background: transparent;
+    color: #10b981;
+    border-color: rgba(16, 185, 129, 0.5);
+    box-shadow: none;
+}
+
+.btn-login-secondary:hover {
+    background: rgba(16, 185, 129, 0.08);
 }
 
 .btn-login:hover {

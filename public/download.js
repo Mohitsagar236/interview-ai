@@ -10,6 +10,8 @@
     let authMode = 'signin';
     let pendingDownloadPlatform = null;
     let authSetupError = '';
+    let authUiBound = false;
+    let toastTimer = null;
 
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
@@ -25,14 +27,17 @@
     // Download function - picks correct Windows arch and uses API endpoint
     window.downloadApp = async function(platform) {
         if (!platform) {
-            showToast('Download not available for this platform yet');
+            showToast('Download not available for this platform yet.', 'error');
             return;
         }
 
         pendingDownloadPlatform = platform;
 
         if (!supabaseClient) {
-            openAuthModal(authSetupError || 'Download login is loading. Please wait a moment.');
+            openAuthModal(
+                authSetupError || 'Download login is loading. Please wait a moment.',
+                authSetupError ? 'error' : ''
+            );
             return;
         }
 
@@ -47,6 +52,14 @@
 
     async function setupDownloadAuth() {
         bindAuthUi();
+        openInitialAuthIntent();
+
+        if (window.location.protocol === 'file:') {
+            authSetupError = 'Login/signup cannot run from a file path. Run npm run serve, then open http://localhost:3000/download.html?auth=signup.';
+            setAuthMessage(authSetupError, 'error');
+            showToast('Open this page through the local server to use login/signup.', 'error');
+            return;
+        }
 
         const config = await loadPublicConfig();
         if (!config.supabaseUrl || !config.supabaseAnonKey) {
@@ -80,15 +93,12 @@
     }
 
     function bindAuthUi() {
-        document.querySelectorAll('[data-auth-close]').forEach((element) => {
-            element.addEventListener('click', closeAuthModal);
-        });
+        if (authUiBound) {
+            return;
+        }
+        authUiBound = true;
 
-        document.querySelectorAll('[data-auth-mode]').forEach((button) => {
-            button.addEventListener('click', () => {
-                setAuthMode(button.getAttribute('data-auth-mode') || 'signin');
-            });
-        });
+        document.addEventListener('click', handlePageClick);
 
         const form = document.getElementById('download-auth-form');
         if (form) {
@@ -103,6 +113,7 @@
                 }
                 authSession = null;
                 setAuthMessage('Signed out.', 'success');
+                showToast('Signed out successfully.', 'success');
                 updateAuthUi();
             });
         }
@@ -112,6 +123,65 @@
                 closeAuthModal();
             }
         });
+    }
+
+    function handlePageClick(event) {
+        const passwordToggle = event.target.closest('[data-password-toggle]');
+        if (passwordToggle) {
+            event.preventDefault();
+            togglePasswordVisibility(passwordToggle);
+            return;
+        }
+
+        const closeTarget = event.target.closest('[data-auth-close]');
+        if (closeTarget) {
+            event.preventDefault();
+            closeAuthModal();
+            return;
+        }
+
+        const modeButton = event.target.closest('[data-auth-mode]');
+        if (modeButton) {
+            event.preventDefault();
+            setAuthMode(modeButton.getAttribute('data-auth-mode') || 'signin');
+            return;
+        }
+
+        const openButton = event.target.closest('[data-auth-open]');
+        if (openButton) {
+            event.preventDefault();
+            pendingDownloadPlatform = 'windows';
+            setAuthMode(openButton.getAttribute('data-auth-open') || 'signin');
+            openAuthModal(
+                authSession
+                    ? 'You are already logged in. Click download to continue.'
+                    : 'Login or create a free account to download Interview AI.'
+            );
+            return;
+        }
+
+        const downloadButton = event.target.closest('[data-download-platform]');
+        if (downloadButton) {
+            event.preventDefault();
+            const platform = downloadButton.getAttribute('data-download-platform');
+            window.downloadApp(platform);
+        }
+    }
+
+    function togglePasswordVisibility(button) {
+        const passwordInput = document.getElementById('download-auth-password');
+        if (!passwordInput) return;
+
+        const isVisible = passwordInput.type === 'text';
+        passwordInput.type = isVisible ? 'password' : 'text';
+        button.setAttribute('aria-pressed', String(!isVisible));
+        button.setAttribute('aria-label', isVisible ? 'Show password' : 'Hide password');
+
+        const icon = button.querySelector('i');
+        if (icon) {
+            icon.classList.toggle('fa-eye', isVisible);
+            icon.classList.toggle('fa-eye-slash', !isVisible);
+        }
     }
 
     async function handleAuthSubmit(event) {
@@ -124,8 +194,27 @@
 
         const email = document.getElementById('download-auth-email')?.value.trim();
         const password = document.getElementById('download-auth-password')?.value;
-        if (!email || !password) {
-            setAuthMessage('Enter your email and password.', 'error');
+        if (!email) {
+            setAuthMessage('Enter your email address.', 'error');
+            showToast('Enter your email address.', 'error');
+            return;
+        }
+
+        if (!isValidEmail(email)) {
+            setAuthMessage('Enter a valid email address.', 'error');
+            showToast('Enter a valid email address.', 'error');
+            return;
+        }
+
+        if (!password) {
+            setAuthMessage('Enter your password.', 'error');
+            showToast('Enter your password.', 'error');
+            return;
+        }
+
+        if (authMode === 'signup' && password.length < 6) {
+            setAuthMessage('Password must be at least 6 characters.', 'error');
+            showToast('Password must be at least 6 characters.', 'error');
             return;
         }
 
@@ -140,7 +229,8 @@
 
                 authSession = result.data.session;
                 if (!authSession) {
-                    setAuthMessage('Account created. Check your email to confirm, then come back and login.', 'success');
+                    setAuthMessage('Signup successful. Check your email to confirm, then login.', 'success');
+                    showToast('Signup successful. Check your email to confirm.', 'success');
                     return;
                 }
             } else {
@@ -150,15 +240,68 @@
             }
 
             updateAuthUi();
-            setAuthMessage('Logged in. Starting download...', 'success');
+            const successMessage = authMode === 'signup'
+                ? 'Signup successful. Starting download...'
+                : 'Successfully logged in. Starting download...';
+            setAuthMessage(successMessage, 'success');
+            showToast(successMessage, 'success');
             const platform = pendingDownloadPlatform || 'windows';
-            await startAuthenticatedDownload(platform, authSession);
-            closeAuthModal();
+            const downloadStarted = await startAuthenticatedDownload(platform, authSession);
+            if (downloadStarted) {
+                closeAuthModal();
+            }
         } catch (error) {
-            setAuthMessage(error.message || 'Login failed. Please try again.', 'error');
+            const message = friendlyAuthError(error, authMode);
+            setAuthMessage(message, 'error');
+            showToast(message, 'error');
         } finally {
             setAuthLoading(false);
         }
+    }
+
+    function isValidEmail(email) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+
+    function friendlyAuthError(error, mode) {
+        const rawMessage = `${error?.message || error?.error_description || error || ''}`.trim();
+        const normalized = rawMessage.toLowerCase();
+
+        if (!rawMessage) {
+            return mode === 'signup'
+                ? 'Signup failed. Please check your details and try again.'
+                : 'Login failed. Please check your email and password.';
+        }
+
+        if (normalized.includes('invalid login credentials')) {
+            return 'Invalid email or password.';
+        }
+
+        if (normalized.includes('email not confirmed') || normalized.includes('confirm your email')) {
+            return 'Please confirm your email before logging in.';
+        }
+
+        if (normalized.includes('already registered') || normalized.includes('user already')) {
+            return 'This email already has an account. Try Login instead.';
+        }
+
+        if (normalized.includes('password') && (normalized.includes('six') || normalized.includes('6') || normalized.includes('weak'))) {
+            return 'Password must be at least 6 characters.';
+        }
+
+        if (normalized.includes('signup') && normalized.includes('disabled')) {
+            return 'Signup is currently disabled for this project.';
+        }
+
+        if (normalized.includes('rate') || normalized.includes('too many') || normalized.includes('over request')) {
+            return 'Too many attempts. Please wait a minute and try again.';
+        }
+
+        if (normalized.includes('network') || normalized.includes('failed to fetch')) {
+            return 'Network error. Check your internet connection and try again.';
+        }
+
+        return rawMessage;
     }
 
     async function getCurrentSession() {
@@ -177,10 +320,10 @@
     async function startAuthenticatedDownload(platform, session) {
         if (!session || !session.access_token) {
             openAuthModal('Login or create a free account to download Interview AI.');
-            return;
+            return false;
         }
 
-        showToast('Preparing your download...');
+        showToast('Preparing your download...', 'info');
 
         // Detect Windows arch
         let archParam = '';
@@ -199,23 +342,34 @@
 
         // Ask the protected API for the real installer URL.
         const downloadUrl = `/api/download?platform=${platform}${archParam}`;
-        const response = await fetch(downloadUrl, {
-            headers: {
-                Authorization: `Bearer ${session.access_token}`,
-            },
-            cache: 'no-store',
-        });
-        const payload = await response.json().catch(() => ({}));
+        let response;
+        let payload;
+        try {
+            response = await fetch(downloadUrl, {
+                headers: {
+                    Authorization: `Bearer ${session.access_token}`,
+                },
+                cache: 'no-store',
+            });
+            payload = await response.json().catch(() => ({}));
+        } catch (error) {
+            const message = friendlyAuthError(error, authMode);
+            setAuthMessage(message, 'error');
+            showToast(message, 'error');
+            return false;
+        }
 
         if (response.status === 401) {
             authSession = null;
-            openAuthModal(payload.error || 'Your login expired. Please login again.');
-            return;
+            const message = payload.error || 'Your login expired. Please login again.';
+            openAuthModal(message, 'error');
+            showToast(message, 'error');
+            return false;
         }
 
         if (!response.ok || !payload.url) {
-            showToast(payload.error || 'Could not start download. Please try again.');
-            return;
+            showToast(payload.error || 'Could not start download. Please try again.', 'error');
+            return false;
         }
 
         // Create invisible link and trigger download from the signed-in flow.
@@ -233,13 +387,14 @@
 
         // Track download
         trackDownload(platform);
-        showToast('Your download will begin shortly...');
+        showToast('Your download will begin shortly...', 'success');
+        return true;
     }
 
-    function openAuthModal(message) {
+    function openAuthModal(message, type = '') {
         const modal = document.getElementById('download-auth-modal');
         if (!modal) return;
-        setAuthMessage(message || '', message ? 'success' : '');
+        setAuthMessage(message || '', type);
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
         setTimeout(() => document.getElementById('download-auth-email')?.focus(), 50);
@@ -257,8 +412,25 @@
         document.querySelectorAll('[data-auth-mode]').forEach((button) => {
             button.classList.toggle('active', button.getAttribute('data-auth-mode') === authMode);
         });
+        resetPasswordVisibility();
         updateAuthUi();
         setAuthMessage('', '');
+    }
+
+    function resetPasswordVisibility() {
+        const passwordInput = document.getElementById('download-auth-password');
+        const passwordToggle = document.querySelector('[data-password-toggle]');
+        if (!passwordInput || !passwordToggle) return;
+
+        passwordInput.type = 'password';
+        passwordToggle.setAttribute('aria-pressed', 'false');
+        passwordToggle.setAttribute('aria-label', 'Show password');
+
+        const icon = passwordToggle.querySelector('i');
+        if (icon) {
+            icon.classList.add('fa-eye');
+            icon.classList.remove('fa-eye-slash');
+        }
     }
 
     function setAuthLoading(isLoading) {
@@ -300,6 +472,18 @@
         }
     }
 
+    function openInitialAuthIntent() {
+        const authIntent = new URLSearchParams(window.location.search).get('auth');
+        if (!authIntent) return;
+
+        const mode = authIntent === 'signup' ? 'signup' : 'signin';
+        pendingDownloadPlatform = 'windows';
+        setAuthMode(mode);
+        openAuthModal(mode === 'signup'
+            ? 'Create a free account to download Interview AI.'
+            : 'Login to download Interview AI.');
+    }
+
     // Auto-detect user's platform
     function detectPlatform() {
         const userAgent = navigator.userAgent.toLowerCase();
@@ -319,14 +503,14 @@
         const cards = document.querySelectorAll('.platform-card');
         cards.forEach(card => {
             const btn = card.querySelector('.btn-download-primary');
-            if (btn && btn.getAttribute('onclick').includes(platform)) {
+            if (btn && btn.getAttribute('data-download-platform') === platform) {
                 card.style.border = '2px solid #10b981';
                 card.style.boxShadow = '0 4px 20px rgba(16, 185, 129, 0.15)';
             }
         });
     }
 
-    function showToast(message) {
+    function showToast(message, type = 'info') {
         const toast = document.getElementById('download-toast');
         if (!toast) return;
 
@@ -335,11 +519,17 @@
             span.textContent = message;
         }
 
+        toast.classList.remove('success', 'error', 'info');
+        toast.classList.add(type === 'success' || type === 'error' ? type : 'info');
         toast.classList.remove('hidden');
 
-        setTimeout(() => {
+        if (toastTimer) {
+            clearTimeout(toastTimer);
+        }
+
+        toastTimer = setTimeout(() => {
             toast.classList.add('hidden');
-        }, 3000);
+        }, type === 'error' ? 5000 : 3200);
     }
 
     function trackDownload(platform) {

@@ -1,6 +1,13 @@
+function normalizeSupabaseUrl(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\/+(rest\/v1|auth\/v1)\/?$/i, '')
+    .replace(/\/+$/, '');
+}
+
 function supabaseConfig(env) {
   return {
-    url: env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || '',
+    url: normalizeSupabaseUrl(env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL),
     anonKey: env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
   };
 }
@@ -21,7 +28,7 @@ async function verifySupabaseUser(request, env) {
     return { ok: false, status: 401, error: 'Login required before download' };
   }
 
-  const response = await fetch(`${url.replace(/\/+$/, '')}/auth/v1/user`, {
+  const response = await fetch(`${url}/auth/v1/user`, {
     headers: {
       apikey: anonKey,
       Authorization: `Bearer ${token}`,

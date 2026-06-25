@@ -30,6 +30,10 @@
                     <i class="fas fa-moon"></i>
                     <i class="fas fa-sun"></i>
                 </button>
+                <div class="auth-section download-header-auth">
+                    <button class="btn-login btn-login-secondary" type="button" data-auth-open="signin">Login</button>
+                    <button class="btn-login" type="button" data-auth-open="signup">Sign up</button>
+                </div>
             </div>
         </nav>
     </header>
@@ -61,7 +65,7 @@
                         <span><i class="fas fa-download"></i> ~418 MB</span>
                     </div>
                 </div>
-                <button class="btn-download-primary" onclick="downloadApp('windows')">
+                <button class="btn-download-primary" type="button" data-download-platform="windows">
                     <i class="fas fa-download"></i>
                     <span>Download for Windows</span>
                 </button>
@@ -196,7 +200,7 @@
             <h2>Ready to Ace Your Interviews?</h2>
             <p>Download free, add your API key, and get real-time AI coaching &mdash; no subscription, no limits</p>
             <div class="cta-buttons">
-                <button class="btn btn-primary" onclick="downloadApp('windows')">
+                <button class="btn btn-primary" type="button" data-download-platform="windows">
                     <i class="fas fa-download"></i>
                     <span>Download for Windows</span>
                 </button>
@@ -232,12 +236,17 @@
                 <button id="auth-signup-tab" class="download-auth-tab" type="button" data-auth-mode="signup">Sign up</button>
             </div>
 
-            <form id="download-auth-form" class="download-auth-form">
+            <form id="download-auth-form" class="download-auth-form" novalidate>
                 <label for="download-auth-email">Email</label>
                 <input id="download-auth-email" type="email" autocomplete="email" required placeholder="you@example.com">
 
                 <label for="download-auth-password">Password</label>
-                <input id="download-auth-password" type="password" autocomplete="current-password" required minlength="6" placeholder="Minimum 6 characters">
+                <div class="download-auth-password-field">
+                    <input id="download-auth-password" type="password" autocomplete="current-password" required placeholder="Minimum 6 characters">
+                    <button class="download-auth-password-toggle" type="button" data-password-toggle aria-label="Show password" aria-pressed="false">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
 
                 <button id="download-auth-submit" class="btn-download-primary" type="submit">
                     <i class="fas fa-right-to-bracket"></i>

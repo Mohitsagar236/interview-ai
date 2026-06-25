@@ -39,6 +39,8 @@ const serverPy = read('python/server.py');
 const downloadJs = read('public/download.js');
 const downloadHtml = read('public/download.html');
 const apiDownloadJs = read('api/download.js');
+const apiPublicConfigJs = read('api/public-config.js');
+const devServerJs = read('dev-server.js');
 
 check('Electron main entry exists', exists(packageJson.main || 'electron/main.js'));
 check('Toolbar files exist', exists('renderer/toolbar.html') && exists('renderer/toolbar.js'));
@@ -57,6 +59,12 @@ check('Build script bundles standalone backend', /build-python-standalone\.js/.t
 check('Smoke target points at this script', packageJson.scripts?.test === 'node ./scripts/smoke-test.js');
 check('Toolbar markup has capture and Ask AI controls', /captureAnalyze/.test(toolbarHtml) && /askAI/.test(toolbarHtml));
 check('Download page requires Supabase auth', /supabase-js@2/.test(downloadHtml) && /download-auth-modal/.test(downloadHtml) && /signInWithPassword/.test(downloadJs) && /signUp/.test(downloadJs));
+check('Header shows login and signup links', /download\.html\?auth=signin/.test(read('public/index.html')) && /download\.html\?auth=signup/.test(read('public/index.html')) && /data-auth-open="signin"/.test(downloadHtml) && /data-auth-open="signup"/.test(downloadHtml));
+check('Download buttons use delegated click handlers', /data-download-platform="windows"/.test(downloadHtml) && /handlePageClick/.test(downloadJs) && !/onclick="downloadApp/.test(downloadHtml));
+check('Auth flow shows friendly errors and success popups', /friendlyAuthError/.test(downloadJs) && /Invalid email or password/.test(downloadJs) && /Successfully logged in/.test(downloadJs) && /Signup successful/.test(downloadJs));
+check('Auth password field has show/hide toggle', /data-password-toggle/.test(downloadHtml) && /togglePasswordVisibility/.test(downloadJs) && /fa-eye-slash/.test(downloadJs));
+check('Download page warns when opened from file protocol', /window\.location\.protocol === 'file:'/.test(downloadJs) && /npm run serve/.test(downloadJs));
+check('Supabase URL normalization strips REST/Auth paths', /normalizeSupabaseUrl/.test(apiDownloadJs) && /normalizeSupabaseUrl/.test(apiPublicConfigJs) && /normalizeSupabaseUrl/.test(devServerJs));
 check('Download API verifies Supabase token', /auth\/v1\/user/.test(apiDownloadJs) && /Authorization/.test(apiDownloadJs) && /SUPABASE_ANON_KEY/.test(apiDownloadJs));
 
 let passed = 0;

@@ -520,6 +520,18 @@ html.dark .btn-secondary {
     display: none;
 }
 
+.download-toast.info {
+    background: #1f2937;
+}
+
+.download-toast.success {
+    background: #047857;
+}
+
+.download-toast.error {
+    background: #b91c1c;
+}
+
 /* Download Auth Modal */
 .download-auth-modal {
     position: fixed;
@@ -543,6 +555,7 @@ html.dark .btn-secondary {
 
 .download-auth-dialog {
     position: relative;
+    z-index: 1;
     width: min(440px, 100%);
     background: #ffffff;
     border: 1px solid #e5e7eb;
@@ -657,8 +670,54 @@ html.dark .download-auth-form input {
     background: #0f172a;
 }
 
+.download-auth-password-field {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.download-auth-password-field input {
+    padding-right: 46px;
+}
+
+.download-auth-password-toggle {
+    position: absolute;
+    right: 8px;
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.download-auth-password-toggle:hover {
+    background: #f1f5f9;
+    color: #059669;
+}
+
+html.dark .download-auth-password-toggle {
+    color: #cbd5e1;
+}
+
+html.dark .download-auth-password-toggle:hover {
+    background: #1e293b;
+    color: #10b981;
+}
+
 .download-auth-form .btn-download-primary {
     margin-top: 10px;
+}
+
+.download-auth-form .btn-download-primary:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+    transform: none;
+    box-shadow: none;
 }
 
 .download-auth-message {
@@ -696,6 +755,16 @@ html.dark .download-auth-form input {
 
 /* Responsive */
 @media (max-width: 768px) {
+    .download-header-auth {
+        display: flex !important;
+        gap: 8px;
+    }
+
+    .download-header-auth .btn-login {
+        padding: 8px 12px !important;
+        font-size: 12px !important;
+    }
+
     .download-hero-content h1 {
         font-size: 36px;
     }
