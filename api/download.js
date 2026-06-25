@@ -1,9 +1,10 @@
+import { trackAnalyticsEvent } from '../lib/analytics-store.mjs';
+
 /**
  * Download endpoint.
- * Supports the currently published Windows x64 desktop build.
+ * Supports the currently published Windows x64 desktop build and tracks clicks.
  */
-
-export default function handler(req, res) {
+export default async function handler(req, res) {
     const { platform, arch } = req.query;
 
     // Configure this in Vercel for your release bucket or GitHub Releases URL.
@@ -18,9 +19,10 @@ export default function handler(req, res) {
     };
 
     let url;
+    let chosenArch = 'x64';
 
     if (platform === 'windows') {
-        const chosenArch = arch === 'x64' ? 'x64' : 'x64';
+        chosenArch = arch === 'x64' ? 'x64' : 'x64';
         url = downloadUrls.windows[chosenArch];
     } else {
         url = downloadUrls[platform];
@@ -30,6 +32,22 @@ export default function handler(req, res) {
         return res.status(400).json({ error: 'Invalid platform' });
     }
 
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    try {
+        await trackAnalyticsEvent({
+            req,
+            event: 'download',
+            metadata: {
+                platform: 'windows',
+                arch: chosenArch,
+                version: VERSION,
+                buildId: BUILD_ID,
+                source: 'website',
+            },
+        });
+    } catch (error) {
+        console.warn('[analytics] download tracking failed:', error.message);
+    }
+
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
     res.redirect(302, url);
 }

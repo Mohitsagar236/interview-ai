@@ -1,0 +1,304 @@
+:root {
+    color-scheme: dark;
+    --bg: #0f172a;
+    --surface: #111827;
+    --surface-2: #1f2937;
+    --border: #334155;
+    --text: #f8fafc;
+    --muted: #94a3b8;
+    --accent: #10b981;
+    --accent-2: #38bdf8;
+    --danger: #f87171;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.admin-shell {
+    width: min(1180px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 32px 0 48px;
+}
+
+.admin-header,
+.status-panel,
+.panel,
+.auth-panel,
+.error-panel {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 8px;
+}
+
+.admin-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 24px;
+    margin-bottom: 18px;
+}
+
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 14px;
+}
+
+h1,
+h2,
+p {
+    margin: 0;
+}
+
+h1 {
+    font-size: 30px;
+    letter-spacing: 0;
+}
+
+.admin-header p,
+.panel-header span,
+.metric-tile span,
+.metric-tile small,
+.auth-panel p,
+.status-panel {
+    color: var(--muted);
+}
+
+.admin-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.icon-button {
+    width: 42px;
+    height: 42px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.icon-button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.auth-panel {
+    padding: 22px;
+    margin-bottom: 18px;
+}
+
+.auth-panel label {
+    display: block;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+.token-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+}
+
+input {
+    width: 100%;
+    border: 1px solid var(--border);
+    background: #020617;
+    color: var(--text);
+    border-radius: 8px;
+    padding: 13px 14px;
+    font: inherit;
+}
+
+button {
+    border: 0;
+    background: var(--accent);
+    color: #052e2b;
+    border-radius: 8px;
+    padding: 0 18px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.auth-panel p {
+    margin-top: 10px;
+    font-size: 13px;
+}
+
+.status-panel {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    margin-bottom: 18px;
+    font-size: 13px;
+}
+
+.storage-badge {
+    color: var(--accent);
+    font-weight: 800;
+}
+
+.error-panel {
+    border-color: rgba(248, 113, 113, 0.6);
+    color: #fecaca;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+}
+
+.metric-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.metric-tile {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 18px;
+}
+
+.metric-tile span,
+.metric-tile small {
+    display: block;
+    font-size: 13px;
+}
+
+.metric-tile strong {
+    display: block;
+    font-size: 34px;
+    margin: 8px 0 4px;
+}
+
+.panel {
+    padding: 18px;
+    margin-bottom: 18px;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: baseline;
+    margin-bottom: 16px;
+}
+
+.panel-header h2 {
+    font-size: 18px;
+}
+
+.trend-chart {
+    display: grid;
+    grid-template-columns: repeat(14, minmax(28px, 1fr));
+    gap: 10px;
+    align-items: end;
+    min-height: 220px;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+}
+
+.trend-day {
+    display: grid;
+    grid-template-rows: 1fr auto;
+    gap: 8px;
+    min-width: 0;
+}
+
+.bars {
+    height: 170px;
+    display: flex;
+    align-items: end;
+    justify-content: center;
+    gap: 4px;
+}
+
+.bar {
+    width: 10px;
+    min-height: 2px;
+    border-radius: 4px 4px 0 0;
+}
+
+.bar.downloads {
+    background: var(--accent);
+}
+
+.bar.active {
+    background: var(--accent-2);
+}
+
+.trend-day label {
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    white-space: nowrap;
+}
+
+.table-wrap {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+th,
+td {
+    padding: 12px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+th {
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.hidden {
+    display: none !important;
+}
+
+@media (max-width: 860px) {
+    .admin-header,
+    .panel-header,
+    .status-panel {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .token-row {
+        grid-template-columns: 1fr;
+    }
+
+    .trend-chart {
+        overflow-x: auto;
+    }
+}
+
+@media (max-width: 560px) {
+    .metric-grid {
+        grid-template-columns: 1fr;
+    }
+}

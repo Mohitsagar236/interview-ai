@@ -1,1 +1,1 @@
-/api/download* https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev/releases/v0.1.0/Interview-AI-Setup-0.1.0-x64.exe?build=20260625-144629 302
+# API routes are handled by serverless functions so analytics tracking can run.
