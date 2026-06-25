@@ -7,7 +7,6 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const crypto = require('crypto');
 const https = require('https');
-const http = require('http');
 
 // Load .env file from project root (critical for all environment variables)
 const dotenv = require('dotenv');
@@ -96,7 +95,6 @@ let settingsPath = null;
 let interviewsPath = null;
 let activitiesPath = null; // activity feed persistence
 let heartbeatInterval = null;
-let usageTelemetryInterval = null;
 let buildingMainApp = false; // guard concurrent builds
 // In-memory parsed resume store (id -> {text, chunks, meta}) for quick search (will persist later)
 let parsedResumes = new Map();
@@ -596,105 +594,6 @@ const config = require('./config');
 console.log(`[CONFIG] Environment: ${process.env.NODE_ENV || 'development'}`);
 console.log(`[CONFIG] Cloud Mode: ${config.cloudMode}`);
 console.log(`[CONFIG] Server URL: ${config.serverUrl}`);
-
-// ------------- Anonymous Usage Telemetry -------------
-const DEFAULT_TELEMETRY_ENDPOINT = 'https://interviewai.space/api/telemetry';
-const USAGE_TELEMETRY_ENDPOINT = (process.env.INTERVIEW_AI_TELEMETRY_URL || DEFAULT_TELEMETRY_ENDPOINT).trim();
-const USAGE_TELEMETRY_INTERVAL_MS = 15 * 60 * 1000;
-
-function usageTelemetryEnabled() {
-  try {
-    if (process.env.INTERVIEW_AI_DISABLE_TELEMETRY === '1') return false;
-    if (!app.isPackaged && process.env.INTERVIEW_AI_DEV_TELEMETRY !== '1') return false;
-    return settingsStore.get('telemetry.disabled', false) !== true;
-  } catch {
-    return false;
-  }
-}
-
-function getAnonymousInstallId() {
-  let id = settingsStore.get('telemetry.installId', null);
-  if (!id) {
-    id = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
-    settingsStore.set('telemetry.installId', id);
-  }
-  return id;
-}
-
-function postTelemetryJson(endpoint, payload) {
-  return new Promise((resolve, reject) => {
-    let url;
-    try {
-      url = new URL(endpoint);
-    } catch (error) {
-      reject(error);
-      return;
-    }
-
-    const body = JSON.stringify(payload);
-    const transport = url.protocol === 'http:' ? http : https;
-    const request = transport.request({
-      method: 'POST',
-      hostname: url.hostname,
-      port: url.port || (url.protocol === 'http:' ? 80 : 443),
-      path: `${url.pathname}${url.search}`,
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-        'User-Agent': `InterviewAI/${app.getVersion()}`,
-      },
-      timeout: 5000,
-    }, (response) => {
-      response.resume();
-      response.on('end', resolve);
-    });
-
-    request.on('error', reject);
-    request.on('timeout', () => {
-      request.destroy(new Error('Telemetry request timed out'));
-    });
-    request.write(body);
-    request.end();
-  });
-}
-
-async function sendUsageTelemetry(event, metadata = {}) {
-  if (!usageTelemetryEnabled()) return;
-
-  try {
-    await postTelemetryJson(USAGE_TELEMETRY_ENDPOINT, {
-      event,
-      anonymousId: getAnonymousInstallId(),
-      appVersion: app.getVersion(),
-      platform: process.platform,
-      os: process.getSystemVersion ? process.getSystemVersion() : process.platform,
-      ...metadata,
-    });
-  } catch (error) {
-    console.warn('[Telemetry] Usage event skipped:', error.message);
-  }
-}
-
-function startUsageTelemetry() {
-  if (!usageTelemetryEnabled()) {
-    console.log('[Telemetry] Anonymous usage telemetry disabled');
-    return;
-  }
-
-  console.log('[Telemetry] Anonymous usage telemetry enabled');
-  sendUsageTelemetry('app_launch');
-  if (usageTelemetryInterval) clearInterval(usageTelemetryInterval);
-  usageTelemetryInterval = setInterval(() => {
-    sendUsageTelemetry('app_heartbeat');
-  }, USAGE_TELEMETRY_INTERVAL_MS);
-}
-
-function stopUsageTelemetry() {
-  if (usageTelemetryInterval) {
-    clearInterval(usageTelemetryInterval);
-    usageTelemetryInterval = null;
-  }
-}
 
 // ── Setup progress window ─────────────────────────────────────────────────────
 
@@ -2514,7 +2413,6 @@ ipcMain.handle('interview-start-session', async (_event, id) => {
     }, 1000);
     
     logActivity('interview.session.start', { id });
-    sendUsageTelemetry('interview_session_start');
     return { ok:true, session: activeInterviewSession };
   } catch (e) { return { ok:false, error:e.message }; }
 });
@@ -2541,7 +2439,6 @@ ipcMain.handle('interview-end-session', async (_event, id, options) => {
     }
     
     logActivity('interview.session.end', { id, durationSec });
-    sendUsageTelemetry('interview_session_end');
     return { ok:true, durationSec };
   } catch (e) { return { ok:false, error:e.message }; }
 });
@@ -2988,7 +2885,6 @@ app.whenReady().then(async () => {
   }
   
   startHeartbeat();
-  startUsageTelemetry();
   // Unified permission handler: allow media + display-capture for system audio
   try {
     session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => {
@@ -3127,7 +3023,6 @@ app.on('window-all-closed', () => {
   // Clean up global shortcuts
   globalShortcut.unregisterAll();
   if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
-  stopUsageTelemetry();
   
   // Clean up overlays
   overlayWindows.forEach(w => {
@@ -3177,7 +3072,6 @@ app.on('before-quit', () => {
     }
   } catch {}
   if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
-  stopUsageTelemetry();
 });
 
 // Handle certificate errors (for development)
