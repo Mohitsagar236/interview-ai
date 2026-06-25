@@ -470,19 +470,6 @@
         showToast('Your login session expired. Please login again.', 'error');
     }
 
-    function formatSessionExpiry(session = authSession) {
-        if (!session) return '';
-
-        const expiresAt = getAuthSessionExpiresAt(session);
-        const minutesLeft = Math.max(0, Math.ceil((expiresAt - Date.now()) / 60000));
-        const time = new Date(expiresAt).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-        });
-
-        return `Expires at ${time} (${minutesLeft} min left)`;
-    }
-
     async function getCurrentSession() {
         if (!supabaseClient) return null;
         if (authSession) {
@@ -663,7 +650,6 @@
         const sessionCard = document.querySelector('[data-auth-session-card]');
         const isSignedIn = Boolean(authSession);
         const profileEmail = authSession?.user?.email || decodeJwtPayload(authSession?.access_token)?.email || 'Signed in user';
-        const profileExpiry = isSignedIn ? formatSessionExpiry(authSession) : '';
 
         if (title) {
             title.textContent = isSignedIn
@@ -685,10 +671,6 @@
 
         document.querySelectorAll('[data-profile-email]').forEach((element) => {
             element.textContent = profileEmail;
-        });
-
-        document.querySelectorAll('[data-profile-expiry]').forEach((element) => {
-            element.textContent = profileExpiry || 'Session expires within 60 min';
         });
 
         if (form) {

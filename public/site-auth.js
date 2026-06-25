@@ -169,7 +169,6 @@
         const isSignedIn = Boolean(session);
         const email = session?.user?.email || decodeJwtPayload(session?.access_token)?.email || 'Signed in user';
         const name = formatProfileName(email);
-        const expiry = isSignedIn ? formatSessionExpiry(session) : 'Expires in 60 min';
 
         document.querySelectorAll('[data-site-auth-logged-out]').forEach((element) => {
             element.classList.toggle('hidden', isSignedIn);
@@ -188,10 +187,6 @@
 
         document.querySelectorAll('[data-site-profile-name]').forEach((element) => {
             element.textContent = name;
-        });
-
-        document.querySelectorAll('[data-site-profile-expiry]').forEach((element) => {
-            element.textContent = expiry;
         });
     }
 
@@ -283,11 +278,4 @@
         }, Math.min(delay, 2147483647));
     }
 
-    function formatSessionExpiry(session) {
-        if (!session) return 'Expires in 60 min';
-
-        const expiresAt = getAuthSessionExpiresAt(session);
-        const minutesLeft = Math.max(0, Math.ceil((expiresAt - Date.now()) / 60000));
-        return `Expires in ${minutesLeft} min`;
-    }
 })();

@@ -657,20 +657,6 @@ nav {
     font-weight: 700;
 }
 
-.site-profile-expiry {
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: #64748b;
-    font-size: 11px;
-    font-weight: 600;
-}
-
-html.dark .site-profile-expiry {
-    color: #cbd5e1;
-}
-
 html.dark .profile-trigger {
     background: #1e293b;
     border-color: #334155;
