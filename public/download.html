@@ -31,8 +31,34 @@
                     <i class="fas fa-sun"></i>
                 </button>
                 <div class="auth-section download-header-auth">
-                    <button class="btn-login btn-login-secondary" type="button" data-auth-open="signin">Login</button>
-                    <button class="btn-login" type="button" data-auth-open="signup">Sign up</button>
+                    <div class="download-auth-actions" data-auth-logged-out>
+                        <button class="btn-login btn-login-secondary" type="button" data-auth-open="signin">Login</button>
+                        <button class="btn-login" type="button" data-auth-open="signup">Sign up</button>
+                    </div>
+                    <div class="download-user-profile hidden" data-auth-profile>
+                        <button class="download-profile-trigger" type="button" data-profile-toggle aria-expanded="false">
+                            <span class="download-profile-avatar"><i class="fas fa-user"></i></span>
+                            <span class="download-profile-copy">
+                                <span class="download-profile-email" data-profile-email>Signed in</span>
+                                <span class="download-profile-expiry" data-profile-expiry>Expires in 60 min</span>
+                            </span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="download-profile-menu hidden" data-profile-menu>
+                            <div class="download-profile-row">
+                                <span>Email</span>
+                                <strong data-profile-email>Signed in</strong>
+                            </div>
+                            <div class="download-profile-row">
+                                <span>Session expires</span>
+                                <strong data-profile-expiry>Within 60 min</strong>
+                            </div>
+                            <button class="download-profile-logout" type="button" data-auth-logout>
+                                <i class="fas fa-right-from-bracket"></i>
+                                <span>Logout</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </nav>
@@ -236,6 +262,17 @@
                 <button id="auth-signup-tab" class="download-auth-tab" type="button" data-auth-mode="signup">Sign up</button>
             </div>
 
+            <div class="download-auth-session hidden" data-auth-session-card>
+                <div class="download-auth-session-icon">
+                    <i class="fas fa-user-check"></i>
+                </div>
+                <div>
+                    <span>Logged in as</span>
+                    <strong data-profile-email>Signed in</strong>
+                    <small data-profile-expiry>Session expires within 60 min</small>
+                </div>
+            </div>
+
             <form id="download-auth-form" class="download-auth-form" novalidate>
                 <label for="download-auth-email">Email</label>
                 <input id="download-auth-email" type="email" autocomplete="email" required placeholder="you@example.com">
@@ -255,7 +292,7 @@
             </form>
 
             <p id="download-auth-message" class="download-auth-message" aria-live="polite"></p>
-            <button id="download-auth-signout" class="download-auth-signout hidden" type="button">
+            <button id="download-auth-signout" class="download-auth-signout hidden" type="button" data-auth-logout>
                 Sign out
             </button>
         </div>

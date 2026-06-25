@@ -9,6 +9,7 @@ const PORT = process.env.PORT || 3000;
 const R2_BASE_URL = (process.env.R2_PUBLIC_URL || 'https://pub-25ab7498cafd4a708df4eafca6fa14a3.r2.dev').replace(/\/+$/, '');
 const VERSION = process.env.APP_VERSION || '0.1.0';
 const BUILD_ID = process.env.APP_BUILD_ID || '20260625-144629';
+const MAX_AUTH_SESSION_SECONDS = 60 * 60;
 
 function normalizeSupabaseUrl(value) {
   return String(value || '')
@@ -29,6 +30,35 @@ function bearerToken(req) {
   return header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
 }
 
+function decodeJwtPayload(token) {
+  const payload = token.split('.')[1];
+  if (!payload) return null;
+
+  try {
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(normalized.length + (4 - normalized.length % 4) % 4, '=');
+    return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+  } catch (_error) {
+    return null;
+  }
+}
+
+function validateTokenAge(token) {
+  const payload = decodeJwtPayload(token);
+  const issuedAt = Number(payload?.iat);
+
+  if (!issuedAt) {
+    return { ok: false, error: 'Invalid login session' };
+  }
+
+  const ageSeconds = Math.floor(Date.now() / 1000) - issuedAt;
+  if (ageSeconds > MAX_AUTH_SESSION_SECONDS) {
+    return { ok: false, error: 'Login session expired. Please login again' };
+  }
+
+  return { ok: true };
+}
+
 async function verifySupabaseUser(req) {
   const { url, anonKey } = supabaseConfig();
   if (!url || !anonKey) {
@@ -38,6 +68,11 @@ async function verifySupabaseUser(req) {
   const token = bearerToken(req);
   if (!token) {
     return { ok: false, status: 401, error: 'Login required before download' };
+  }
+
+  const tokenAge = validateTokenAge(token);
+  if (!tokenAge.ok) {
+    return { ok: false, status: 401, error: tokenAge.error };
   }
 
   const response = await fetch(`${url}/auth/v1/user`, {

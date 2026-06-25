@@ -12,6 +12,9 @@
     let authSetupError = '';
     let authUiBound = false;
     let toastTimer = null;
+    let authExpiryTimer = null;
+    const AUTH_SESSION_STARTED_AT_KEY = 'interviewai_download_auth_started_at';
+    const AUTH_SESSION_MAX_AGE_MS = 60 * 60 * 1000;
 
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
@@ -74,13 +77,26 @@
             return;
         }
 
-        supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+        supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
+            auth: {
+                persistSession: true,
+                autoRefreshToken: false,
+            },
+        });
         authSession = await getCurrentSession();
         updateAuthUi();
+        scheduleAuthExpiry();
 
-        supabaseClient.auth.onAuthStateChange((_event, session) => {
+        supabaseClient.auth.onAuthStateChange((event, session) => {
             authSession = session;
+            if (event === 'SIGNED_IN' && session) {
+                markAuthSessionStarted(true);
+            }
+            if (event === 'SIGNED_OUT') {
+                clearAuthSessionStarted();
+            }
             updateAuthUi();
+            scheduleAuthExpiry();
         });
     }
 
@@ -105,32 +121,38 @@
             form.addEventListener('submit', handleAuthSubmit);
         }
 
-        const signOut = document.getElementById('download-auth-signout');
-        if (signOut) {
-            signOut.addEventListener('click', async () => {
-                if (supabaseClient) {
-                    await supabaseClient.auth.signOut();
-                }
-                authSession = null;
-                setAuthMessage('Signed out.', 'success');
-                showToast('Signed out successfully.', 'success');
-                updateAuthUi();
-            });
-        }
-
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape') {
                 closeAuthModal();
+                closeProfileMenu();
             }
         });
     }
 
-    function handlePageClick(event) {
+    async function handlePageClick(event) {
         const passwordToggle = event.target.closest('[data-password-toggle]');
         if (passwordToggle) {
             event.preventDefault();
             togglePasswordVisibility(passwordToggle);
             return;
+        }
+
+        const logoutButton = event.target.closest('[data-auth-logout]');
+        if (logoutButton) {
+            event.preventDefault();
+            await performSignOut();
+            return;
+        }
+
+        const profileToggle = event.target.closest('[data-profile-toggle]');
+        if (profileToggle) {
+            event.preventDefault();
+            toggleProfileMenu(profileToggle);
+            return;
+        }
+
+        if (!event.target.closest('[data-auth-profile]')) {
+            closeProfileMenu();
         }
 
         const closeTarget = event.target.closest('[data-auth-close]');
@@ -182,6 +204,43 @@
             icon.classList.toggle('fa-eye', isVisible);
             icon.classList.toggle('fa-eye-slash', !isVisible);
         }
+    }
+
+    function toggleProfileMenu(button) {
+        const menu = document.querySelector('[data-profile-menu]');
+        if (!menu) return;
+
+        const willOpen = menu.classList.contains('hidden');
+        menu.classList.toggle('hidden', !willOpen);
+        button.setAttribute('aria-expanded', String(willOpen));
+    }
+
+    function closeProfileMenu() {
+        const menu = document.querySelector('[data-profile-menu]');
+        const trigger = document.querySelector('[data-profile-toggle]');
+        if (menu) {
+            menu.classList.add('hidden');
+        }
+        if (trigger) {
+            trigger.setAttribute('aria-expanded', 'false');
+        }
+    }
+
+    async function performSignOut(message = 'Signed out successfully.') {
+        closeProfileMenu();
+        clearAuthSessionStarted();
+        clearAuthExpiryTimer();
+
+        if (supabaseClient) {
+            await supabaseClient.auth.signOut().catch((error) => {
+                console.warn('Supabase sign out failed:', error?.message || error);
+            });
+        }
+
+        authSession = null;
+        updateAuthUi();
+        setAuthMessage('Signed out.', 'success');
+        showToast(message, 'success');
     }
 
     async function handleAuthSubmit(event) {
@@ -239,7 +298,9 @@
                 authSession = result.data.session;
             }
 
+            markAuthSessionStarted(true);
             updateAuthUi();
+            scheduleAuthExpiry();
             const successMessage = authMode === 'signup'
                 ? 'Signup successful. Starting download...'
                 : 'Successfully logged in. Starting download...';
@@ -304,9 +365,133 @@
         return rawMessage;
     }
 
+    function decodeJwtPayload(token) {
+        if (!token || typeof token !== 'string') return null;
+
+        const payload = token.split('.')[1];
+        if (!payload) return null;
+
+        try {
+            const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+            const padded = normalized.padEnd(normalized.length + (4 - normalized.length % 4) % 4, '=');
+            return JSON.parse(atob(padded));
+        } catch (_error) {
+            return null;
+        }
+    }
+
+    function markAuthSessionStarted(forceNew = false) {
+        if (!authSession) return 0;
+
+        const stored = Number(localStorage.getItem(AUTH_SESSION_STARTED_AT_KEY));
+        if (!forceNew && Number.isFinite(stored) && stored > 0) {
+            return stored;
+        }
+
+        const startedAt = Date.now();
+        localStorage.setItem(AUTH_SESSION_STARTED_AT_KEY, String(startedAt));
+        return startedAt;
+    }
+
+    function getAuthSessionStartedAt(session = authSession) {
+        const stored = Number(localStorage.getItem(AUTH_SESSION_STARTED_AT_KEY));
+        if (Number.isFinite(stored) && stored > 0) {
+            return stored;
+        }
+
+        const payload = decodeJwtPayload(session?.access_token);
+        const tokenStartedAt = Number(payload?.iat) > 0 ? Number(payload.iat) * 1000 : 0;
+        const startedAt = tokenStartedAt || Date.now();
+        localStorage.setItem(AUTH_SESSION_STARTED_AT_KEY, String(startedAt));
+        return startedAt;
+    }
+
+    function clearAuthSessionStarted() {
+        localStorage.removeItem(AUTH_SESSION_STARTED_AT_KEY);
+    }
+
+    function getAuthSessionExpiresAt(session = authSession) {
+        if (!session) return 0;
+        return getAuthSessionStartedAt(session) + AUTH_SESSION_MAX_AGE_MS;
+    }
+
+    function isAuthSessionExpired(session = authSession) {
+        if (!session) return true;
+
+        const expiresAt = getAuthSessionExpiresAt(session);
+        const payload = decodeJwtPayload(session.access_token);
+        const tokenExpiresAt = Number(payload?.exp) > 0 ? Number(payload.exp) * 1000 : 0;
+        const effectiveExpiresAt = tokenExpiresAt ? Math.min(expiresAt, tokenExpiresAt) : expiresAt;
+
+        return Date.now() >= effectiveExpiresAt;
+    }
+
+    function clearAuthExpiryTimer() {
+        if (authExpiryTimer) {
+            clearTimeout(authExpiryTimer);
+            authExpiryTimer = null;
+        }
+    }
+
+    function scheduleAuthExpiry() {
+        clearAuthExpiryTimer();
+        if (!authSession) return;
+
+        const payload = decodeJwtPayload(authSession.access_token);
+        const sessionExpiresAt = getAuthSessionExpiresAt(authSession);
+        const tokenExpiresAt = Number(payload?.exp) > 0 ? Number(payload.exp) * 1000 : 0;
+        const effectiveExpiresAt = tokenExpiresAt ? Math.min(sessionExpiresAt, tokenExpiresAt) : sessionExpiresAt;
+        const delay = effectiveExpiresAt - Date.now();
+
+        if (delay <= 0) {
+            expireAuthSession();
+            return;
+        }
+
+        authExpiryTimer = setTimeout(() => {
+            expireAuthSession();
+        }, Math.min(delay, 2147483647));
+    }
+
+    async function expireAuthSession() {
+        closeProfileMenu();
+        clearAuthSessionStarted();
+        clearAuthExpiryTimer();
+
+        if (supabaseClient) {
+            await supabaseClient.auth.signOut().catch((error) => {
+                console.warn('Supabase expiry sign out failed:', error?.message || error);
+            });
+        }
+
+        authSession = null;
+        updateAuthUi();
+        openAuthModal('Your 60-minute login session expired. Please login again.', 'error');
+        showToast('Your login session expired. Please login again.', 'error');
+    }
+
+    function formatSessionExpiry(session = authSession) {
+        if (!session) return '';
+
+        const expiresAt = getAuthSessionExpiresAt(session);
+        const minutesLeft = Math.max(0, Math.ceil((expiresAt - Date.now()) / 60000));
+        const time = new Date(expiresAt).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+
+        return `Expires at ${time} (${minutesLeft} min left)`;
+    }
+
     async function getCurrentSession() {
         if (!supabaseClient) return null;
-        if (authSession) return authSession;
+        if (authSession) {
+            if (isAuthSessionExpired(authSession)) {
+                await expireAuthSession();
+                return null;
+            }
+            return authSession;
+        }
 
         const { data, error } = await supabaseClient.auth.getSession();
         if (error) {
@@ -314,12 +499,27 @@
             return null;
         }
         authSession = data.session;
+
+        if (authSession && isAuthSessionExpired(authSession)) {
+            await expireAuthSession();
+            return null;
+        }
+
+        if (authSession) {
+            scheduleAuthExpiry();
+        }
+
         return authSession;
     }
 
     async function startAuthenticatedDownload(platform, session) {
         if (!session || !session.access_token) {
             openAuthModal('Login or create a free account to download Interview AI.');
+            return false;
+        }
+
+        if (isAuthSessionExpired(session)) {
+            await expireAuthSession();
             return false;
         }
 
@@ -458,17 +658,53 @@
         const submit = document.getElementById('download-auth-submit');
         const signOut = document.getElementById('download-auth-signout');
         const submitLabel = submit?.querySelector('span');
+        const form = document.getElementById('download-auth-form');
+        const tabs = document.querySelector('.download-auth-tabs');
+        const sessionCard = document.querySelector('[data-auth-session-card]');
+        const isSignedIn = Boolean(authSession);
+        const profileEmail = authSession?.user?.email || decodeJwtPayload(authSession?.access_token)?.email || 'Signed in user';
+        const profileExpiry = isSignedIn ? formatSessionExpiry(authSession) : '';
 
         if (title) {
-            title.textContent = authMode === 'signup' ? 'Create account to download' : 'Sign in to download';
+            title.textContent = isSignedIn
+                ? 'Your download profile'
+                : (authMode === 'signup' ? 'Create account to download' : 'Sign in to download');
         }
 
         if (submitLabel) {
             submitLabel.textContent = authMode === 'signup' ? 'Create Account and Download' : 'Login and Download';
         }
 
+        document.querySelectorAll('[data-auth-logged-out]').forEach((element) => {
+            element.classList.toggle('hidden', isSignedIn);
+        });
+
+        document.querySelectorAll('[data-auth-profile]').forEach((element) => {
+            element.classList.toggle('hidden', !isSignedIn);
+        });
+
+        document.querySelectorAll('[data-profile-email]').forEach((element) => {
+            element.textContent = profileEmail;
+        });
+
+        document.querySelectorAll('[data-profile-expiry]').forEach((element) => {
+            element.textContent = profileExpiry || 'Session expires within 60 min';
+        });
+
+        if (form) {
+            form.classList.toggle('hidden', isSignedIn);
+        }
+
+        if (tabs) {
+            tabs.classList.toggle('hidden', isSignedIn);
+        }
+
+        if (sessionCard) {
+            sessionCard.classList.toggle('hidden', !isSignedIn);
+        }
+
         if (signOut) {
-            signOut.classList.toggle('hidden', !authSession);
+            signOut.classList.toggle('hidden', !isSignedIn);
         }
     }
 

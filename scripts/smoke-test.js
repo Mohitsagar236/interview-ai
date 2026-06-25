@@ -41,6 +41,7 @@ const downloadHtml = read('public/download.html');
 const apiDownloadJs = read('api/download.js');
 const apiPublicConfigJs = read('api/public-config.js');
 const devServerJs = read('dev-server.js');
+const functionsDownloadJs = read('functions/api/download.js');
 
 check('Electron main entry exists', exists(packageJson.main || 'electron/main.js'));
 check('Toolbar files exist', exists('renderer/toolbar.html') && exists('renderer/toolbar.js'));
@@ -63,6 +64,8 @@ check('Header shows login and signup links', /download\.html\?auth=signin/.test(
 check('Download buttons use delegated click handlers', /data-download-platform="windows"/.test(downloadHtml) && /handlePageClick/.test(downloadJs) && !/onclick="downloadApp/.test(downloadHtml));
 check('Auth flow shows friendly errors and success popups', /friendlyAuthError/.test(downloadJs) && /Invalid email or password/.test(downloadJs) && /Successfully logged in/.test(downloadJs) && /Signup successful/.test(downloadJs));
 check('Auth password field has show/hide toggle', /data-password-toggle/.test(downloadHtml) && /togglePasswordVisibility/.test(downloadJs) && /fa-eye-slash/.test(downloadJs));
+check('Auth profile shows user details and logout', /data-auth-profile/.test(downloadHtml) && /data-profile-email/.test(downloadHtml) && /data-auth-logout/.test(downloadHtml) && /performSignOut/.test(downloadJs));
+check('Auth session is capped at 60 minutes', /AUTH_SESSION_MAX_AGE_MS = 60 \* 60 \* 1000/.test(downloadJs) && /autoRefreshToken:\s*false/.test(downloadJs) && /MAX_AUTH_SESSION_SECONDS = 60 \* 60/.test(apiDownloadJs) && /MAX_AUTH_SESSION_SECONDS = 60 \* 60/.test(functionsDownloadJs));
 check('Download page warns when opened from file protocol', /window\.location\.protocol === 'file:'/.test(downloadJs) && /npm run serve/.test(downloadJs));
 check('Supabase URL normalization strips REST/Auth paths', /normalizeSupabaseUrl/.test(apiDownloadJs) && /normalizeSupabaseUrl/.test(apiPublicConfigJs) && /normalizeSupabaseUrl/.test(devServerJs));
 check('Download API verifies Supabase token', /auth\/v1\/user/.test(apiDownloadJs) && /Authorization/.test(apiDownloadJs) && /SUPABASE_ANON_KEY/.test(apiDownloadJs));
