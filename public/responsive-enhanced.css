@@ -1755,3 +1755,319 @@ html {
 /* ========================================
    END OF RESPONSIVE ENHANCEMENTS
    ======================================== */
+
+/* ========================================
+   REAL ELECTRON APP HERO PREVIEW
+   ======================================== */
+
+.hero {
+    padding-top: clamp(2.25rem, 5vw, 4rem) !important;
+    padding-bottom: clamp(2.5rem, 5vw, 4rem) !important;
+    min-height: calc(100vh - 5rem) !important;
+}
+
+.hero .hero-container {
+    grid-template-columns: minmax(430px, 0.9fr) minmax(0, 1.1fr) !important;
+    gap: clamp(2.25rem, 5vw, 5rem) !important;
+    align-items: center !important;
+}
+
+.hero .hero-left {
+    position: relative;
+    z-index: 3;
+    max-width: 620px !important;
+}
+
+.hero .hero-right {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+    justify-content: flex-end !important;
+}
+
+.hero-video-section.hero-app-preview {
+    width: 100%;
+    max-width: 720px;
+    margin-left: auto;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.hero-video-section.hero-app-preview > .electron-showcase {
+    position: relative;
+    width: 100%;
+    max-width: 720px;
+    margin: 0 0 0 auto;
+    padding: clamp(0.75rem, 1.8vw, 1.15rem);
+    border: 1px solid rgba(15, 118, 110, 0.14);
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(241, 245, 249, 0.86));
+    box-shadow: 0 28px 70px rgba(15, 23, 42, 0.16);
+    overflow: visible;
+    animation: electronPreviewFloat 6s ease-in-out infinite;
+}
+
+.electron-showcase::before {
+    content: "";
+    position: absolute;
+    inset: 10% -3% -8% 5%;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.20), rgba(37, 99, 235, 0.15));
+    filter: blur(28px);
+    opacity: 0.45;
+    transform: translateZ(0);
+    z-index: -1;
+    animation: electronPreviewGlow 5.5s ease-in-out infinite;
+}
+
+.electron-showcase__stage {
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+    background: #0b1020;
+    border: 1px solid rgba(15, 23, 42, 0.14);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 20px 44px rgba(15, 23, 42, 0.18);
+}
+
+.electron-showcase__image {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    transform: scale(1.01);
+}
+
+.electron-showcase__scan {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 0%, rgba(125, 211, 252, 0.0) 38%, rgba(125, 211, 252, 0.22) 48%, rgba(16, 185, 129, 0.14) 52%, transparent 64%);
+    transform: translateX(-120%);
+    mix-blend-mode: screen;
+    pointer-events: none;
+    animation: electronPreviewScan 4.5s ease-in-out infinite;
+}
+
+.electron-showcase__cursor {
+    position: absolute;
+    left: 13%;
+    top: 27%;
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    background: #10b981;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.48), 0 0 18px rgba(16, 185, 129, 0.70);
+    animation: electronPreviewPulse 1.8s ease-out infinite;
+}
+
+.electron-showcase__status {
+    position: absolute;
+    top: clamp(-0.85rem, -1.2vw, -0.55rem);
+    left: clamp(1rem, 2vw, 1.5rem);
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.48rem 0.74rem;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    color: #d1fae5;
+    font-size: 0.76rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    box-shadow: 0 16px 30px rgba(15, 23, 42, 0.20);
+}
+
+.electron-showcase__pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #10b981;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.58);
+    animation: electronPreviewPulse 1.8s ease-out infinite;
+}
+
+.electron-showcase__chips {
+    display: flex;
+    justify-content: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+    margin-top: 0.85rem;
+}
+
+.electron-showcase__chips span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 0.32rem 0.64rem;
+    border-radius: 999px;
+    background: rgba(15, 118, 110, 0.08);
+    border: 1px solid rgba(15, 118, 110, 0.16);
+    color: #0f766e;
+    font-size: 0.78rem;
+    font-weight: 800;
+    animation: electronChipLift 4.8s ease-in-out infinite;
+}
+
+.electron-showcase__chips span:nth-child(2) { animation-delay: 0.25s; }
+.electron-showcase__chips span:nth-child(3) { animation-delay: 0.50s; }
+.electron-showcase__chips span:nth-child(4) { animation-delay: 0.75s; }
+
+@keyframes electronPreviewFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+@keyframes electronPreviewGlow {
+    0%, 100% { opacity: 0.32; transform: translateY(0); }
+    50% { opacity: 0.56; transform: translateY(-6px); }
+}
+
+@keyframes electronPreviewScan {
+    0%, 18% { transform: translateX(-120%); opacity: 0; }
+    32%, 52% { opacity: 1; }
+    72%, 100% { transform: translateX(120%); opacity: 0; }
+}
+
+@keyframes electronPreviewPulse {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.52), 0 0 18px rgba(16, 185, 129, 0.70); }
+    70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0), 0 0 18px rgba(16, 185, 129, 0.34); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0), 0 0 18px rgba(16, 185, 129, 0.70); }
+}
+
+@keyframes electronChipLift {
+    0%, 100% { transform: translateY(0); border-color: rgba(15, 118, 110, 0.16); }
+    50% { transform: translateY(-3px); border-color: rgba(37, 99, 235, 0.22); }
+}
+
+html.dark .hero-video-section.hero-app-preview > .electron-showcase {
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.86), rgba(17, 24, 39, 0.78));
+    border-color: rgba(148, 163, 184, 0.14);
+    box-shadow: 0 28px 70px rgba(0, 0, 0, 0.32);
+}
+
+html.dark .electron-showcase__chips span {
+    background: rgba(16, 185, 129, 0.10);
+    border-color: rgba(16, 185, 129, 0.18);
+    color: #6ee7b7;
+}
+
+@media (max-width: 1024px) {
+    .hero {
+        padding-top: 2.25rem !important;
+        padding-bottom: 3rem !important;
+    }
+
+    .hero .hero-container {
+        grid-template-columns: 1fr !important;
+        max-width: 820px !important;
+        gap: 2rem !important;
+    }
+
+    .hero .hero-left {
+        max-width: 100% !important;
+    }
+
+    .hero .hero-right {
+        justify-content: center !important;
+    }
+
+    .hero-video-section.hero-app-preview {
+        max-width: 720px;
+        margin: 0 auto;
+    }
+
+    .hero-video-section.hero-app-preview > .electron-showcase {
+        width: min(720px, 100%);
+        margin: 0 auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .hero {
+        padding-top: 1.5rem !important;
+        padding-bottom: 2.5rem !important;
+    }
+
+    .hero .hero-right {
+        display: flex !important;
+        margin-top: 1.75rem;
+    }
+
+    .hero-video-section.hero-app-preview {
+        display: block !important;
+        padding: 0 !important;
+    }
+
+    .hero-video-section.hero-app-preview > .electron-showcase {
+        padding: 0.6rem;
+        border-radius: 12px;
+        animation: none;
+    }
+
+    .electron-showcase__status {
+        top: -0.7rem;
+        left: 0.85rem;
+        font-size: 0.68rem;
+        padding: 0.38rem 0.58rem;
+    }
+
+    .electron-showcase__chips {
+        gap: 0.35rem;
+        margin-top: 0.65rem;
+    }
+
+    .electron-showcase__chips span {
+        min-height: 24px;
+        padding: 0.24rem 0.46rem;
+        font-size: 0.68rem;
+    }
+}
+
+/* Keep hero trust cues in one clean row */
+.hero .payment-info {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 0.55rem !important;
+    flex-wrap: nowrap !important;
+    width: fit-content;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    white-space: nowrap;
+}
+
+.hero .payment-info::-webkit-scrollbar {
+    display: none;
+}
+
+.hero .payment-info__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex: 0 0 auto;
+}
+
+.hero .payment-info__item i {
+    color: #10b981;
+}
+
+.hero .payment-info__separator {
+    color: #94a3b8;
+    flex: 0 0 auto;
+    line-height: 1;
+}
+
+@media (max-width: 768px) {
+    .hero .payment-info {
+        justify-content: flex-start !important;
+        margin-left: 0;
+        margin-right: 0;
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+}

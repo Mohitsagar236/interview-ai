@@ -352,11 +352,11 @@
                         </a>
                     </div>
                     <div class="payment-info">
-                        <span style="display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-key" style="color:#10b981"></i> Bring Your Own API Key</span>
-                        &nbsp;&middot;&nbsp;
-                        <span style="display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-shield-alt" style="color:#10b981"></i> Runs Locally</span>
-                        &nbsp;&middot;&nbsp;
-                        <span style="display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-infinity" style="color:#10b981"></i> No Limits</span>
+                        <span class="payment-info__item"><i class="fas fa-key"></i> Bring Your Own API Key</span>
+                        <span class="payment-info__separator" aria-hidden="true">&middot;</span>
+                        <span class="payment-info__item"><i class="fas fa-shield-alt"></i> Runs Locally</span>
+                        <span class="payment-info__separator" aria-hidden="true">&middot;</span>
+                        <span class="payment-info__item"><i class="fas fa-infinity"></i> No Limits</span>
                     </div>
                     <div class="hero-stats">
                         <div class="stat-item">
@@ -373,20 +373,31 @@
                     </div>
                 </div>
                 <div class="hero-right">
-                    <div class="hero-video-section">
-                        <div style="background:linear-gradient(135deg,#0f1929 0%,#1a2a3a 100%);border:1px solid #1e2d45;border-radius:16px;padding:36px 32px;text-align:center;">
-                            <div style="font-size:48px;margin-bottom:16px;">&#x1F680;</div>
-                            <h3 style="color:#10b981;font-size:18px;font-weight:700;margin-bottom:10px;">Get Started in Minutes</h3>
-                            <p style="color:#7f92ae;font-size:14px;line-height:1.7;margin-bottom:24px;">Sign in to download, add your own API key, and get real-time AI coaching during any interview &mdash; no subscription.</p>
-                            <div style="display:flex;flex-direction:column;gap:10px;">
-                                <a href="download.html" style="display:flex;align-items:center;justify-content:center;gap:8px;background:#10b981;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">
-                                    <i class="fas fa-download"></i> Download for Windows &mdash; Free
-                                </a>
-                                <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;background:transparent;color:#10b981;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;border:1px solid #10b981;">
-                                    <i class="fas fa-key"></i> Get Free API Key (OpenRouter)
-                                </a>
+                    <div class="hero-video-section hero-app-preview" aria-label="Interview AI Electron desktop app preview">
+                        <div class="electron-showcase">
+                            <div class="electron-showcase__status">
+                                <span class="electron-showcase__pulse"></span>
+                                Live coaching
                             </div>
-                            <p style="color:#3d5270;font-size:12px;margin-top:16px;">Works with OpenAI &middot; Anthropic &middot; Groq &middot; Gemini &middot; xAI</p>
+                            <div class="electron-showcase__stage">
+                                <img
+                                    src="images/electron-app-real.png"
+                                    alt="Interview AI Electron desktop app showing a live interview transcript and AI answer overlay"
+                                    class="electron-showcase__image"
+                                    width="1785"
+                                    height="962"
+                                    loading="eager"
+                                    decoding="async"
+                                >
+                                <span class="electron-showcase__scan"></span>
+                                <span class="electron-showcase__cursor"></span>
+                            </div>
+                            <div class="electron-showcase__chips" aria-hidden="true">
+                                <span>OpenAI</span>
+                                <span>Claude</span>
+                                <span>Gemini</span>
+                                <span>Groq</span>
+                            </div>
                         </div>
                     </div>
                 </div>

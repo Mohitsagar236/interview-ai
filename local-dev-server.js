@@ -20,6 +20,112 @@ function bearerToken(req) {
   return header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
 }
 
+function normalizeResumeFileName(value) {
+  return String(value || 'resume')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '') || 'resume';
+}
+
+function inferResumeExtension(fileName, contentType) {
+  const lowerName = String(fileName || '').toLowerCase();
+  if (lowerName.endsWith('.pdf')) return 'pdf';
+  if (lowerName.endsWith('.docx')) return 'docx';
+  if (lowerName.endsWith('.doc')) return 'doc';
+  if (lowerName.endsWith('.txt')) return 'txt';
+  if (contentType === 'application/pdf') return 'pdf';
+  if (contentType === 'application/msword') return 'doc';
+  if (contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+  return 'bin';
+}
+
+function fileTypeAllowed(contentType, fileName) {
+  const lowerName = String(fileName || '').toLowerCase();
+  return [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain'
+  ].includes(contentType) || lowerName.endsWith('.pdf') || lowerName.endsWith('.doc') || lowerName.endsWith('.docx') || lowerName.endsWith('.txt');
+}
+
+function decodeBase64(value) {
+  return Buffer.from(String(value || ''), 'base64');
+}
+
+async function uploadResumeToSupabase({ url, serviceKey, fileName, contentType, resumeBase64 }) {
+  const bucket = process.env.SUPABASE_RESUMES_BUCKET || 'careers-resumes';
+  const extension = inferResumeExtension(fileName, contentType);
+  const safeName = normalizeResumeFileName(fileName).replace(/\.[^.]+$/, '');
+  const objectName = `${Date.now()}-${safeName}.${extension}`;
+
+  const uploadResponse = await fetch(`${url}/storage/v1/object/${bucket}/${encodeURIComponent(objectName)}`, {
+    method: 'POST',
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      'Content-Type': contentType || 'application/octet-stream',
+      'x-upsert': 'true'
+    },
+    body: decodeBase64(resumeBase64)
+  });
+
+  if (!uploadResponse.ok) {
+    throw new Error(await uploadResponse.text().catch(() => 'Could not upload resume'));
+  }
+
+  return { bucket, path: objectName };
+}
+
+async function saveCareersApplicationToSupabase(record) {
+  const { url } = supabaseConfig();
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
+
+  if (!url || !serviceKey) {
+    return { ok: false, status: 503, error: 'Supabase application storage is not configured' };
+  }
+
+  const resume = await uploadResumeToSupabase({
+    url,
+    serviceKey,
+    fileName: record.resumeName,
+    contentType: record.resumeType,
+    resumeBase64: record.resumeBase64
+  });
+
+  const payload = {
+    full_name: String(record.fullName).trim(),
+    email: String(record.email).trim(),
+    role: String(record.role).trim(),
+    portfolio: String(record.portfolio || '').trim(),
+    feedback: String(record.feedback).trim(),
+    resume_bucket: resume.bucket,
+    resume_path: resume.path,
+    resume_name: String(record.resumeName).trim(),
+    resume_type: String(record.resumeType || '').trim(),
+    status: 'new',
+    submitted_at: new Date().toISOString()
+  };
+
+  const response = await fetch(`${url}/rest/v1/careers_applications`, {
+    method: 'POST',
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text().catch(() => 'Could not save application'));
+  }
+
+  return { ok: true };
+}
+
 async function verifySupabaseUser(req) {
   const { url, anonKey } = supabaseConfig();
   if (!url || !anonKey) {
@@ -52,6 +158,44 @@ app.get('/api/public-config', (_req, res) => {
   const { url, anonKey } = supabaseConfig();
   res.setHeader('Cache-Control', 'public, max-age=300');
   res.json({ supabaseUrl: url, supabaseAnonKey: anonKey });
+});
+
+app.post('/api/careers', async (req, res) => {
+  try {
+    const {
+      fullName,
+      email,
+      role,
+      portfolio,
+      feedback,
+      resumeName,
+      resumeType,
+      resumeBase64
+    } = req.body || {};
+
+    if (!fullName || !email || !role || !feedback || !resumeName || !resumeBase64) {
+      return res.status(400).json({ error: 'Missing required application fields' });
+    }
+
+    if (!fileTypeAllowed(resumeType, resumeName)) {
+      return res.status(400).json({ error: 'Unsupported resume file type' });
+    }
+
+    await saveCareersApplicationToSupabase({
+      fullName,
+      email,
+      role,
+      portfolio,
+      feedback,
+      resumeName,
+      resumeType,
+      resumeBase64
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error?.message || 'Application submission failed' });
+  }
 });
 
 app.get('/api/download', async (req, res) => {
