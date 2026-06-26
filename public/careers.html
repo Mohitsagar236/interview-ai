@@ -4,22 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Careers - Interview AI</title>
-    <meta name="description" content="Join Interview AI. We are hiring for AI and software roles with a remote stipend of 40,000 INR. Applicants are asked to share feedback on what they can improve.">
-    <meta name="keywords" content="Interview AI careers, AI jobs, software jobs, remote internship, stipend 40000 INR, AI engineer, software engineer">
+    <meta name="description" content="Interview AI is hiring for AI and software roles. Remote opportunity with a 40000 INR stipend. Applicants should share what they want to improve along with their application.">
+    <meta name="keywords" content="Interview AI careers, AI jobs, software jobs, remote job, stipend 40000 INR, apply for AI engineer, apply for software engineer">
     <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg: #07111f;
-            --panel: rgba(8, 16, 31, 0.82);
-            --text: #e5eefb;
-            --muted: #98a6bf;
-            --line: rgba(148, 163, 184, 0.2);
+            --bg-soft: rgba(8, 16, 31, 0.82);
+            --bg-card: rgba(12, 23, 41, 0.92);
+            --text: #e8f1ff;
+            --muted: #9aa9c0;
+            --line: rgba(148, 163, 184, 0.18);
             --accent: #57c7ff;
             --accent-2: #7c3aed;
-            --success: #22c55e;
-            --warning: #f59e0b;
+            --good: #22c55e;
+            --warn: #f59e0b;
         }
 
         * { box-sizing: border-box; }
@@ -29,19 +30,24 @@
             font-family: 'Inter', sans-serif;
             color: var(--text);
             background:
-                radial-gradient(circle at top left, rgba(87, 199, 255, 0.28), transparent 28%),
-                radial-gradient(circle at top right, rgba(124, 58, 237, 0.24), transparent 24%),
-                linear-gradient(180deg, #050b14 0%, #091221 42%, #050b14 100%);
+                radial-gradient(circle at top left, rgba(87, 199, 255, 0.26), transparent 30%),
+                radial-gradient(circle at top right, rgba(124, 58, 237, 0.20), transparent 26%),
+                linear-gradient(180deg, #050b14 0%, #091221 40%, #050b14 100%);
             line-height: 1.6;
         }
 
         a { color: inherit; text-decoration: none; }
-        .wrap { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
+        button, input, select, textarea { font: inherit; }
+
+        .wrap {
+            width: min(1120px, calc(100% - 32px));
+            margin: 0 auto;
+        }
 
         .topbar {
             position: sticky;
             top: 0;
-            z-index: 10;
+            z-index: 20;
             backdrop-filter: blur(18px);
             background: rgba(5, 11, 20, 0.72);
             border-bottom: 1px solid rgba(148, 163, 184, 0.14);
@@ -76,7 +82,7 @@
 
         .nav a:hover { color: var(--text); }
 
-        .hero { padding: 72px 0 28px; }
+        .hero { padding: 72px 0 24px; }
 
         .eyebrow {
             display: inline-flex;
@@ -93,13 +99,48 @@
 
         h1 {
             margin: 0;
-            font-size: clamp(2.5rem, 5vw, 5rem);
-            line-height: 0.96;
+            font-size: clamp(2.7rem, 5vw, 5rem);
+            line-height: 0.95;
             letter-spacing: -0.05em;
-            max-width: 11ch;
+            max-width: 12ch;
         }
 
-        .lead { max-width: 760px; margin: 20px 0 0; font-size: 1.1rem; color: var(--muted); }
+        .lead {
+            max-width: 780px;
+            margin: 18px 0 0;
+            font-size: 1.08rem;
+            color: var(--muted);
+        }
+
+        .hero-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 14px 18px;
+            border-radius: 16px;
+            font-weight: 800;
+            border: 1px solid transparent;
+        }
+
+        .button-primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            color: #fff;
+            box-shadow: 0 18px 35px rgba(87, 199, 255, 0.22);
+        }
+
+        .button-secondary {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: var(--line);
+            color: var(--text);
+        }
 
         .stats {
             display: grid;
@@ -108,38 +149,70 @@
             margin: 30px 0 0;
         }
 
-        .stat {
-            padding: 18px;
+        .stat,
+        .card,
+        .step,
+        .job,
+        .faq-item {
             border: 1px solid var(--line);
-            border-radius: 20px;
-            background: linear-gradient(180deg, rgba(12, 23, 41, 0.82), rgba(8, 16, 31, 0.88));
+            background: linear-gradient(180deg, var(--bg-card), rgba(8, 16, 31, 0.88));
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.20);
         }
 
-        .stat strong { display: block; font-size: 1.45rem; margin-bottom: 6px; }
+        .stat {
+            padding: 18px;
+            border-radius: 20px;
+        }
 
-        .section { padding: 22px 0 0; }
-        .grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; align-items: start; }
+        .stat strong {
+            display: block;
+            font-size: 1.45rem;
+            margin-bottom: 6px;
+        }
+
+        .section { padding: 18px 0 0; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1.1fr 0.9fr;
+            gap: 18px;
+            align-items: start;
+        }
 
         .card {
-            border: 1px solid var(--line);
             border-radius: 24px;
-            background: var(--panel);
-            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.22);
             overflow: hidden;
         }
 
         .card-body { padding: 26px; }
-        .card h2, .card h3 { margin-top: 0; letter-spacing: -0.03em; }
 
-        .role-list { display: grid; gap: 14px; margin-top: 18px; }
-        .role {
-            padding: 16px;
-            border-radius: 18px;
-            border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.03);
+        .card h2, .card h3, .section-title {
+            margin: 0;
+            letter-spacing: -0.03em;
         }
 
-        .role-head {
+        .section-title {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+        }
+
+        .section-copy {
+            color: var(--muted);
+            margin: 0 0 18px;
+        }
+
+        .role-list {
+            display: grid;
+            gap: 14px;
+            margin-top: 18px;
+        }
+
+        .job {
+            padding: 16px;
+            border-radius: 18px;
+        }
+
+        .job-head {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
@@ -148,44 +221,98 @@
             margin-bottom: 8px;
         }
 
-        .role-head strong { font-size: 1.05rem; }
+        .job-head strong { font-size: 1.05rem; }
         .meta { color: var(--muted); font-size: 0.95rem; }
 
-        .feedback-box {
+        .pill-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
             margin-top: 18px;
-            padding: 18px;
-            border-radius: 18px;
-            background: rgba(245, 158, 11, 0.08);
-            border: 1px solid rgba(245, 158, 11, 0.22);
         }
 
-        .apply-panel { display: grid; gap: 14px; }
-
-        .apply-link {
+        .pill {
             display: inline-flex;
             align-items: center;
-            justify-content: center;
-            gap: 10px;
-            width: 100%;
-            padding: 16px 18px;
-            border-radius: 16px;
-            background: linear-gradient(135deg, var(--accent), var(--accent-2));
-            color: #fff;
-            font-weight: 800;
-            box-shadow: 0 18px 35px rgba(87, 199, 255, 0.22);
+            gap: 8px;
+            padding: 10px 14px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            color: #d8e3f5;
+            font-weight: 600;
         }
 
-        .link-note { color: var(--muted); font-size: 0.95rem; text-align: center; }
+        .apply-panel {
+            display: grid;
+            gap: 14px;
+        }
 
-        .steps { display: grid; gap: 12px; margin-top: 16px; }
+        .apply-box {
+            padding: 18px;
+            border-radius: 18px;
+            background: rgba(87, 199, 255, 0.08);
+            border: 1px solid rgba(87, 199, 255, 0.20);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            margin-top: 16px;
+        }
+
+        .field { display: grid; gap: 8px; }
+
+        .field label {
+            font-weight: 700;
+            color: #dce8f8;
+            font-size: 0.95rem;
+        }
+
+        .field input,
+        .field select,
+        .field textarea {
+            width: 100%;
+            padding: 14px 15px;
+            border-radius: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            background: rgba(4, 10, 20, 0.72);
+            color: var(--text);
+            outline: none;
+        }
+
+        .field textarea {
+            min-height: 140px;
+            resize: vertical;
+        }
+
+        .field input:focus,
+        .field select:focus,
+        .field textarea:focus {
+            border-color: rgba(87, 199, 255, 0.6);
+            box-shadow: 0 0 0 4px rgba(87, 199, 255, 0.12);
+        }
+
+        .full { grid-column: 1 / -1; }
+
+        .apply-note {
+            color: var(--muted);
+            font-size: 0.94rem;
+            margin: 0;
+        }
+
+        .steps {
+            display: grid;
+            gap: 12px;
+            margin-top: 14px;
+        }
 
         .step {
             display: flex;
             gap: 12px;
             padding: 14px;
             border-radius: 16px;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--line);
         }
 
         .step-num {
@@ -200,14 +327,72 @@
             font-weight: 800;
         }
 
-        .footer { padding: 40px 0 56px; color: var(--muted); text-align: center; }
+        .highlight {
+            color: #f4e7c3;
+        }
 
-        @media (max-width: 860px) {
-            .grid, .stats { grid-template-columns: 1fr; }
-            .topbar-inner { flex-direction: column; align-items: flex-start; }
-            .hero { padding-top: 44px; }
+        .list {
+            margin: 12px 0 0;
+            padding-left: 20px;
+            color: #d8e3f5;
+        }
+
+        .faq {
+            display: grid;
+            gap: 12px;
+            margin-top: 18px;
+        }
+
+        .faq-item {
+            padding: 16px 18px;
+            border-radius: 18px;
+        }
+
+        .faq-item strong {
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .footer {
+            padding: 42px 0 58px;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        @media (max-width: 900px) {
+            .grid,
+            .stats,
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .topbar-inner {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .hero { padding-top: 46px; }
         }
     </style>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "JobPosting",
+      "title": "AI and Software Roles",
+      "description": "Remote AI and software hiring opportunity with a 40000 INR stipend.",
+      "employmentType": "FULL_TIME",
+      "jobLocationType": "TELECOMMUTE",
+      "applicantLocationRequirements": {
+        "@type": "Country",
+        "name": "India"
+      },
+      "hiringOrganization": {
+        "@type": "Organization",
+        "name": "Interview AI",
+        "sameAs": "https://interviewai.space"
+      }
+    }
+    </script>
 </head>
 <body>
     <header class="topbar">
@@ -229,7 +414,12 @@
         <section class="hero">
             <div class="eyebrow"><i class="fas fa-briefcase"></i> We are hiring</div>
             <h1>AI and software roles, remote, stipend 40000 INR.</h1>
-            <p class="lead">We are looking for builders who can work on AI workflows, product quality, and software execution. Apply through the website link below, and if you apply, please also share feedback on what you think you need to improve.</p>
+            <p class="lead">We are looking for builders who can work on AI workflows, product quality, and software execution. Apply through the website link below, and share honest feedback on what you want to improve.</p>
+
+            <div class="hero-actions">
+                <a class="button button-primary" href="#apply"><i class="fas fa-paper-plane"></i> Start Application</a>
+                <a class="button button-secondary" href="index.html"><i class="fas fa-arrow-left"></i> Back to Home</a>
+            </div>
 
             <div class="stats">
                 <div class="stat">
@@ -241,8 +431,8 @@
                     <span>Monthly stipend for selected candidates.</span>
                 </div>
                 <div class="stat">
-                    <strong>Feedback first</strong>
-                    <span>Tell us what you want to improve along with your application.</span>
+                    <strong>Growth mindset</strong>
+                    <span>We want applicants who can explain what they need to improve.</span>
                 </div>
             </div>
         </section>
@@ -250,18 +440,20 @@
         <section class="section grid" id="apply">
             <article class="card">
                 <div class="card-body">
-                    <h2>Open Roles</h2>
-                    <p class="meta">Focus areas for this hiring round.</p>
+                    <h2 class="section-title">Open Roles</h2>
+                    <p class="section-copy">Focus areas for this hiring round.</p>
+
                     <div class="role-list">
-                        <div class="role">
-                            <div class="role-head">
+                        <div class="job">
+                            <div class="job-head">
                                 <strong>AI Engineer</strong>
                                 <span class="meta">Remote</span>
                             </div>
                             <div class="meta">Work on model integration, prompt flows, evaluation, and product quality.</div>
                         </div>
-                        <div class="role">
-                            <div class="role-head">
+
+                        <div class="job">
+                            <div class="job-head">
                                 <strong>Software Engineer</strong>
                                 <span class="meta">Remote</span>
                             </div>
@@ -269,54 +461,205 @@
                         </div>
                     </div>
 
-                    <div class="feedback-box">
-                        <strong>Application feedback request</strong>
-                        <p style="margin: 8px 0 0; color: #f4e7c3;">Applicants should share what they need to improve, what they learned, and where they want to grow. We value honest self-assessment.</p>
+                    <div class="pill-row">
+                        <span class="pill"><i class="fas fa-location-dot"></i> India remote</span>
+                        <span class="pill"><i class="fas fa-coins"></i> 40000 INR stipend</span>
+                        <span class="pill"><i class="fas fa-user-check"></i> Feedback required</span>
                     </div>
+
+                    <div class="apply-box" style="margin-top:18px;">
+                        <strong>Application rule</strong>
+                        <p class="apply-note" style="margin-top:8px;">Every applicant should include one short note about what they need to improve. We value honest self-assessment.</p>
+                    </div>
+
+                    <h3 style="margin-top:24px;">What we look for</h3>
+                    <ul class="list">
+                        <li>Strong basics in AI, backend, frontend, or full-stack development.</li>
+                        <li>Ability to learn quickly and work independently in a remote setup.</li>
+                        <li>Clear communication and a willingness to receive feedback.</li>
+                    </ul>
                 </div>
             </article>
 
             <aside class="card">
                 <div class="card-body apply-panel">
-                    <h3>Apply through your website link</h3>
-                    <p class="meta">Replace the button target below with your actual application page URL.</p>
-                    <a class="apply-link" href="https://YOUR-APPLICATION-LINK-HERE" target="_blank" rel="noopener noreferrer">
-                        <i class="fas fa-paper-plane"></i>
-                        Apply Now
-                    </a>
-                    <div class="link-note">Update this link once your careers form is ready.</div>
+                    <h3 class="section-title" style="font-size:1.5rem;">Apply Now</h3>
+                    <p class="section-copy">Replace the application URL below with your final website link when ready. Until then, the page falls back to email.</p>
 
-                    <h3>What to include</h3>
+                    <a id="externalApplyLink" class="button button-primary" href="#" target="_blank" rel="noopener noreferrer">
+                        <i class="fas fa-arrow-up-right-from-square"></i>
+                        Open Application Link
+                    </a>
+
+                    <p class="apply-note">If you do not add a website URL yet, this button will open an email draft instead.</p>
+
+                    <form id="applicationForm">
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="fullName">Full name</label>
+                                <input id="fullName" name="fullName" type="text" placeholder="Your name" required>
+                            </div>
+                            <div class="field">
+                                <label for="email">Email address</label>
+                                <input id="email" name="email" type="email" placeholder="you@example.com" required>
+                            </div>
+                            <div class="field">
+                                <label for="role">Role</label>
+                                <select id="role" name="role" required>
+                                    <option value="">Select role</option>
+                                    <option>AI Engineer</option>
+                                    <option>Software Engineer</option>
+                                    <option>Either role</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="portfolio">Portfolio / GitHub</label>
+                                <input id="portfolio" name="portfolio" type="url" placeholder="https://github.com/yourname">
+                            </div>
+                            <div class="field full">
+                                <label for="feedback">What do you want to improve?</label>
+                                <textarea id="feedback" name="feedback" placeholder="Share one honest improvement area and any context about your background." required></textarea>
+                            </div>
+                        </div>
+                        <div class="hero-actions" style="margin-top:16px;">
+                            <button class="button button-primary" type="submit"><i class="fas fa-paper-plane"></i> Send Application</button>
+                            <button class="button button-secondary" type="button" id="copySummaryBtn"><i class="fas fa-copy"></i> Copy Summary</button>
+                        </div>
+                    </form>
+                </div>
+            </aside>
+        </section>
+
+        <section class="section grid" style="margin-top:18px;">
+            <article class="card">
+                <div class="card-body">
+                    <h2 class="section-title">Hiring process</h2>
+                    <p class="section-copy">A simple process so applicants know what to expect.</p>
+
                     <div class="steps">
                         <div class="step">
                             <div class="step-num">1</div>
                             <div>
-                                <strong>Portfolio or GitHub</strong>
-                                <div class="meta">Show the work you have actually built.</div>
+                                <strong>Apply with your work</strong>
+                                <div class="meta">Share your portfolio, GitHub, or previous projects.</div>
                             </div>
                         </div>
                         <div class="step">
                             <div class="step-num">2</div>
                             <div>
-                                <strong>Short self-feedback</strong>
-                                <div class="meta">Share what you want to improve next.</div>
+                                <strong>Share your improvement note</strong>
+                                <div class="meta">Tell us what you think you need to improve.</div>
                             </div>
                         </div>
                         <div class="step">
                             <div class="step-num">3</div>
                             <div>
-                                <strong>Role preference</strong>
-                                <div class="meta">Tell us whether you fit AI or software better.</div>
+                                <strong>Short review</strong>
+                                <div class="meta">We will review applications and reach out to shortlisted candidates.</div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </aside>
+            </article>
+
+            <article class="card">
+                <div class="card-body">
+                    <h2 class="section-title">FAQ</h2>
+                    <p class="section-copy">Quick answers for applicants.</p>
+
+                    <div class="faq">
+                        <div class="faq-item">
+                            <strong>Is this remote?</strong>
+                            <div class="meta">Yes, this is a remote role.</div>
+                        </div>
+                        <div class="faq-item">
+                            <strong>What is the stipend?</strong>
+                            <div class="meta">The stipend is 40000 INR.</div>
+                        </div>
+                        <div class="faq-item">
+                            <strong>What should applicants share?</strong>
+                            <div class="meta">Please include your portfolio and a short note about what you want to improve.</div>
+                        </div>
+                    </div>
+                </div>
+            </article>
         </section>
     </main>
 
     <footer class="footer wrap">
         <p>Interview AI hiring page for AI and software applicants. Remote stipend: 40000 INR.</p>
     </footer>
+
+    <script>
+        const CAREERS_APPLICATION_URL = '';
+        const CAREERS_APPLICATION_EMAIL = 'interviewai.space@gmail.com';
+
+        const form = document.getElementById('applicationForm');
+        const externalApplyLink = document.getElementById('externalApplyLink');
+        const copySummaryBtn = document.getElementById('copySummaryBtn');
+
+        function buildMailto(subject, body) {
+            return `mailto:${CAREERS_APPLICATION_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        }
+
+        function getSummary() {
+            const fullName = document.getElementById('fullName').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const role = document.getElementById('role').value.trim();
+            const portfolio = document.getElementById('portfolio').value.trim();
+            const feedback = document.getElementById('feedback').value.trim();
+
+            return [
+                'Interview AI application',
+                `Name: ${fullName || '-'}`,
+                `Email: ${email || '-'}`,
+                `Role: ${role || '-'}`,
+                `Portfolio: ${portfolio || '-'}`,
+                `Improvement note: ${feedback || '-'}`
+            ].join('\n');
+        }
+
+        const hasCustomUrl = CAREERS_APPLICATION_URL.trim().length > 0;
+        externalApplyLink.href = hasCustomUrl
+            ? CAREERS_APPLICATION_URL.trim()
+            : buildMailto('Interview AI application', 'Hi, I would like to apply for the Interview AI role.');
+
+        externalApplyLink.target = hasCustomUrl ? '_blank' : '_self';
+        externalApplyLink.textContent = hasCustomUrl ? 'Open Application Link' : 'Apply by Email';
+
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+
+            const summary = getSummary();
+
+            if (hasCustomUrl) {
+                const url = new URL(CAREERS_APPLICATION_URL.trim(), window.location.href);
+                url.searchParams.set('name', document.getElementById('fullName').value.trim());
+                url.searchParams.set('email', document.getElementById('email').value.trim());
+                url.searchParams.set('role', document.getElementById('role').value.trim());
+                url.searchParams.set('portfolio', document.getElementById('portfolio').value.trim());
+                url.searchParams.set('feedback', document.getElementById('feedback').value.trim());
+                window.open(url.toString(), '_blank', 'noopener,noreferrer');
+                return;
+            }
+
+            window.location.href = buildMailto('Interview AI application', summary);
+        });
+
+        copySummaryBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(getSummary());
+                copySummaryBtn.innerHTML = '<i class="fas fa-check"></i> Copied';
+                setTimeout(() => {
+                    copySummaryBtn.innerHTML = '<i class="fas fa-copy"></i> Copy Summary';
+                }, 1800);
+            } catch (error) {
+                copySummaryBtn.innerHTML = '<i class="fas fa-triangle-exclamation"></i> Copy failed';
+                setTimeout(() => {
+                    copySummaryBtn.innerHTML = '<i class="fas fa-copy"></i> Copy Summary';
+                }, 1800);
+            }
+        });
+    </script>
 </body>
 </html>
