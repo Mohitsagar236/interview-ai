@@ -28,6 +28,14 @@
     <priority>0.85</priority>
   </url>
 
+  <!-- Careers -->
+  <url>
+    <loc>https://interviewai.space/careers.html</loc>
+    <lastmod>2026-06-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
   <!-- Blog — fresh content drives rankings -->
   <url>
     <loc>https://interviewai.space/blog.html</loc>

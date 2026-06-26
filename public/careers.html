@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Careers - Interview AI</title>
+    <meta name="description" content="Join Interview AI. We are hiring for AI and software roles with a remote stipend of 40,000 INR. Applicants are asked to share feedback on what they can improve.">
+    <meta name="keywords" content="Interview AI careers, AI jobs, software jobs, remote internship, stipend 40000 INR, AI engineer, software engineer">
+    <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #07111f;
+            --panel: rgba(8, 16, 31, 0.82);
+            --text: #e5eefb;
+            --muted: #98a6bf;
+            --line: rgba(148, 163, 184, 0.2);
+            --accent: #57c7ff;
+            --accent-2: #7c3aed;
+            --success: #22c55e;
+            --warning: #f59e0b;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { margin: 0; min-height: 100%; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(87, 199, 255, 0.28), transparent 28%),
+                radial-gradient(circle at top right, rgba(124, 58, 237, 0.24), transparent 24%),
+                linear-gradient(180deg, #050b14 0%, #091221 42%, #050b14 100%);
+            line-height: 1.6;
+        }
+
+        a { color: inherit; text-decoration: none; }
+        .wrap { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
+
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            backdrop-filter: blur(18px);
+            background: rgba(5, 11, 20, 0.72);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+        }
+
+        .topbar-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 16px 0;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 800;
+            letter-spacing: 0.02em;
+        }
+
+        .brand img { width: 38px; height: 38px; }
+
+        .nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .nav a:hover { color: var(--text); }
+
+        .hero { padding: 72px 0 28px; }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 14px;
+            border-radius: 999px;
+            border: 1px solid rgba(87, 199, 255, 0.22);
+            background: rgba(8, 16, 31, 0.58);
+            color: #bfeaff;
+            font-weight: 700;
+            margin-bottom: 18px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: clamp(2.5rem, 5vw, 5rem);
+            line-height: 0.96;
+            letter-spacing: -0.05em;
+            max-width: 11ch;
+        }
+
+        .lead { max-width: 760px; margin: 20px 0 0; font-size: 1.1rem; color: var(--muted); }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px;
+            margin: 30px 0 0;
+        }
+
+        .stat {
+            padding: 18px;
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            background: linear-gradient(180deg, rgba(12, 23, 41, 0.82), rgba(8, 16, 31, 0.88));
+        }
+
+        .stat strong { display: block; font-size: 1.45rem; margin-bottom: 6px; }
+
+        .section { padding: 22px 0 0; }
+        .grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; align-items: start; }
+
+        .card {
+            border: 1px solid var(--line);
+            border-radius: 24px;
+            background: var(--panel);
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.22);
+            overflow: hidden;
+        }
+
+        .card-body { padding: 26px; }
+        .card h2, .card h3 { margin-top: 0; letter-spacing: -0.03em; }
+
+        .role-list { display: grid; gap: 14px; margin-top: 18px; }
+        .role {
+            padding: 16px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .role-head {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .role-head strong { font-size: 1.05rem; }
+        .meta { color: var(--muted); font-size: 0.95rem; }
+
+        .feedback-box {
+            margin-top: 18px;
+            padding: 18px;
+            border-radius: 18px;
+            background: rgba(245, 158, 11, 0.08);
+            border: 1px solid rgba(245, 158, 11, 0.22);
+        }
+
+        .apply-panel { display: grid; gap: 14px; }
+
+        .apply-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            padding: 16px 18px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            color: #fff;
+            font-weight: 800;
+            box-shadow: 0 18px 35px rgba(87, 199, 255, 0.22);
+        }
+
+        .link-note { color: var(--muted); font-size: 0.95rem; text-align: center; }
+
+        .steps { display: grid; gap: 12px; margin-top: 16px; }
+
+        .step {
+            display: flex;
+            gap: 12px;
+            padding: 14px;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--line);
+        }
+
+        .step-num {
+            flex: 0 0 34px;
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            display: grid;
+            place-items: center;
+            background: rgba(87, 199, 255, 0.16);
+            color: #bfeaff;
+            font-weight: 800;
+        }
+
+        .footer { padding: 40px 0 56px; color: var(--muted); text-align: center; }
+
+        @media (max-width: 860px) {
+            .grid, .stats { grid-template-columns: 1fr; }
+            .topbar-inner { flex-direction: column; align-items: flex-start; }
+            .hero { padding-top: 44px; }
+        }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <div class="wrap topbar-inner">
+            <a class="brand" href="index.html">
+                <img src="images/app-icon.svg" alt="Interview AI">
+                <span>Interview AI Careers</span>
+            </a>
+            <nav class="nav" aria-label="Career page navigation">
+                <a href="index.html">Home</a>
+                <a href="download.html">Download</a>
+                <a href="user-guide.html">User Guide</a>
+                <a href="#apply">Apply</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <section class="hero">
+            <div class="eyebrow"><i class="fas fa-briefcase"></i> We are hiring</div>
+            <h1>AI and software roles, remote, stipend 40000 INR.</h1>
+            <p class="lead">We are looking for builders who can work on AI workflows, product quality, and software execution. Apply through the website link below, and if you apply, please also share feedback on what you think you need to improve.</p>
+
+            <div class="stats">
+                <div class="stat">
+                    <strong>Remote</strong>
+                    <span>Work from anywhere with async communication.</span>
+                </div>
+                <div class="stat">
+                    <strong>40000 INR</strong>
+                    <span>Monthly stipend for selected candidates.</span>
+                </div>
+                <div class="stat">
+                    <strong>Feedback first</strong>
+                    <span>Tell us what you want to improve along with your application.</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="section grid" id="apply">
+            <article class="card">
+                <div class="card-body">
+                    <h2>Open Roles</h2>
+                    <p class="meta">Focus areas for this hiring round.</p>
+                    <div class="role-list">
+                        <div class="role">
+                            <div class="role-head">
+                                <strong>AI Engineer</strong>
+                                <span class="meta">Remote</span>
+                            </div>
+                            <div class="meta">Work on model integration, prompt flows, evaluation, and product quality.</div>
+                        </div>
+                        <div class="role">
+                            <div class="role-head">
+                                <strong>Software Engineer</strong>
+                                <span class="meta">Remote</span>
+                            </div>
+                            <div class="meta">Build user-facing features, improve reliability, and ship fast with the team.</div>
+                        </div>
+                    </div>
+
+                    <div class="feedback-box">
+                        <strong>Application feedback request</strong>
+                        <p style="margin: 8px 0 0; color: #f4e7c3;">Applicants should share what they need to improve, what they learned, and where they want to grow. We value honest self-assessment.</p>
+                    </div>
+                </div>
+            </article>
+
+            <aside class="card">
+                <div class="card-body apply-panel">
+                    <h3>Apply through your website link</h3>
+                    <p class="meta">Replace the button target below with your actual application page URL.</p>
+                    <a class="apply-link" href="https://YOUR-APPLICATION-LINK-HERE" target="_blank" rel="noopener noreferrer">
+                        <i class="fas fa-paper-plane"></i>
+                        Apply Now
+                    </a>
+                    <div class="link-note">Update this link once your careers form is ready.</div>
+
+                    <h3>What to include</h3>
+                    <div class="steps">
+                        <div class="step">
+                            <div class="step-num">1</div>
+                            <div>
+                                <strong>Portfolio or GitHub</strong>
+                                <div class="meta">Show the work you have actually built.</div>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-num">2</div>
+                            <div>
+                                <strong>Short self-feedback</strong>
+                                <div class="meta">Share what you want to improve next.</div>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-num">3</div>
+                            <div>
+                                <strong>Role preference</strong>
+                                <div class="meta">Tell us whether you fit AI or software better.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </section>
+    </main>
+
+    <footer class="footer wrap">
+        <p>Interview AI hiring page for AI and software applicants. Remote stipend: 40000 INR.</p>
+    </footer>
+</body>
+</html>
