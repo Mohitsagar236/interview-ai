@@ -16,6 +16,16 @@ The desktop app runs locally on the user's machine.
 No Razorpay, activation, payment, profile, or credit variables are
 required for the free BYOK release path.
 
+## Supabase SQL
+
+Run these scripts in the Supabase SQL editor for the project used by
+`SUPABASE_URL`:
+
+| Script | Purpose |
+| --- | --- |
+| `docs/deployment/auth-login-tracking.sql` | Stores each authenticated user's Supabase id and email, plus login events |
+| `docs/deployment/careers-supabase.sql` | Stores careers applications and private resume uploads |
+
 ## Deploy
 
 ```powershell

@@ -108,6 +108,23 @@
         return response.json();
     }
 
+    async function trackAuthLogin(eventName) {
+        if (!supabaseClient || !authSession?.access_token) {
+            return;
+        }
+
+        try {
+            const { error } = await supabaseClient.rpc('track_auth_login', {
+                event_name: eventName || 'signin',
+            });
+            if (error) {
+                console.warn('Could not track auth login:', error.message);
+            }
+        } catch (error) {
+            console.warn('Could not track auth login:', error?.message || error);
+        }
+    }
+
     function bindAuthUi() {
         if (authUiBound) {
             return;
@@ -299,6 +316,7 @@
             }
 
             markAuthSessionStarted(true);
+            await trackAuthLogin(authMode === 'signup' ? 'signup' : 'signin');
             updateAuthUi();
             scheduleAuthExpiry();
             const successMessage = authMode === 'signup'

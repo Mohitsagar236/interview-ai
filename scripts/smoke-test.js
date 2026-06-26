@@ -43,6 +43,7 @@ const apiDownloadJs = read('api/download.js');
 const apiPublicConfigJs = read('api/public-config.js');
 const devServerJs = read('dev-server.js');
 const functionsDownloadJs = read('functions/api/download.js');
+const authLoginSql = read('docs/deployment/auth-login-tracking.sql');
 
 check('Electron main entry exists', exists(packageJson.main || 'electron/main.js'));
 check('Toolbar files exist', exists('renderer/toolbar.html') && exists('renderer/toolbar.js'));
@@ -68,6 +69,7 @@ check('Download buttons use delegated click handlers', /data-download-platform="
 check('Auth flow shows friendly errors and success popups', /friendlyAuthError/.test(downloadJs) && /Invalid email or password/.test(downloadJs) && /Successfully logged in/.test(downloadJs) && /Signup successful/.test(downloadJs));
 check('Auth password field has show/hide toggle', /data-password-toggle/.test(downloadHtml) && /togglePasswordVisibility/.test(downloadJs) && /fa-eye-slash/.test(downloadJs));
 check('Auth profile shows user details and logout', /data-auth-profile/.test(downloadHtml) && /data-profile-email/.test(downloadHtml) && /data-auth-logout/.test(downloadHtml) && /performSignOut/.test(downloadJs));
+check('Auth login tracking stores email through Supabase RPC', /auth_login_users/.test(authLoginSql) && /auth_login_events/.test(authLoginSql) && /track_auth_login/.test(authLoginSql) && /enable row level security/.test(authLoginSql) && /rpc\('track_auth_login'/.test(downloadJs));
 check('Profile UI hides session expiry details', !/data-profile-expiry/.test(downloadHtml) && !/data-site-profile-expiry/.test(read('public/index.html')) && !/Session expires|Expires in 60 min/.test(downloadHtml + read('public/index.html')));
 check('Auth session is capped at 60 minutes', /AUTH_SESSION_MAX_AGE_MS = 60 \* 60 \* 1000/.test(downloadJs) && /AUTH_SESSION_MAX_AGE_MS = 60 \* 60 \* 1000/.test(siteAuthJs) && /autoRefreshToken:\s*false/.test(downloadJs) && /autoRefreshToken:\s*false/.test(siteAuthJs) && /MAX_AUTH_SESSION_SECONDS = 60 \* 60/.test(apiDownloadJs) && /MAX_AUTH_SESSION_SECONDS = 60 \* 60/.test(functionsDownloadJs));
 check('Download page warns when opened from file protocol', /window\.location\.protocol === 'file:'/.test(downloadJs) && /npm run serve/.test(downloadJs));
