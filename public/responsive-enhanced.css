@@ -37,8 +37,8 @@
         bottom: 0;
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
-        background: rgba(0, 0, 0, 0.5);
-        backdrop-filter: blur(5px);
+        background: rgba(2, 6, 23, 0.72);
+        backdrop-filter: blur(10px);
         z-index: 1001;
         opacity: 0;
         visibility: hidden;
@@ -58,12 +58,13 @@
         width: 85%;
         max-width: 360px;
         height: 100vh;
-        background: var(--card-bg, #ffffff);
-        box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
+        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+        box-shadow: -12px 0 36px rgba(15, 23, 42, 0.18);
         z-index: 1002;
         transition: right 0.3s ease;
         overflow-y: auto;
-        padding: 1.5rem;
+        padding: 1.25rem;
+        border-left: 1px solid rgba(148, 163, 184, 0.12);
     }
 
     .mobile-menu-overlay.active .mobile-menu-content {
@@ -100,17 +101,19 @@
         gap: 12px;
         padding: 1rem;
         margin: 0.5rem 0;
-        font-size: 1.1rem;
+        font-size: 1rem;
         font-weight: 500;
         color: var(--text-color);
         text-decoration: none;
-        border-radius: 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        background: rgba(255, 255, 255, 0.78);
         transition: all 0.2s ease;
     }
 
     .mobile-nav-link:hover {
-        background: var(--hover-bg, rgba(0, 0, 0, 0.05));
-        transform: translateX(8px);
+        background: rgba(15, 118, 110, 0.08);
+        transform: translateX(4px);
     }
 
     .mobile-nav-link i {
@@ -826,12 +829,12 @@
     footer {
         padding: 2rem 0 1rem !important;
         margin-top: 3rem;
-        border-top: 1px solid var(--border-color, #e5e7eb);
+        border-top: 1px solid rgba(148, 163, 184, 0.14);
     }
 
     .footer-content {
         grid-template-columns: 1fr !important;
-        gap: 2rem !important;
+        gap: 1.5rem !important;
         padding: 0 1rem !important;
         text-align: center;
     }
@@ -880,8 +883,8 @@
         flex-direction: column !important;
         gap: 1.25rem !important;
         padding: 1.5rem 1rem 1rem !important;
-        margin-top: 2rem;
-        border-top: 1px solid var(--border-color, #e5e7eb);
+        margin-top: 1.5rem;
+        border-top: 1px solid rgba(148, 163, 184, 0.14);
         text-align: center;
     }
 

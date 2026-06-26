@@ -34,8 +34,8 @@
     
     <!-- Dark Mode Init Script - Must run before body renders -->
     <script>
-        // Apply saved theme immediately to prevent flash (default to dark)
-        const savedTheme = localStorage.getItem('theme') || 'dark';
+        // Apply saved theme immediately to prevent flash (default to light)
+        const savedTheme = localStorage.getItem('theme') || 'light';
         if (savedTheme === 'dark') {
             document.documentElement.classList.add('dark');
         }

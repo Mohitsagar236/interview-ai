@@ -12,13 +12,13 @@
     <style>
         :root {
             --bg: #07111f;
-            --bg-soft: rgba(8, 16, 31, 0.82);
-            --bg-card: rgba(12, 23, 41, 0.92);
+            --bg-soft: rgba(10, 18, 33, 0.82);
+            --bg-card: rgba(13, 24, 43, 0.92);
             --text: #e8f1ff;
             --muted: #9aa9c0;
-            --line: rgba(148, 163, 184, 0.18);
-            --accent: #57c7ff;
-            --accent-2: #7c3aed;
+            --line: rgba(148, 163, 184, 0.16);
+            --accent: #3b82f6;
+            --accent-2: #1d4ed8;
             --good: #22c55e;
             --warn: #f59e0b;
         }
@@ -30,9 +30,9 @@
             font-family: 'Inter', sans-serif;
             color: var(--text);
             background:
-                radial-gradient(circle at top left, rgba(87, 199, 255, 0.26), transparent 30%),
-                radial-gradient(circle at top right, rgba(124, 58, 237, 0.20), transparent 26%),
-                linear-gradient(180deg, #050b14 0%, #091221 40%, #050b14 100%);
+                radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 28%),
+                radial-gradient(circle at top right, rgba(29, 78, 216, 0.12), transparent 24%),
+                linear-gradient(180deg, #050b14 0%, #091221 42%, #050b14 100%);
             line-height: 1.6;
         }
 
@@ -90,17 +90,17 @@
             gap: 10px;
             padding: 8px 14px;
             border-radius: 999px;
-            border: 1px solid rgba(87, 199, 255, 0.22);
+            border: 1px solid rgba(59, 130, 246, 0.22);
             background: rgba(8, 16, 31, 0.58);
-            color: #bfeaff;
+            color: #dbeafe;
             font-weight: 700;
             margin-bottom: 18px;
         }
 
         h1 {
             margin: 0;
-            font-size: clamp(2.7rem, 5vw, 5rem);
-            line-height: 0.95;
+            font-size: clamp(2.5rem, 5vw, 4.6rem);
+            line-height: 1;
             letter-spacing: -0.05em;
             max-width: 12ch;
         }
@@ -108,7 +108,7 @@
         .lead {
             max-width: 780px;
             margin: 18px 0 0;
-            font-size: 1.08rem;
+            font-size: 1.05rem;
             color: var(--muted);
         }
 
@@ -133,7 +133,7 @@
         .button-primary {
             background: linear-gradient(135deg, var(--accent), var(--accent-2));
             color: #fff;
-            box-shadow: 0 18px 35px rgba(87, 199, 255, 0.22);
+            box-shadow: 0 14px 28px rgba(59, 130, 246, 0.18);
         }
 
         .button-secondary {
@@ -156,7 +156,7 @@
         .faq-item {
             border: 1px solid var(--line);
             background: linear-gradient(180deg, var(--bg-card), rgba(8, 16, 31, 0.88));
-            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.20);
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
         }
 
         .stat {
@@ -237,7 +237,7 @@
             gap: 8px;
             padding: 10px 14px;
             border-radius: 999px;
-            background: rgba(255, 255, 255, 0.04);
+            background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(148, 163, 184, 0.16);
             color: #d8e3f5;
             font-weight: 600;
@@ -251,8 +251,8 @@
         .apply-box {
             padding: 18px;
             border-radius: 18px;
-            background: rgba(87, 199, 255, 0.08);
-            border: 1px solid rgba(87, 199, 255, 0.20);
+            background: rgba(59, 130, 246, 0.08);
+            border: 1px solid rgba(59, 130, 246, 0.20);
         }
 
         .form-grid {
@@ -322,8 +322,8 @@
             border-radius: 999px;
             display: grid;
             place-items: center;
-            background: rgba(87, 199, 255, 0.16);
-            color: #bfeaff;
+            background: rgba(59, 130, 246, 0.14);
+            color: #dbeafe;
             font-weight: 800;
         }
 
@@ -412,13 +412,12 @@
 
     <main class="wrap">
         <section class="hero">
-            <div class="eyebrow"><i class="fas fa-briefcase"></i> We are hiring</div>
-            <h1>AI and software roles, remote, stipend 40000 INR.</h1>
-            <p class="lead">We are looking for builders who can work on AI workflows, product quality, and software execution. Apply through the website link below, and share honest feedback on what you want to improve.</p>
+            <div class="eyebrow"><i class="fas fa-briefcase"></i> Careers at Interview AI</div>
+            <h1>Hiring for AI and software roles.</h1>
+            <p class="lead">We are building a remote-first product team and are looking for people who care about quality, ownership, and practical execution. Selected candidates receive a monthly stipend of 40000 INR.</p>
 
             <div class="hero-actions">
-                <a class="button button-primary" href="#apply"><i class="fas fa-paper-plane"></i> Start Application</a>
-                <a class="button button-secondary" href="index.html"><i class="fas fa-arrow-left"></i> Back to Home</a>
+                <a class="button button-primary" href="#apply"><i class="fas fa-paper-plane"></i> Apply Now</a>
             </div>
 
             <div class="stats">
@@ -432,7 +431,7 @@
                 </div>
                 <div class="stat">
                     <strong>Growth mindset</strong>
-                    <span>We want applicants who can explain what they need to improve.</span>
+                    <span>We value applicants who can clearly explain what they want to improve.</span>
                 </div>
             </div>
         </section>
@@ -441,7 +440,7 @@
             <article class="card">
                 <div class="card-body">
                     <h2 class="section-title">Open Roles</h2>
-                    <p class="section-copy">Focus areas for this hiring round.</p>
+                    <p class="section-copy">Primary areas for this hiring round.</p>
 
                     <div class="role-list">
                         <div class="job">
@@ -449,7 +448,7 @@
                                 <strong>AI Engineer</strong>
                                 <span class="meta">Remote</span>
                             </div>
-                            <div class="meta">Work on model integration, prompt flows, evaluation, and product quality.</div>
+                            <div class="meta">Work on model integration, prompt design, evaluation, and product quality.</div>
                         </div>
 
                         <div class="job">
@@ -457,24 +456,24 @@
                                 <strong>Software Engineer</strong>
                                 <span class="meta">Remote</span>
                             </div>
-                            <div class="meta">Build user-facing features, improve reliability, and ship fast with the team.</div>
+                            <div class="meta">Build user-facing features, improve reliability, and ship with a small, focused team.</div>
                         </div>
                     </div>
 
                     <div class="pill-row">
-                        <span class="pill"><i class="fas fa-location-dot"></i> India remote</span>
+                        <span class="pill"><i class="fas fa-location-dot"></i> Remote, India-based applicants</span>
                         <span class="pill"><i class="fas fa-coins"></i> 40000 INR stipend</span>
                         <span class="pill"><i class="fas fa-user-check"></i> Feedback required</span>
                     </div>
 
                     <div class="apply-box" style="margin-top:18px;">
-                        <strong>Application rule</strong>
-                        <p class="apply-note" style="margin-top:8px;">Every applicant should include one short note about what they need to improve. We value honest self-assessment.</p>
+                        <strong>Application note</strong>
+                        <p class="apply-note" style="margin-top:8px;">Please include one short note about the areas you want to improve. We value clear, honest self-assessment.</p>
                     </div>
 
                     <h3 style="margin-top:24px;">What we look for</h3>
                     <ul class="list">
-                        <li>Strong basics in AI, backend, frontend, or full-stack development.</li>
+                        <li>Strong fundamentals in AI, backend, frontend, or full-stack development.</li>
                         <li>Ability to learn quickly and work independently in a remote setup.</li>
                         <li>Clear communication and a willingness to receive feedback.</li>
                     </ul>
@@ -491,7 +490,7 @@
                         Open Application Link
                     </a>
 
-                    <p class="apply-note">If you do not add a website URL yet, this button will open an email draft instead.</p>
+                    <p class="apply-note">If you do not add a website URL yet, this button opens an email draft instead.</p>
 
                     <form id="applicationForm">
                         <div class="form-grid">
@@ -518,7 +517,7 @@
                             </div>
                             <div class="field full">
                                 <label for="feedback">What do you want to improve?</label>
-                                <textarea id="feedback" name="feedback" placeholder="Share one honest improvement area and any context about your background." required></textarea>
+                                <textarea id="feedback" name="feedback" placeholder="Share one improvement area and a brief note about your background." required></textarea>
                             </div>
                         </div>
                         <div class="hero-actions" style="margin-top:16px;">
@@ -555,7 +554,7 @@
                             <div class="step-num">3</div>
                             <div>
                                 <strong>Short review</strong>
-                                <div class="meta">We will review applications and reach out to shortlisted candidates.</div>
+                                <div class="meta">We review applications and contact shortlisted candidates directly.</div>
                             </div>
                         </div>
                     </div>
@@ -564,8 +563,8 @@
 
             <article class="card">
                 <div class="card-body">
-                    <h2 class="section-title">FAQ</h2>
-                    <p class="section-copy">Quick answers for applicants.</p>
+                    <h2 class="section-title">Frequently Asked Questions</h2>
+                    <p class="section-copy">Short answers to common applicant questions.</p>
 
                     <div class="faq">
                         <div class="faq-item">
@@ -578,7 +577,7 @@
                         </div>
                         <div class="faq-item">
                             <strong>What should applicants share?</strong>
-                            <div class="meta">Please include your portfolio and a short note about what you want to improve.</div>
+                            <div class="meta">Please include your portfolio and a short note about the areas you want to improve.</div>
                         </div>
                     </div>
                 </div>

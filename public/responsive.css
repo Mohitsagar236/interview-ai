@@ -910,16 +910,14 @@ img, video, iframe {
 
 @media (max-width: 768px) {
     .theme-toggle {
-        display: none !important;
+        display: inline-flex !important;
+        width: 44px !important;
+        height: 44px !important;
+        padding: 0 !important;
     }
 
     .mobile-theme-toggle {
-        display: flex !important;
-        justify-content: space-between !important;
-        align-items: center !important;
-        padding: 1rem !important;
-        font-size: 1.1rem !important;
-        color: var(--text-color) !important;
+        display: none !important;
     }
 }
 

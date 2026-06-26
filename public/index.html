@@ -74,8 +74,8 @@
     
     <!-- Dark Mode Init Script - Must run before body renders -->
     <script>
-        // Apply saved theme immediately to prevent flash (default to dark)
-        const savedTheme = localStorage.getItem('theme') || 'dark';
+        // Apply saved theme immediately to prevent flash (default to light)
+        const savedTheme = localStorage.getItem('theme') || 'light';
         if (savedTheme === 'dark') {
             document.documentElement.classList.add('dark');
         }
@@ -977,10 +977,10 @@
 
     <footer>
         <div class="footer-content">
-            <div class="footer-section">
+            <div class="footer-section footer-brand">
                 <div class="footer-logo">
                     <img src="images/app-icon.svg" alt="Interview AI" class="logo-img">
-                    Interview AI
+                    <span>Interview AI</span>
                 </div>
                 <p>Your AI-powered interview copilot. Real-time assistance for job interviews with ChatGPT integration.</p>
                 <div class="social-links">
