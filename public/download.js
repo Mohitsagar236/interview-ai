@@ -50,7 +50,10 @@
             return;
         }
 
-        await startAuthenticatedDownload(platform, session);
+        const downloadStarted = await startAuthenticatedDownload(platform, session);
+        if (downloadStarted) {
+            pendingDownloadPlatform = null;
+        }
     };
 
     async function setupDownloadAuth() {
@@ -189,12 +192,12 @@
         const openButton = event.target.closest('[data-auth-open]');
         if (openButton) {
             event.preventDefault();
-            pendingDownloadPlatform = 'windows';
+            pendingDownloadPlatform = null;
             setAuthMode(openButton.getAttribute('data-auth-open') || 'signin');
             openAuthModal(
                 authSession
                     ? 'You are already logged in. Click download to continue.'
-                    : 'Login or create a free account to download Interview AI.'
+                    : 'Login or create a free account.'
             );
             return;
         }
@@ -319,14 +322,26 @@
             await trackAuthLogin(authMode === 'signup' ? 'signup' : 'signin');
             updateAuthUi();
             scheduleAuthExpiry();
+
+            if (!pendingDownloadPlatform) {
+                const successMessage = authMode === 'signup'
+                    ? 'Signup successful.'
+                    : 'Successfully logged in.';
+                setAuthMessage(successMessage, 'success');
+                showToast(successMessage, 'success');
+                setTimeout(closeAuthModal, 600);
+                return;
+            }
+
             const successMessage = authMode === 'signup'
                 ? 'Signup successful. Starting download...'
                 : 'Successfully logged in. Starting download...';
             setAuthMessage(successMessage, 'success');
             showToast(successMessage, 'success');
-            const platform = pendingDownloadPlatform || 'windows';
+            const platform = pendingDownloadPlatform;
             const downloadStarted = await startAuthenticatedDownload(platform, authSession);
             if (downloadStarted) {
+                pendingDownloadPlatform = null;
                 closeAuthModal();
             }
         } catch (error) {
@@ -599,6 +614,7 @@
     function openAuthModal(message, type = '') {
         const modal = document.getElementById('download-auth-modal');
         if (!modal) return;
+        updateAuthUi();
         setAuthMessage(message || '', type);
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
@@ -608,6 +624,8 @@
     function closeAuthModal() {
         const modal = document.getElementById('download-auth-modal');
         if (!modal) return;
+        pendingDownloadPlatform = null;
+        updateAuthUi();
         modal.classList.add('hidden');
         modal.setAttribute('aria-hidden', 'true');
     }
@@ -646,7 +664,7 @@
         if (label) {
             label.textContent = isLoading
                 ? 'Please wait...'
-                : (authMode === 'signup' ? 'Create Account and Download' : 'Login and Download');
+                : getAuthSubmitLabel();
         }
     }
 
@@ -672,11 +690,11 @@
         if (title) {
             title.textContent = isSignedIn
                 ? 'Your download profile'
-                : (authMode === 'signup' ? 'Create account to download' : 'Sign in to download');
+                : getAuthTitle();
         }
 
         if (submitLabel) {
-            submitLabel.textContent = authMode === 'signup' ? 'Create Account and Download' : 'Login and Download';
+            submitLabel.textContent = getAuthSubmitLabel();
         }
 
         document.querySelectorAll('[data-auth-logged-out]').forEach((element) => {
@@ -713,11 +731,25 @@
         if (!authIntent) return;
 
         const mode = authIntent === 'signup' ? 'signup' : 'signin';
-        pendingDownloadPlatform = 'windows';
+        pendingDownloadPlatform = null;
         setAuthMode(mode);
         openAuthModal(mode === 'signup'
-            ? 'Create a free account to download Interview AI.'
-            : 'Login to download Interview AI.');
+            ? 'Create a free account.'
+            : 'Login to your account.');
+    }
+
+    function getAuthTitle() {
+        if (pendingDownloadPlatform) {
+            return authMode === 'signup' ? 'Create account to download' : 'Sign in to download';
+        }
+        return authMode === 'signup' ? 'Create account' : 'Sign in';
+    }
+
+    function getAuthSubmitLabel() {
+        if (pendingDownloadPlatform) {
+            return authMode === 'signup' ? 'Create Account and Download' : 'Login and Download';
+        }
+        return authMode === 'signup' ? 'Create Account' : 'Login';
     }
 
     // Auto-detect user's platform
