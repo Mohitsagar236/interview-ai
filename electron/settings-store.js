@@ -24,7 +24,7 @@ const store = new Store({
       responseLanguage: 'auto'
     },
     app: {
-      theme: 'system',
+      theme: 'light',
       overlayOpacity: 90,
       fontSize: 'medium',
       autoStart: false

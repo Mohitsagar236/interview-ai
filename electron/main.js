@@ -500,7 +500,7 @@ function ensureDataPaths() {
       fs.writeFileSync(resumesMetaPath, JSON.stringify({ resumes: [] }, null, 2));
     }
     if (!fs.existsSync(settingsPath)) {
-      fs.writeFileSync(settingsPath, JSON.stringify({ stealthEnabled: true, defaultLLM: 'gpt-4o-mini', autoLaunchServer: true, theme: 'dark', updatedAt: new Date().toISOString() }, null, 2));
+      fs.writeFileSync(settingsPath, JSON.stringify({ stealthEnabled: true, defaultLLM: 'gpt-4o-mini', autoLaunchServer: true, theme: 'light', updatedAt: new Date().toISOString() }, null, 2));
     }
     if (!fs.existsSync(interviewsPath)) {
       fs.writeFileSync(interviewsPath, JSON.stringify({ interviews: [] }, null, 2));
