@@ -88,7 +88,7 @@ header.scrolled {
 }
 
 nav {
-    max-width: var(--container-xl);
+    max-width: 1440px;
     margin: 0 auto;
     padding: 0 var(--spacing-xl);
     display: flex;
@@ -104,6 +104,14 @@ nav {
         max-width: 100%;
         padding: 0 2rem;
     }
+
+    .profile-trigger {
+        padding: 8px 12px;
+    }
+
+    .profile-trigger .site-profile-summary {
+        display: none;
+    }
 }
 
 .logo {
@@ -117,6 +125,8 @@ nav {
     transition: transform 0.3s ease;
     z-index: 1001;
     text-decoration: none;
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .logo:hover {
@@ -138,13 +148,17 @@ nav {
     background-clip: text;
     font-weight: 800;
     letter-spacing: -0.5px;
+    white-space: nowrap;
 }
 
 .nav-links {
     display: flex;
     align-items: center;
     gap: 0.15rem;
-    flex-wrap: wrap;
+    justify-content: flex-end;
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+    min-width: 0;
 }
 
 .nav-link {
@@ -156,6 +170,8 @@ nav {
     position: relative;
     padding: var(--spacing-sm) var(--spacing-md);
     border-radius: var(--radius-md);
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .nav-link::before {
@@ -637,6 +653,7 @@ nav {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex: 0 0 auto;
 }
 
 .auth-section .hidden {
@@ -698,6 +715,7 @@ nav {
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s;
+    max-width: 220px;
 }
 
 .site-profile-summary {
@@ -707,7 +725,7 @@ nav {
 }
 
 .site-profile-email {
-    max-width: 150px;
+    max-width: 140px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
