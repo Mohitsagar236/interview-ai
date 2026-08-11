@@ -1,6 +1,6 @@
 # Interview AI Documentation
 
-Interview AI is a local-first, proprietary free-use desktop app owned by Mohit Sagar. Users install the desktop app and bring their own API keys. There is no hosted account, payment, activation code, or credit system required for the production BYOK path.
+Interview AI is a local-first, proprietary free-use desktop app owned by interviewai. Users install the desktop app and bring their own API keys. There is no hosted account, payment, activation code, or credit system required for the production BYOK path.
 
 ## Start Here
 

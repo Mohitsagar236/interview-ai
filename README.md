@@ -1,6 +1,6 @@
 # Interview AI Assistant
 
-Privacy-first desktop interview assistant owned by Mohit Sagar. Install the
+Privacy-first desktop interview assistant owned by interviewai. Install the
 app, add your own API keys locally, and use real-time transcription, screen
 OCR, resume context, and AI coaching without an account or hosted backend.
 
@@ -108,8 +108,8 @@ text retrieval when embedding packages are not installed.
 
 Interview AI is proprietary free-use software.
 
-Copyright (c) 2025-2026 Mohit Sagar. All rights reserved.
+Copyright (c) 2025-2026 interviewai. All rights reserved.
 
 Users may download, install, and use the app for free with their own API keys.
-All ownership and rights not expressly granted remain with Mohit Sagar. See
+All ownership and rights not expressly granted remain with interviewai. See
 [LICENSE.txt](./LICENSE.txt) for the full terms.

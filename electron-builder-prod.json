@@ -30,7 +30,7 @@
   "extraMetadata": {
     "main": "electron/main.js"
   },
-  "copyright": "Copyright (c) 2025-2026 Mohit Sagar. All rights reserved.",
+  "copyright": "Copyright (c) 2025-2026 interviewai. All rights reserved.",
   "win": {
     "target": [
       {
@@ -39,7 +39,7 @@
       }
     ],
     "icon": "assets/icon.ico",
-    "publisherName": "Mohit Sagar",
+    "publisherName": "interviewai",
     "requestedExecutionLevel": "asInvoker",
     "artifactName": "Interview-AI-Setup-${version}-${arch}.${ext}"
   },

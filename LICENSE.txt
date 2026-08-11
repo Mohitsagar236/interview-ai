@@ -1,14 +1,14 @@
 Interview AI Proprietary Free-Use License
 
-Copyright (c) 2025-2026 Mohit Sagar. All rights reserved.
+Copyright (c) 2025-2026 interviewai. All rights reserved.
 
 Interview AI, including its application code, design, branding, packaged
 desktop builds, website content, documentation, and related assets, is owned by
-Mohit Sagar unless a third-party notice says otherwise.
+interviewai unless a third-party notice says otherwise.
 
 Free Use Grant
 
-Mohit Sagar grants end users a limited, revocable, non-exclusive,
+interviewai grants end users a limited, revocable, non-exclusive,
 non-transferable license to download, install, and use Interview AI for free on
 their own devices. Users must provide their own API keys for any third-party AI
 or transcription services they choose to use. Interview AI itself does not
@@ -17,7 +17,7 @@ include paid credits, subscriptions, hosted API access, or shared provider keys.
 Restrictions
 
 Except where permitted by applicable law or by a separate written agreement from
-Mohit Sagar, users may not:
+interviewai, users may not:
 
 - copy, modify, publish, distribute, sublicense, resell, rent, lease, or host
   Interview AI or derivative works;
@@ -33,7 +33,7 @@ API Keys and Third-Party Services
 Users are responsible for obtaining and paying for their own API keys and for
 following the terms of their chosen providers, including OpenAI, Anthropic,
 Google Gemini, Groq, OpenRouter, xAI, Deepgram, Ollama, or any compatible
-endpoint. Mohit Sagar does not provide, share, sell, or store user API keys.
+endpoint. interviewai does not provide, share, sell, or store user API keys.
 
 No Warranty
 
@@ -44,7 +44,7 @@ own risk.
 
 Limitation of Liability
 
-To the maximum extent permitted by law, Mohit Sagar will not be liable for any
+To the maximum extent permitted by law, interviewai will not be liable for any
 direct, indirect, incidental, special, consequential, exemplary, or punitive
 damages arising from or related to Interview AI, third-party provider usage,
 interview outcomes, data loss, service interruptions, or security incidents.

@@ -1,6 +1,6 @@
 # Environment Configuration
 
-Interview AI is a proprietary free-use BYOK desktop app owned by Mohit Sagar. End users do not need to create a `.env` file when they install the packaged app. They open Settings, paste their own API keys, and the app stores those keys locally with Electron secure storage.
+Interview AI is a proprietary free-use BYOK desktop app owned by interviewai. End users do not need to create a `.env` file when they install the packaged app. They open Settings, paste their own API keys, and the app stores those keys locally with Electron secure storage.
 
 ## End User Setup
 
