@@ -37,7 +37,7 @@
         toggles.forEach((toggle) => {
             toggle.addEventListener('click', () => {
                 const isDark = document.documentElement.classList.toggle('dark');
-                localStorage.setItem('theme', isDark ? 'dark' : 'light');
+                sessionStorage.setItem('theme', isDark ? 'dark' : 'light');
                 applyThemeLabel();
             });
         });

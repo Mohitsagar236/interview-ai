@@ -225,8 +225,7 @@ pricingToggle?.addEventListener('change', () => {
 
 // Theme toggle functionality
 function initializeTheme() {
-    const savedTheme = localStorage.getItem('theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const savedTheme = sessionStorage.getItem('theme');
     
     // Default to light mode unless user has explicitly chosen dark mode
     if (savedTheme === 'dark') {
@@ -247,7 +246,7 @@ function updateThemeIcons(isDark) {
 
 function toggleTheme() {
     const isDark = document.documentElement.classList.toggle('dark');
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    sessionStorage.setItem('theme', isDark ? 'dark' : 'light');
     updateThemeIcons(isDark);
     
     // Show toast notification

@@ -65,16 +65,15 @@ def hello():
         
         assert result == "Hello, world! How are you?"
     
-    def test_remove_duplicate_prefix(self):
-        """Should remove duplicate prefix from seen tokens"""
-        text = "This is a test response with some content here."
-        seen_log = {"This is a test response"}
+    def test_keeps_final_answer_prefix(self):
+        """Should not remove the opening of the final replacement answer."""
+        text = "## Problem restatement\nBuild a BST in C++.\n\n## Approach\nUse node pointers."
+        seen_log = {"## Problem restatement\nBuild a BST in C++."}
         
         result = postprocess_answer(text, seen_log)
         
-        # Should not start with the seen prefix
-        assert not result.startswith("This is a test response")
-        assert "with some content here" in result
+        assert result.startswith("## Problem restatement")
+        assert "Build a BST in C++." in result
     
     def test_remove_excessive_newlines(self):
         """Should reduce multiple newlines to maximum 2"""
@@ -214,14 +213,12 @@ However, we need to handle edge cases."""
         # Should get reasoning bonus
         assert score >= 0.6, f"Expected bonus for reasoning, got {score}"
     
-    def test_code_block_bonus_coding(self):
-        """Should reward code blocks for coding questions"""
+    def test_code_bonus_coding(self):
+        """Should reward code content for coding questions"""
         answer = """Here's the implementation:
 
-```python
 def solution():
-    return True
-```"""
+    return True"""
         
         score, label = compute_confidence(answer, "coding")
         

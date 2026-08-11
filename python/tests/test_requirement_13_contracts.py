@@ -264,9 +264,10 @@ def test_requirement_13_prompt_contracts_for_resume_technical_coding_and_system_
             "coding",
         )
         assert "Do not use resume context" in coding_system
-        assert "Always use fenced markdown code blocks with a language tag" in coding_system
-        assert "fenced markdown block tagged `cpp`" in coding_user
-        assert "The code must compile and must not be compressed into one line" in coding_user
+        assert "Do not put code inside triple-backtick fences" in coding_system
+        assert "Do not use triple backticks or a separate code block" in coding_user
+        assert "The code must compile" in coding_user
+        assert "must not be compressed into one line" not in coding_user
         assert "Problem restatement" in coding_user
         assert "Time complexity" in coding_user
         assert "Space complexity" in coding_user
@@ -277,7 +278,7 @@ def test_requirement_13_prompt_contracts_for_resume_technical_coding_and_system_
         "coding",
     )
     assert "Do not use resume context" in virtual_system
-    assert "fenced markdown block tagged `cpp`" in virtual_user
+    assert "Do not use triple backticks or a separate code block" in virtual_user
     assert "required headers" in virtual_user
     assert "pointer, reference, or smart pointer" in virtual_user
 
@@ -338,7 +339,7 @@ def test_requirement_13_interview_answer_style_avoids_coaching_labels_by_default
         assert banned not in combined
 
 
-def test_requirement_13_formatting_helper_expands_compressed_coding_answer():
+def test_requirement_13_formatting_helper_preserves_code_content():
     tokens = [
         "Approach: scan once.",
         "```cpp",
@@ -350,10 +351,9 @@ def test_requirement_13_formatting_helper_expands_compressed_coding_answer():
     result = clean_streamed_response(tokens, enable_formatting=True)
 
     assert result.count("```") == 2
-    assert "```cpp\n#include <bits/stdc++.h>\nusing namespace std;" in result
-    assert "\nint largest" in result
-    assert "\n    int best=a[0];" in result
-    assert "\n    for(int x:a)" in result
+    assert "```cpp\n#include <bits/stdc++.h>using namespace std;int largest" in result
+    assert "\n    int best=a[0];" not in result
+    assert "\n    for(int x:a)" not in result
     assert "Time: O(n). Space: O(1)." in result
     assert "\n\n\n" not in result
 

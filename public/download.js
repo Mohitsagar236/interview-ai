@@ -814,12 +814,12 @@
         if (themeToggle) {
             themeToggle.addEventListener('click', () => {
                 document.documentElement.classList.toggle('dark');
-                localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+                sessionStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
             });
         }
 
         // Apply saved theme (default to light)
-        const savedTheme = localStorage.getItem('theme');
+        const savedTheme = sessionStorage.getItem('theme');
         if (savedTheme === 'dark') {
             document.documentElement.classList.add('dark');
         }

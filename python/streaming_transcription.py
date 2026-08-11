@@ -17,7 +17,11 @@ from enum import Enum
 import websockets
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError, InvalidStatusCode
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+
+
+class TranscriptionAuthError(Exception):
+    """Raised when the transcription provider rejects credentials."""
 
 
 class TranscriptType(Enum):
@@ -43,7 +47,7 @@ class StreamingTranscriptionProvider(ABC):
     """Base class for streaming transcription providers"""
     
     def __init__(self, api_key: str, config: Dict[str, Any]):
-        self.api_key = api_key
+        self.api_key = (api_key or "").strip()
         self.config = config
         self.ws = None
         self.connected = False
@@ -77,7 +81,11 @@ class DeepgramProvider(StreamingTranscriptionProvider):
         super().__init__(api_key, config)
         self.base_url = "wss://api.deepgram.com/v1/listen"
         self.reconnect_attempts = 0
-        self.max_reconnect_attempts = 5
+        self.max_reconnect_attempts = 5
+
+        self.last_error_message = None
+
+        self.last_error_code = None
         
     async def connect(self) -> bool:
         """Connect to Deepgram streaming API"""
@@ -123,19 +131,55 @@ class DeepgramProvider(StreamingTranscriptionProvider):
         except InvalidStatusCode as e:
             error_headers = getattr(e, "headers", {}) or {}
             dg_message = error_headers.get("dg-message")
-            dg_request_id = error_headers.get("dg-request-id")
-            if dg_message:
+            dg_request_id = error_headers.get("dg-request-id")
+
+            status_code = getattr(e, "status_code", None)
+            if status_code in (401, 403):
+
+                self.last_error_code = "DEEPGRAM_AUTH_FAILED"
+
+                self.last_error_message = (
+                    "Deepgram rejected the transcription key. Open Settings and paste a valid Deepgram API key."
+                )
+
+                if dg_message:
+
+                    self.logger.error(
+
+                        "Deepgram authentication failed: %s (request id: %s)",
+
+                        dg_message,
+
+                        dg_request_id,
+
+                    )
+
+                else:
+
+                    self.logger.error("Deepgram authentication failed with status %s", status_code)
+
+                raise TranscriptionAuthError(self.last_error_message) from e
+
+            if dg_message:
                 self.logger.error(
                     "Deepgram rejected connection: %s (request id: %s)",
                     dg_message,
                     dg_request_id,
                 )
             else:
-                self.logger.error("Deepgram rejected connection with status %s", e.status_code)
+                self.logger.error("Deepgram rejected connection with status %s", e.status_code)
+
+            self.last_error_code = "DEEPGRAM_CONNECTION_REJECTED"
+
+            self.last_error_message = "Deepgram rejected the transcription connection. Check your model, language, and account settings."
             self.connected = False
             return False
         except Exception as e:
-            self.logger.error(f"Failed to connect to Deepgram: {e}")
+            self.logger.error(f"Failed to connect to Deepgram: {e}")
+
+            self.last_error_code = "DEEPGRAM_CONNECTION_FAILED"
+
+            self.last_error_message = "Could not connect to Deepgram. Check your internet connection and transcription settings."
             self.connected = False
             return False
     
@@ -231,8 +275,8 @@ class DeepgramProvider(StreamingTranscriptionProvider):
                 await self.ws.send(close_msg)
                 await self.ws.close()
                 self.logger.info("Deepgram connection closed gracefully")
-            except Exception as e:
-                self.logger.warning(f"Error closing Deepgram connection: {e}")
+            except Exception as e:
+                self.logger.warning(f"Error closing Deepgram connection: {e}")
             finally:
                 self.ws = None
                 self.connected = False
@@ -367,7 +411,11 @@ class StreamingTranscriptionEngine:
             self.config["model"] = model
         self.reconnect_delay = 1.0
         self.max_reconnect_delay = 30.0
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(__name__)
+
+        self.last_error_code = None
+
+        self.last_error_message = None
         
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from environment"""
@@ -397,38 +445,53 @@ class StreamingTranscriptionEngine:
             return await self.connect()
         return True
     
-    async def connect(self) -> bool:
-        """Connect to streaming transcription provider with auto-retry (Deepgram only)"""
-        self.logger.info("[Engine] Starting connection to Deepgram...")
-        
-        for attempt in range(3):
-            try:
-                # Deepgram enforced
-                api_key = self._override_api_key or os.getenv("DEEPGRAM_API_KEY")
-                if not api_key:
-                    self.logger.error("No Deepgram API key available — configure via Settings or DEEPGRAM_API_KEY env var")
-                    return False
-                
-                self.logger.info(f"[Engine] Connection attempt {attempt + 1}/3")
-                self.provider = DeepgramProvider(api_key, self.config)
-                
-                connected = await self.provider.connect()
-                if connected:
-                    self.reconnect_delay = 1.0  # Reset on success
-                    self.logger.info("[Engine] ✅ Successfully connected to Deepgram")
-                    return True
-                else:
-                    self.logger.warning(f"[Engine] Connection attempt {attempt + 1} failed")
-                    
-            except Exception as e:
-                self.logger.error(f"[Engine] Connection attempt {attempt + 1} failed: {e}")
-                if attempt < 2:
-                    await asyncio.sleep(self.reconnect_delay)
-                    self.reconnect_delay = min(self.reconnect_delay * 2, self.max_reconnect_delay)
-        
-        self.logger.error("[Engine] ❌ Failed to connect after all attempts")
-        return False
-    
+    async def connect(self) -> bool:
+        """Connect to streaming transcription provider with auto-retry (Deepgram only)."""
+        self.logger.info("[Engine] Starting connection to Deepgram...")
+        self.last_error_code = None
+        self.last_error_message = None
+
+        for attempt in range(3):
+            try:
+                api_key = (self._override_api_key or os.getenv("DEEPGRAM_API_KEY") or "").strip()
+                if not api_key:
+                    self.last_error_code = "DEEPGRAM_KEY_MISSING"
+                    self.last_error_message = "Add a Deepgram API key in Settings to use live transcription."
+                    self.logger.error(self.last_error_message)
+                    return False
+
+                self.logger.info(f"[Engine] Connection attempt {attempt + 1}/3")
+                self.provider = DeepgramProvider(api_key, self.config)
+                connected = await self.provider.connect()
+                if connected:
+                    self.reconnect_delay = 1.0
+                    self.logger.info("[Engine] Connected to Deepgram")
+                    return True
+
+                self.last_error_code = getattr(self.provider, "last_error_code", None)
+                self.last_error_message = getattr(self.provider, "last_error_message", None)
+                self.logger.warning(f"[Engine] Connection attempt {attempt + 1} failed")
+
+            except TranscriptionAuthError as e:
+                self.last_error_code = "DEEPGRAM_AUTH_FAILED"
+                self.last_error_message = str(e)
+                self.logger.error(f"[Engine] Deepgram authentication failed: {e}")
+                return False
+
+            except Exception as e:
+                self.last_error_code = "DEEPGRAM_CONNECTION_FAILED"
+                self.last_error_message = "Could not connect to Deepgram. Check your internet connection and transcription settings."
+                self.logger.error(f"[Engine] Connection attempt {attempt + 1} failed: {e}")
+
+            if attempt < 2:
+                await asyncio.sleep(self.reconnect_delay)
+                self.reconnect_delay = min(self.reconnect_delay * 2, self.max_reconnect_delay)
+
+        if not self.last_error_message:
+            self.last_error_code = "DEEPGRAM_CONNECTION_FAILED"
+            self.last_error_message = "Could not connect to Deepgram. Check your internet connection and transcription settings."
+        self.logger.error("[Engine] Failed to connect after all attempts")
+        return False
     async def send_audio(self, audio_data: bytes):
         """Send audio data to provider with auto-reconnect"""
         if not self.provider or not self.provider.connected:

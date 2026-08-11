@@ -1220,6 +1220,7 @@ function createToolbarWindow() {
   // Correct path resolution (previous relative path was incorrect when launched from electron dir)
   const toolbarHtmlPath = path.join(__dirname, '../renderer/toolbar.html');
   try {
+    try { toolbarWindow.webContents.session.clearCache(); } catch {}
     toolbarWindow.loadFile(toolbarHtmlPath);
   } catch (e) {
     console.error('Failed to load toolbar HTML at', toolbarHtmlPath, e.message);
@@ -2239,7 +2240,6 @@ ipcMain.handle('settings-save', (_event, patch) => {
     ensureDataPaths();
     const cur = readJSON(settingsPath, {});
     const merged = { ...cur, ...patch, updatedAt: new Date().toISOString() };
-    writeJSON(settingsPath, merged);
 
     // CRITICAL: Mirror API keys into the encrypted electron-store so that
     // toolbar.js BYOK flow (settings:get-api-key / settings:get-all) can
@@ -2261,6 +2261,17 @@ ipcMain.handle('settings-save', (_event, patch) => {
         }
       }
     }
+
+    const diskSettings = { ...merged };
+    [
+      'apiKey',
+      ...Object.keys(keyMap),
+      'geminiApiKey',
+      'customApiKey',
+      'claudeAccountApiKey',
+    ].forEach((field) => delete diskSettings[field]);
+    writeJSON(settingsPath, diskSettings);
+
     // Update the ai.provider in electron-store so settings:get-all returns it
     if (detectedProvider) {
       settingsStore.set('ai.provider', detectedProvider);

@@ -154,8 +154,12 @@ class ConfidenceScorer:
 
         # Type-specific completeness checks
         if qtype == QuestionType.CODING:
-            if "```" not in answer:
-                issues.append("WARNING: Coding question but no code block found")
+            has_code = bool(re.search(
+                r'(#\s*include|def\s+\w+\s*\(|class\s+\w+|struct\s+\w+|for\s*\(|while\s*\(|return\b|=>|function\s+\w+)',
+                answer,
+            ))
+            if not has_code:
+                issues.append("WARNING: Coding question but no code found")
                 score -= 0.6
             if not re.search(r'O\([^)]+\)', answer):
                 issues.append("INFO: No complexity analysis found")
@@ -241,6 +245,11 @@ class ConfidenceScorer:
         if qtype == QuestionType.CODING:
             # Check for obviously broken code syntax
             code_blocks = re.findall(r'```(?:\w+)?\n(.*?)```', answer, re.DOTALL)
+            if not code_blocks and re.search(
+                r'(#\s*include|def\s+\w+\s*\(|class\s+\w+|struct\s+\w+|for\s*\(|while\s*\(|return\b|=>|function\s+\w+)',
+                answer,
+            ):
+                code_blocks = [answer]
             if not code_blocks:
 
                 issues.append("WARNING: Coding answer has no implementation")
@@ -248,6 +257,9 @@ class ConfidenceScorer:
                 score -= 0.5
 
             for code in code_blocks:
+                if re.search(r'\b(TODO|pass|placeholder)\b', code, re.IGNORECASE):
+                    issues.append("WARNING: Coding answer has placeholder implementation")
+                    score -= 0.6
                 if code.count('(') != code.count(')'):
                     issues.append("WARNING: Unbalanced parentheses in code")
                     score -= 0.2
@@ -269,12 +281,15 @@ class ConfidenceScorer:
         # Check for proper structure
         has_headers = bool(re.search(r'^#{1,3}\s+\w+', answer, re.MULTILINE))
         has_bullets = bool(re.search(r'^\s*[-*•]\s+\w+', answer, re.MULTILINE))
-        has_code_blocks = "```" in answer
+        has_code = bool(re.search(
+            r'(#\s*include|def\s+\w+\s*\(|class\s+\w+|struct\s+\w+|for\s*\(|while\s*\(|return\b|=>|function\s+\w+)',
+            answer,
+        ))
 
         # Type-specific formatting expectations
         if qtype == QuestionType.CODING:
-            if not has_code_blocks:
-                issues.append("WARNING: Coding answer should use code blocks")
+            if not has_code:
+                issues.append("WARNING: Coding answer should include code")
                 score -= 0.6
 
         elif qtype in [QuestionType.SYSTEM_DESIGN, QuestionType.THEORY]:

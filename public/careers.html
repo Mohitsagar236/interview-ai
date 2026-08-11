@@ -35,7 +35,7 @@
     <link rel="stylesheet" href="careers.css?v=20260627b">
 
     <script>
-        const savedTheme = localStorage.getItem('theme') || 'light';
+        const savedTheme = sessionStorage.getItem('theme') || 'light';
         if (savedTheme === 'dark') {
             document.documentElement.classList.add('dark');
         }

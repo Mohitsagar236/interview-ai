@@ -923,6 +923,47 @@
     return out.join("\n");
   }
 
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function normalizeCodeLanguage(lang) {
+    const normalized = String(lang || "").trim().toLowerCase();
+    if (["c++", "cxx", "cc"].includes(normalized)) return "cpp";
+    if (normalized === "js") return "javascript";
+    if (normalized === "ts") return "typescript";
+    return normalized || "plaintext";
+  }
+
+  function formatCodeForDisplay(lang, code) {
+    if (code == null) return "";
+    return String(code).replace(/\r\n/g, "\n");
+  }
+
+  function normalizeInterviewSections(text) {
+    const sections = [
+      ["problem restatement", "Problem restatement"],
+      ["approach", "Approach"],
+      ["clean code", "Clean code"],
+      ["edge cases", "Edge cases"],
+      ["time complexity", "Time complexity"],
+      ["space complexity", "Space complexity"],
+    ];
+
+    let normalized = text;
+    sections.forEach(([raw, canonical]) => {
+      const pattern = new RegExp(
+        `(^|\\n)\\s*(?:#{1,3}\\s*)?${raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b:?\\s*`,
+        "gim",
+      );
+      normalized = normalized.replace(pattern, `$1## ${canonical}\n`);
+    });
+    return normalized.replace(/\n{3,}/g, "\n\n").trim();
+  }
+
   // Format AI response into readable HTML (enhanced markdown + LaTeX support)
   function formatAIResponse(raw) {
     if (!raw) return "";
@@ -930,6 +971,17 @@
 
     // Normalize line endings
     text = text.replace(/\r\n/g, "\n");
+    text = normalizeInterviewSections(text);
+    if ((text.match(/```/g) || []).length % 2 === 1) {
+      text += "\n```";
+    }
+
+    // Some providers stream compact markdown like "Key points: - One - Two".
+    // Normalize those boundaries before markdown-to-HTML conversion.
+    text = text
+      .replace(/([:])\s+([-*]\s+)/g, "$1\n$2")
+      .replace(/([.!?])\s+(#{1,4}\s+)/g, "$1\n\n$2")
+      .replace(/([^\n])\s+(\d+\.\s+)/g, "$1\n$2");
 
     // Store math equations temporarily to protect them from HTML escaping
     const mathStore = [];
@@ -975,24 +1027,23 @@
       return placeholder;
     });
 
-    // Escape HTML to prevent injection
-    text = text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-
-    // Re-enable fenced code blocks ```lang\ncode``` with language detection
+    const codeStore = [];
     text = text.replace(
-      /```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g,
+      /```([a-zA-Z0-9_+#.-]*)[ \t]*\n?([\s\S]*?)```/g,
       (match, lang, code) => {
-        const unescapedCode = code
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .replace(/&amp;/g, "&");
-        const language = lang || "plaintext";
-        return `<pre class="ai-code" data-language="${language}"><code class="language-${language}">${unescapedCode}</code></pre>`;
+        const placeholder = `__CODE_BLOCK_${codeStore.length}__`;
+        const language = normalizeCodeLanguage(lang);
+        codeStore.push({
+          placeholder,
+          language,
+          code: formatCodeForDisplay(language, code),
+        });
+        return `\n\n${placeholder}\n\n`;
       },
     );
+
+    // Escape HTML to prevent injection
+    text = escapeHtml(text);
 
     // Headings: lines starting with ###, ##, #
     text = text.replace(/^### (.*)$/gm, "<h4>$1</h4>");
@@ -1018,7 +1069,7 @@
 
     // Paragraphs: split by blank lines, avoid wrapping block elements
     const blockTags =
-      /^(<h[2-4]|<ul>|<ol>|<pre|<li>|<\/ul>|<\/ol>|<\/pre|<table|<\/table)/i;
+      /^(<h[2-4]|<ul>|<ol>|<pre|<li>|<\/ul>|<\/ol>|<\/pre|<table|<\/table|__CODE_BLOCK_\d+__)/i;
     text = text
       .split(/\n{2,}/)
       .map((seg) => seg.trim())
@@ -1027,6 +1078,14 @@
         blockTags.test(seg) ? seg : "<p>" + seg.replace(/\n/g, "<br>") + "</p>",
       )
       .join("\n");
+
+    codeStore.forEach(({ placeholder, code }) => {
+      const plainCode = escapeHtml(code).replace(/\n/g, "<br>");
+      text = text.replace(
+        placeholder,
+        `<div class="plain-code">${plainCode}</div>`,
+      );
+    });
 
     // Restore math equations and render with KaTeX
     mathStore.forEach(({ type, content, placeholder }) => {
@@ -1082,13 +1141,14 @@
 
   function wrapListBlocks(text, regex, tag) {
     // Collect matches line by line
+    const testRegex = new RegExp(regex.source, regex.flags.replace("g", ""));
     const lines = text.split("\n");
     let result = [];
     let buffer = [];
     let inList = false;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (regex.test(line)) {
+      if (testRegex.test(line)) {
         buffer.push(line.replace(regex, "<li>$1</li>"));
         inList = true;
       } else {
@@ -1265,15 +1325,7 @@
         );
         bodyEl.innerHTML = "";
       }
-      // Lightweight incremental formatting: escape & < > then basic markdown emphasis
-      let safe = chunk
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-      // Append with simple span to avoid heavy reparse each tick
-      const span = document.createElement("span");
-      span.textContent = safe; // using textContent keeps it safe
-      bodyEl.appendChild(span);
+      bodyEl.innerHTML = formatAIResponse(state.currentAIResponse);
 
       // Log progress periodically (every 50 chunks)
       if (state.currentAIResponse.length % 50 < chunk.length) {
@@ -2523,6 +2575,23 @@
         if (window.electronAPI && window.electronAPI.settings) {
           window.electronAPI.settings.openWindow();
         }
+        return;
+      }
+
+      if (msg.type === 'error' && /^DEEPGRAM_/.test(msg.code || '')) {
+        const message = msg.message || 'Deepgram transcription failed. Open Settings and check your API key.';
+        log.warn('[Transcription] Deepgram error:', msg.code, message);
+        if (typeof showNotification === 'function') {
+          showNotification(message, 'error');
+        }
+        if (
+          (msg.code === 'DEEPGRAM_AUTH_FAILED' || msg.code === 'DEEPGRAM_KEY_MISSING') &&
+          window.electronAPI &&
+          window.electronAPI.settings
+        ) {
+          window.electronAPI.settings.openWindow();
+        }
+        if (statusText) statusText.textContent = 'Transcription error';
         return;
       }
 

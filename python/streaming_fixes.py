@@ -8,69 +8,111 @@ import re
 from typing import Set
 
 
-def _format_code_block(lang: str, code: str) -> str:
-    """Expand compressed brace-style code into readable lines."""
-    if code is None:
-        return code
+COMMON_LANGUAGES = {
+    'python', 'javascript', 'typescript', 'java', 'cpp', 'c', 'csharp', 'cs',
+    'ruby', 'go', 'rust', 'php', 'swift', 'kotlin', 'scala', 'perl',
+    'bash', 'sh', 'powershell', 'sql', 'html', 'css', 'scss', 'less',
+    'json', 'xml', 'yaml', 'yml', 'markdown', 'md', 'text', 'txt',
+    'jsx', 'tsx', 'vue', 'svelte', 'r', 'matlab', 'lua', 'dart', 'elixir'
+}
 
-    normalized_lang = (lang or "").lower()
-    brace_languages = {
-        "cpp", "c", "java", "javascript", "typescript", "js", "ts",
-        "csharp", "cs", "go", "rust", "php", "swift", "kotlin", "scala"
-    }
-    if normalized_lang not in brace_languages:
-        return code.lstrip("\n")
 
-    stripped = code.strip()
-    if not stripped:
-        return ""
-    if stripped.count("\n") >= 3:
-        return code.lstrip("\n")
-    if stripped.count(";") + stripped.count("{") + stripped.count("}") < 3:
-        return code.lstrip("\n")
+CODING_SECTION_HEADINGS = (
+    ("problem restatement", "Problem restatement"),
+    ("approach", "Approach"),
+    ("clean code", "Clean code"),
+    ("edge cases", "Edge cases"),
+    ("time complexity", "Time complexity"),
+    ("space complexity", "Space complexity"),
+)
 
-    stripped = re.sub(
-        r"\s*(#\s*include\s*(?:<[^>]+>|\"[^\"]+\"))\s*",
-        r"\1\n",
-        stripped,
+
+def _normalize_coding_section_headings(text: str) -> str:
+    """Put known interview answer sections on their own markdown heading lines."""
+    if not text:
+        return text
+
+    normalized = text
+    for raw_heading, canonical_heading in CODING_SECTION_HEADINGS:
+        pattern = re.compile(
+            rf"(?im)(^|\n)\s*(?:#{{1,3}}\s*)?{re.escape(raw_heading)}\b:?\s*"
+        )
+        normalized = pattern.sub(lambda m, h=canonical_heading: f"{m.group(1)}## {h}\n", normalized)
+    return re.sub(r"\n{3,}", "\n\n", normalized).strip()
+
+
+def _stash_plain_clean_code_section(text: str) -> tuple[str, list[str]]:
+    """Protect plain Clean code content from prose spacing cleanup."""
+    normalized = _normalize_coding_section_headings(text)
+    code_sections: list[str] = []
+
+    def stash(match: re.Match) -> str:
+        placeholder = f"@@PLAIN_CLEAN_CODE_{len(code_sections)}@@"
+        code_sections.append((match.group("code") or "").strip("\n"))
+        return f"{match.group('heading')}{placeholder}\n\n"
+
+    protected = re.sub(
+        r"(?ims)(?P<heading>^## Clean code\s*\n)(?P<code>.*?)(?=^## (?:Edge cases|Time complexity|Space complexity)\b|\Z)",
+        stash,
+        normalized,
     )
+    return protected, code_sections
 
-    chars = []
-    paren_depth = 0
-    quote = None
-    escaped = False
-    for ch in stripped:
-        chars.append(ch)
-        if quote:
-            if escaped:
-                escaped = False
-            elif ch == "\\":
-                escaped = True
-            elif ch == quote:
-                quote = None
+
+def _restore_plain_clean_code_section(text: str, code_sections: list[str]) -> str:
+    restored = text
+    for idx, code in enumerate(code_sections):
+        restored = restored.replace(f"@@PLAIN_CLEAN_CODE_{idx}@@", code)
+    return restored
+
+
+def _split_fenced_blocks(text: str) -> list[str]:
+    """Split text into normal/code-block chunks, preserving fence chunks."""
+    return re.split(r"(```[\s\S]*?```)", text)
+
+
+def _normalize_outside_code_blocks(text: str) -> str:
+    """Normalize prose spacing without touching code indentation."""
+    protected_text, code_sections = _stash_plain_clean_code_section(text)
+    chunks = _split_fenced_blocks(protected_text)
+    normalized = []
+    for chunk in chunks:
+        if chunk.startswith("```") and chunk.endswith("```"):
+            normalized.append(chunk)
             continue
 
-        if ch in {"'", '"'}:
-            quote = ch
-        elif ch == "(":
-            paren_depth += 1
-        elif ch == ")" and paren_depth:
-            paren_depth -= 1
-        elif ch in "{}" or (ch == ";" and paren_depth == 0):
-            chars.append("\n")
+        chunk = re.sub(r' {2,}', ' ', chunk)
+        chunk = re.sub(r'\n{3,}', '\n\n', chunk)
+        normalized.append(chunk)
+    return _restore_plain_clean_code_section(''.join(normalized), code_sections)
 
-    rough_lines = [line.strip() for line in "".join(chars).splitlines() if line.strip()]
-    formatted = []
-    indent = 0
-    for line in rough_lines:
-        if line.startswith("}"):
-            indent = max(indent - 1, 0)
-        formatted.append("    " * indent + line)
-        opens = line.count("{")
-        closes = line.count("}")
-        indent = max(indent + opens - closes, 0)
 
-    return "\n".join(formatted)
+def _normalize_markdown_spacing(text: str) -> str:
+    """Improve markdown readability while leaving code blocks untouched."""
+    protected_text, code_sections = _stash_plain_clean_code_section(text)
+    chunks = _split_fenced_blocks(protected_text)
+    normalized = []
+    for chunk in chunks:
+        if chunk.startswith("```") and chunk.endswith("```"):
+            normalized.append(chunk)
+            continue
+
+        chunk = chunk.replace("â€¢", "-").replace("•", "-")
+        chunk = re.sub(r"([^\n])\s+(#{1,3}\s+)", r"\1\n\n\2", chunk)
+        chunk = re.sub(r"([.:])\s+(\d+\.\s+)", r"\1\n\n\2", chunk)
+        chunk = re.sub(r"([:])\s+([-*]\s+)", r"\1\n\2", chunk)
+        chunk = re.sub(r"(?m)^\s*[-*]\s+", "- ", chunk)
+        chunk = re.sub(r"(?m)^\s*(\d+)\.\s+", r"\1. ", chunk)
+        chunk = re.sub(r"\n{3,}", "\n\n", chunk)
+        normalized.append(chunk)
+    return _restore_plain_clean_code_section(''.join(normalized), code_sections)
+
+
+def _format_code_block(lang: str, code: str) -> str:
+    """Preserve code content exactly; do not auto-format generated code."""
+    if code is None:
+        return code
+    return code.lstrip("\n")
 
 
 def format_markdown_blocks(response: str) -> str:
@@ -96,16 +138,9 @@ def format_markdown_blocks(response: str) -> str:
         formatted = response
         # Handle inline code spacing (single backticks)
         formatted = re.sub(r'([^\s`])(`[^`]+`)([^\s`])', r'\1 \2 \3', formatted)
+        formatted = _normalize_outside_code_blocks(formatted)
+        formatted = _normalize_markdown_spacing(formatted)
         return formatted.strip()
-    
-    # List of common code fence language names (for better detection)
-    COMMON_LANGUAGES = {
-        'python', 'javascript', 'typescript', 'java', 'cpp', 'c', 'csharp', 'cs',
-        'ruby', 'go', 'rust', 'php', 'swift', 'kotlin', 'scala', 'perl',
-        'bash', 'sh', 'powershell', 'sql', 'html', 'css', 'scss', 'less',
-        'json', 'xml', 'yaml', 'yml', 'markdown', 'md', 'text', 'txt',
-        'jsx', 'tsx', 'vue', 'svelte', 'r', 'matlab', 'lua', 'dart', 'elixir'
-    }
     
     # Reconstruct with proper formatting
     result_parts = []
@@ -187,8 +222,8 @@ def format_markdown_blocks(response: str) -> str:
     
     formatted = ''.join(result_parts)
     
-    # Clean up excessive newlines
-    formatted = re.sub(r'\n{3,}', '\n\n', formatted)
+    # Clean up prose spacing without touching code indentation.
+    formatted = _normalize_outside_code_blocks(formatted)
     
     # Handle inline code spacing (single backticks not part of code blocks)
     # Match: (non-space)(backtick...backtick)(non-space)
@@ -200,6 +235,7 @@ def format_markdown_blocks(response: str) -> str:
     if code_fences % 2 != 0:
         formatted += '\n```\n'
     
+    formatted = _normalize_markdown_spacing(formatted)
     return formatted.strip()
 
 
@@ -280,15 +316,11 @@ def clean_streamed_response(collected_tokens: list, enable_formatting: bool = Tr
     if not full_text:
         return ""
     
-    # Remove duplicate consecutive whitespace
-    full_text = re.sub(r' {2,}', ' ', full_text)
-    
-    # Remove duplicate consecutive newlines (max 2)
-    full_text = re.sub(r'\n{3,}', '\n\n', full_text)
-    
     # Apply markdown formatting if enabled
     if enable_formatting:
         full_text = format_markdown_blocks(full_text)
+    else:
+        full_text = _normalize_outside_code_blocks(full_text)
     
     return full_text.strip()
 

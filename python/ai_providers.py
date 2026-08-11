@@ -487,7 +487,9 @@ class OpenAIProvider:
                 "stream": False  # Non-streaming for complete response
             }
             # Allow model to generate complete responses - use generous defaults
-            if self.config.max_new_tokens and self.config.max_new_tokens > 0:
+            token_budget = max_tokens if max_tokens and max_tokens > 0 else self.config.max_new_tokens
+
+            if token_budget and token_budget > 0:
                 # Use the configured value, capped at 128k
                 payload["max_tokens"] = min(self.config.max_new_tokens, 128000)
             else:
@@ -593,7 +595,12 @@ class OpenAIProvider:
         
         return metrics
 
-    async def generate_stream(self, messages: List[Dict[str, str]], retry_count: int = 0) -> AsyncGenerator[str, None]:
+    async def generate_stream(
+        self,
+        messages: List[Dict[str, str]],
+        retry_count: int = 0,
+        max_tokens: Optional[int] = None,
+    ) -> AsyncGenerator[str, None]:
         """Generate streaming response from OpenAI with retry logic"""
         if not self.initialized:
             await self.initialize()
@@ -628,7 +635,7 @@ class OpenAIProvider:
             }
             # Set generous token limits for complete ChatGPT-quality responses
             if self.config.max_new_tokens and self.config.max_new_tokens > 0:
-                payload["max_tokens"] = min(self.config.max_new_tokens, 100000)
+                payload["max_tokens"] = min(token_budget, 100000)
             else:
                 # Default to 4096 for streaming to ensure complete answers
                 payload["max_tokens"] = 4096
@@ -662,7 +669,7 @@ class OpenAIProvider:
                                 logger.warning(f"Model {self.config.model} unavailable. Falling back to {new_model} (stream)")
                                 self.config.model = new_model
                                 # Recurse with new model
-                                async for t in self.generate_stream(messages):
+                                async for t in self.generate_stream(messages, max_tokens=max_tokens):
                                     yield t
                                 return
                         yield f"[ERROR: {err_msg or 'HTTP ' + str(resp.status_code)}]"
@@ -778,7 +785,7 @@ class OpenAIProvider:
                 retry_delay = 2.0 * (retry_count + 1)  # Exponential backoff
                 logger.info(f"Retrying in {retry_delay}s...")
                 await asyncio.sleep(retry_delay)
-                async for chunk in self.generate_stream(messages, retry_count + 1):
+                async for chunk in self.generate_stream(messages, retry_count + 1, max_tokens=max_tokens):
                     yield chunk
                 return
             yield "[ERROR: Request timed out after retries. The AI may be overloaded or unavailable. Please try again later.]"
@@ -788,7 +795,7 @@ class OpenAIProvider:
                 retry_delay = 2.0 * (retry_count + 1)
                 logger.info(f"Retrying in {retry_delay}s...")
                 await asyncio.sleep(retry_delay)
-                async for chunk in self.generate_stream(messages, retry_count + 1):
+                async for chunk in self.generate_stream(messages, retry_count + 1, max_tokens=max_tokens):
                     yield chunk
                 return
             yield "[ERROR: Connection failed after retries. Please check your internet connection and API configuration.]"
@@ -842,13 +849,13 @@ class AIManager:
         self.provider = OpenAIProvider(config)
         await self.provider.initialize()
     
-    async def generate_stream(self, messages: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
+    async def generate_stream(self, messages: List[Dict[str, str]], max_tokens: Optional[int] = None) -> AsyncGenerator[str, None]:
         """Generate streaming response using OpenAI"""
         if not self.provider or not self.provider.is_available():
             yield "[ERROR: No AI API key configured. Set OPENROUTER_API_KEY, OPENAI_API_KEY, GROQ_API_KEY, or XAI_API_KEY in .env]"
             return
             
-        async for token in self.provider.generate_stream(messages):
+        async for token in self.provider.generate_stream(messages, max_tokens=max_tokens):
             yield token
     
     async def generate_complete_response(self, user_input: str, context: str = "") -> str:
@@ -889,9 +896,9 @@ async def initialize_ai():
     await ai_manager.initialize()
 
 
-async def generate_ai_response(messages: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
+async def generate_ai_response(messages: List[Dict[str, str]], max_tokens: Optional[int] = None) -> AsyncGenerator[str, None]:
     """Generate AI response using OpenAI with proper formatting"""
-    async for token in ai_manager.generate_stream(messages):
+    async for token in ai_manager.generate_stream(messages, max_tokens=max_tokens):
         yield token
 
 
@@ -900,9 +907,9 @@ async def generate_formatted_response(user_input: str, context: str = "") -> str
     return await ai_manager.generate_complete_response(user_input, context)
 
 
-async def generate_ai_response_for(llm_id: str, messages: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
+async def generate_ai_response_for(llm_id: str, messages: List[Dict[str, str]], max_tokens: Optional[int] = None) -> AsyncGenerator[str, None]:
     """Generate using OpenAI (ignores llm_id parameter for compatibility)"""
-    async for token in ai_manager.generate_stream(messages):
+    async for token in ai_manager.generate_stream(messages, max_tokens=max_tokens):
         yield token
 
 

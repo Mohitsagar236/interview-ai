@@ -61,6 +61,8 @@ check('Backend supports coach messages', /mtype == "coach"/.test(serverPy));
 check('Build script bundles standalone backend', /build-python-standalone\.js/.test(packageJson.scripts?.build || ''));
 check('Smoke target points at this script', packageJson.scripts?.test === 'node ./scripts/smoke-test.js');
 check('Toolbar markup has capture and Ask AI controls', /captureAnalyze/.test(toolbarHtml) && /askAI/.test(toolbarHtml));
+check('Toolbar renders code inline, not as separate panels', /function formatCodeForDisplay/.test(toolbarJs) && /return String\(code\)\.replace/.test(toolbarJs) && /plain-code/.test(toolbarJs) && !/<pre class="ai-code"/.test(toolbarJs));
+check('Toolbar separates coding section labels from content', /function normalizeInterviewSections/.test(toolbarJs) && /Clean code/.test(toolbarJs) && /Problem restatement/.test(toolbarJs));
 check('Download page requires Supabase auth', /supabase-js@2/.test(downloadHtml) && /download-auth-modal/.test(downloadHtml) && /signInWithPassword/.test(downloadJs) && /signUp/.test(downloadJs));
 check('Header shows login and signup links', /download\.html\?auth=signin/.test(read('public/index.html')) && /download\.html\?auth=signup/.test(read('public/index.html')) && /data-auth-open="signin"/.test(downloadHtml) && /data-auth-open="signup"/.test(downloadHtml));
 check('Homepage header shows profile when signed in', /site-auth\.js/.test(read('public/index.html')) && /data-site-auth-profile/.test(read('public/index.html')) && /data-site-profile-email/.test(read('public/index.html')) && /data-site-auth-logout/.test(read('public/index.html')));

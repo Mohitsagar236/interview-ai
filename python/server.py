@@ -55,7 +55,8 @@ from streaming_fixes import (
     format_markdown_blocks,
     should_send_final_response,
     clean_streamed_response,
-    normalize_streaming_tokens
+    normalize_streaming_tokens,
+    _normalize_coding_section_headings
 )
 
 # Additional libraries and OCR/IO dependencies
@@ -251,6 +252,7 @@ ai_initialized = False
 
 # UI connections list - maps session_id to WebSocket client
 ui_clients: Dict[str, websockets.WebSocketServerProtocol] = {}
+ui_send_locks: Dict[str, asyncio.Lock] = {}
 
 # Session tracking - maps WebSocket to user session ID
 client_sessions: Dict[websockets.WebSocketServerProtocol, str] = {}
@@ -1199,9 +1201,11 @@ async def broadcast(msg: Dict, session_id: str = None):
         logger.info(f"[Broadcast] Sending transcript to session {session_id}: '{msg.get('text', '')[:50]}'")
     
     # Send to target clients in parallel for better performance
-    async def send_to_client(ws):
+    async def send_to_client(sid, ws):
         try:
-            await ws.send(data)
+            lock = ui_send_locks.setdefault(sid, asyncio.Lock())
+            async with lock:
+                await ws.send(data)
             return None  # Success
         except (ConnectionClosed, ConnectionClosedError):
             return ws  # Mark for removal
@@ -1210,7 +1214,12 @@ async def broadcast(msg: Dict, session_id: str = None):
             return ws  # Mark for removal
     
     # Parallel send with timeout
-    results = await asyncio.gather(*[send_to_client(ws) for ws in target_clients], return_exceptions=True)
+    target_items = (
+        [(session_id, target_clients[0])]
+        if session_id and target_clients
+        else list(ui_clients.items())
+    )
+    results = await asyncio.gather(*[send_to_client(sid, ws) for sid, ws in target_items], return_exceptions=True)
     
     # Remove stale connections
     stale = [r for r in results if r is not None and not isinstance(r, Exception)]
@@ -1222,6 +1231,7 @@ async def broadcast(msg: Dict, session_id: str = None):
                 for sid, swb in list(ui_clients.items()):
                     if swb == ws:
                         del ui_clients[sid]
+                        ui_send_locks.pop(sid, None)
                         stale_sessions.append(sid)
             except ValueError:
                 pass
@@ -1267,9 +1277,14 @@ def broadcast_sync(msg: Dict, session_id: str = None):
     
     for session_id, ws in target_sessions.items():
         try:
-            # Create task on the event loop - fire and forget
-            # This ensures messages go out without blocking the generator
-            loop.create_task(ws.send(data))
+            async def send_ordered(sid, socket, payload):
+                lock = ui_send_locks.setdefault(sid, asyncio.Lock())
+                async with lock:
+                    await socket.send(payload)
+
+            # Fire and forget, but keep per-session send order stable so a
+            # final replacement cannot be overtaken by older raw stream chunks.
+            loop.create_task(send_ordered(session_id, ws, data))
         except Exception as e:
             logger.debug("Broadcast error: %s", e)
             disconnected.append(session_id)
@@ -1278,6 +1293,7 @@ def broadcast_sync(msg: Dict, session_id: str = None):
     for sid in disconnected:
         try:
             del ui_clients[sid]
+            ui_send_locks.pop(sid, None)
         except KeyError:
             pass
 
@@ -2424,15 +2440,23 @@ async def ingest_company_brief(text: str, session_id: str = None):
 def enhance_response_formatting(text: str) -> str:
     """
     Enhance response formatting for better readability and interview context.
-    Now includes proper markdown code block formatting.
+    Keeps code in the normal answer flow instead of separate markdown code blocks.
     """
     if not text:
         return text
     
     enhanced = text
     
-    # 1. First apply markdown code block formatting (critical for code display)
+    # 1. Normalize markdown spacing while preserving code content.
     enhanced = format_markdown_blocks(enhanced)
+    code_blocks = []
+
+    def stash_code_block(match: re.Match) -> str:
+        placeholder = f"@@ENHANCED_CODE_BLOCK_{len(code_blocks)}@@"
+        code_blocks.append(match.group(0))
+        return f"\n\n{placeholder}\n\n"
+
+    enhanced = re.sub(r"```[\s\S]*?```", stash_code_block, enhanced)
     
     # 2. Improve paragraph structure - add line breaks for better readability
     # Convert long sentences separated by periods into separate lines
@@ -2446,7 +2470,10 @@ def enhance_response_formatting(text: str) -> str:
     enhanced = re.sub(r'\b(\d+)\s*or\s*(\d+)\s*steps?\b', r'\\(\1\\) or \\(\2\\) steps', enhanced)
     
     # 4. Improve bullet point and list formatting
+    enhanced = enhanced.replace("â€¢", "-").replace("•", "-")
     enhanced = re.sub(r'^[\s]*[-•*]\s*', '• ', enhanced, flags=re.MULTILINE)
+    enhanced = enhanced.replace("â€¢", "-").replace("•", "-")
+    enhanced = re.sub(r'([:])\s+([-*]\s+)', r'\1\n\2', enhanced)
     enhanced = re.sub(r'\b(\d+)\.\s*([A-Z][^.]*:)', r'\n\n**\1. \2**\n', enhanced)  # Numbered sections
     enhanced = re.sub(r'###\s*([^\n]+)', r'\n\n### \1\n', enhanced)  # Headers
     
@@ -2465,6 +2492,8 @@ def enhance_response_formatting(text: str) -> str:
     enhanced = re.sub(r'"([^"]+)"\s*•', r'\n• "\1"', enhanced)
     enhanced = re.sub(r'"\s*•\s*"', r'"\n• "', enhanced)
     
+    enhanced = enhanced.replace("â€¢", "-").replace("•", "-")
+
     # 6. Improve spacing and clean up
     enhanced = re.sub(r'\n{3,}', '\n\n', enhanced)  # Max 2 newlines
     enhanced = re.sub(r'^\s+', '', enhanced, flags=re.MULTILINE)  # Remove leading spaces
@@ -2474,6 +2503,11 @@ def enhance_response_formatting(text: str) -> str:
     enhanced = re.sub(r'(?<!\$)\$([^$\n]+)\$(?!\$)', r' $\1$ ', enhanced)  # Inline math
     enhanced = re.sub(r'\\\[\s*([^\\]*?)\s*\\\]', r'\n$$\1$$\n', enhanced)  # Display math
     
+    for i, block in enumerate(code_blocks):
+        enhanced = enhanced.replace(f"@@ENHANCED_CODE_BLOCK_{i}@@", block)
+
+    enhanced = _flatten_code_fences(enhanced)
+
     # 8. Clean up final formatting
     enhanced = enhanced.strip()
     
@@ -2690,7 +2724,11 @@ def _build_interview_prompt(
         "Use provided candidate/resume context only when the question type requires it. "
         "Never invent companies, internships, CGPA, metrics, achievements, certifications, technologies, or outcomes. "
         "If a fact is missing, say it conservatively or leave it out. "
-        "Do not mix in unrelated prior topics unless the question asks for them."
+        "Do not mix in unrelated prior topics unless the question asks for them. "
+        "Format the answer for immediate readability: use short paragraphs for explanations, bullets only when listing distinct points, "
+        "numbered steps only for ordered procedures, and bold key terms only when emphasis helps scanning. "
+        "Do not force headings into simple theory answers, but use clear markdown headings for code, system design, or multi-part answers. "
+        "When showing code, write it as plain text in the normal answer flow. Do not use triple-backtick fences or a separate code block."
     )
     if strict:
         shared_guardrails += " Keep the answer especially focused and avoid optional background."
@@ -2750,18 +2788,18 @@ def _build_interview_prompt(
             f"{shared_guardrails} "
             "You are a precise coding interview assistant. Do not use resume context. "
             "Return clean, syntactically correct code with proper line breaks and indentation. "
-            "Always use fenced markdown code blocks with a language tag."
+            "Do not put code inside triple-backtick fences or a separate markdown code block."
         )
         user = (
             f"Coding question: {question}{context_block}\n\n"
-            "Return exactly these sections:\n"
-            "1. Problem restatement\n"
-            "2. Approach\n"
-            f"3. Clean code in a fenced markdown block tagged `{language}`\n"
-            "4. Edge cases\n"
-            "5. Time complexity\n"
-            "6. Space complexity\n\n"
-            "If no language is specified by the question, use C++17. The code must compile and must not be compressed into one line. "
+            "Return exactly these markdown sections in this order:\n"
+            "## Problem restatement\n"
+            "## Approach\n"
+            "## Clean code\nWrite the complete code as plain text directly under this heading. Do not use triple backticks or a separate code block.\n"
+            "## Edge cases\n"
+            "## Time complexity\n"
+            "## Space complexity\n\n"
+            "If no language is specified by the question, use C++17. The code must compile. "
             "For C++ answers, include valid headers such as `#include <bits/stdc++.h>` or exact standard headers; never write a bare `#include`. "
             "For C++ virtual-function/OOP examples, include required headers and demonstrate polymorphism with a pointer, reference, or smart pointer."
         )
@@ -2782,7 +2820,8 @@ def _build_interview_prompt(
         )
         user = (
             f"System design question: {question}{context_block}\n\n"
-            "Cover: requirements and assumptions, rough APIs, data model, high-level architecture, storage choices, caching, scaling, consistency, reliability/failure handling, security/privacy where relevant, bottlenecks, and tradeoffs. "
+            "Use markdown headings for the main sections. Cover requirements and assumptions, rough APIs, data model, high-level architecture, "
+            "storage choices, caching, scaling, consistency, reliability/failure handling, security/privacy where relevant, bottlenecks, and tradeoffs. "
             f"{domain_specific_depth}"
             "Avoid fake traffic numbers unless the question provides them."
         )
@@ -2795,7 +2834,8 @@ def _build_interview_prompt(
         )
         user = (
             f"Technical interview question: {question}{context_block}\n\n"
-            "Give a clear explanation with examples when useful. Keep it accurate, concise, and interview-ready. "
+            "Give a clear explanation with examples when useful. Use paragraphs for concepts, bullets for comparisons or multiple independent points, "
+            "and plain text code only if code is needed. Keep it accurate, concise, and interview-ready. "
             "For browser URL flow questions, cover DNS, TCP/TLS, HTTP request/response, and browser rendering."
         )
         return system, user
@@ -2884,8 +2924,8 @@ def build_prompts(
         core_guidelines = (
             "\n\nRESPONSE GUIDELINES FOR INTERVIEW TRANSCRIPTION:\n"
             "🎯 DIRECT ANSWERS ONLY: Answer EXACTLY the current interviewer question.\n"
-            "📏 BREVITY: Keep answers brief and focused (2-4 sentences or 3-5 bullet points maximum).\n"
-            "🚫 NO FILLER: Do not provide lengthy explanations unless explicitly asked.\n"
+            "📏 LENGTH: Match the answer length to the question. Keep simple answers short, but give complete code/design/detail when needed.\n"
+            "🚫 NO FILLER: Do not add unrelated explanation, but do not cut off required details.\n"
             "💡 FOCUS: No generic advice, no meta-commentary, no filler.\n"
             "🔧 TECHNICAL: For technical questions: Give the core concept + 1 concrete example.\n"
             "📖 BEHAVIORAL: For behavioral questions: 1 specific situation + outcome.\n"
@@ -2901,7 +2941,7 @@ def build_prompts(
             "   • **Bold** for headings, key terms, and important concepts\n"
             "   • Bullet points (•) for lists and key points\n"
             "   • Numbered lists (1., 2., 3.) for sequential steps\n"
-            "   • Code blocks with language tags: ```python, ```cpp, ```java, etc.\n"
+            "   • Code as plain text in the answer flow; no triple backticks or separate code blocks\n"
             "   • Empty lines between sections for readability\n"
             "   • Inline code for variables/functions: `variable_name`\n"
             "\n📐 MATHEMATICS: ALWAYS use LaTeX for all mathematical content:\n"
@@ -2911,7 +2951,7 @@ def build_prompts(
             "   • Coordinates: $(i, j)$ or \\((i, j)\\) for points\n"
             "\n🎯 RESPONSE STYLE - ADAPT TO QUESTION TYPE:\n"
             "   • **Problem Restatement**: Clearly state what the question asks\n"
-            "   • **High-Level Approach**: Explain the strategy in 2-3 sentences\n"
+            "   • **High-Level Approach**: Explain the strategy with enough detail for the question\n"
             "   • **Key Points / Edge Cases**: List important considerations\n"
             "   • **Detailed Solution**: Provide complete implementation or explanation\n"
             "   • **Complexity Analysis**: Always include Time and Space complexity\n"
@@ -2931,7 +2971,7 @@ def build_prompts(
             "\n✅ ALWAYS DO:\n"
             "   • Start directly with the answer (no meta-commentary)\n"
             "   • Use **bold headings** to organize your response\n"
-            "   • Format code properly with syntax highlighting\n"
+            "   • Show code as readable plain text in the answer flow\n"
             "   • Include time/space complexity for algorithms\n"
             "   • Make answers interview-ready and professional"
         )
@@ -2990,7 +3030,7 @@ def build_prompts(
                 "You are an expert interview coach helping a candidate answer live interview questions. "
                 "Your job is to provide DIRECT, HELPFUL answers to the interviewer's exact question. "
                 "\n🎯 PRIMARY GOAL: Answer the specific question being asked clearly and completely. "
-                "\n📏 FORMAT: Keep answers concise but complete (2-4 sentences OR 3-5 bullet points). "
+                "\n📏 FORMAT: Match length to the question: brief for simple facts, complete for code/design/detail. "
                 "\n🔧 TECHNICAL QUESTIONS: Provide core concept + concrete example + complexity if relevant. "
                 "\n📖 BEHAVIORAL QUESTIONS: Give specific situation + actions + outcome (STAR method). "
                 "\n📐 MATH: Use LaTeX formatting: $O(n)$ for inline, $$equation$$ for display math. "
@@ -3085,8 +3125,8 @@ def build_prompts(
             system += (
                 " STRICT MODE IS ACTIVE: Only answer the explicit question asked. "
                 "Do NOT include sections, headings, generic interview prep, or extra background unless the user explicitly asked for them. "
-                "Keep the answer focused, factual, and under 120 words (unless the question explicitly requests code or a longer explanation). "
-                "If the question asks for code, give only the necessary code with minimal explanation (1 short sentence). "
+                "Make the answer length match the question: short factual questions should be brief, while coding, system design, and detailed explanation questions must be complete. "
+                "If the question asks for code, include enough working code and complexity analysis to answer it correctly. "
                 "If the question is ambiguous, ask ONE concise clarifying question instead of guessing."
             )
         
@@ -3189,10 +3229,10 @@ def build_prompts(
                         f"Resume / background context: {base_ctx}\n\n"
                         f"{additional_context}"
                         "Provide a CONCISE C++ solution:\n"
-                        "1. Show code in a fenced block: ```cpp ... ```\n"
-                        "2. Keep explanation BRIEF (2-3 sentences max)\n"
+                        "1. Show code as plain text, not inside triple backticks or a separate code block\n"
+                        "2. Keep explanation focused, but include enough detail for the question\n"
                         "3. State Time & Space complexity in one line\n"
-                        "4. NO lengthy discussions - just core solution and complexity"
+                        "4. Keep explanation focused, but include all details needed to answer correctly"
                     )
                 else:
                     user = (
@@ -3200,13 +3240,13 @@ def build_prompts(
                         f"Resume / background context: {base_ctx}\n\n"
                         f"{additional_context}"
                         "Provide a high-quality C++ solution. Requirements:\n"
-                        "1. Show final code inside a fenced block: ```cpp ... ```\n"
+                        "1. Show final code as plain text, not inside triple backticks or a separate code block.\n"
                         "2. Use a single self-contained file with main() if applicable (unless question specifies a function only).\n"
                         "3. Handle edge cases and invalid input gracefully.\n"
                         "4. Use clear function / type names; prefer std library over manual reinventing.\n"
                         "5. After the code, add a short 'Complexity' section (Time & Space).\n"
                         "6. If multiple approaches exist, briefly list alternatives before final code.\n"
-                        "7. Keep explanation concise (under 180 words) before the code."
+                        "7. Keep explanation focused before the code, but do not omit required details."
                     )
                     
                     # Extra emphasis for ALL contexts - complete response required
@@ -3229,11 +3269,11 @@ def build_prompts(
                         f"Interviewer question: \"{question}\"\n\n"
                         f"{resume_context_block}"
                         f"{additional_context}"
-                        "Provide a BRIEF answer:\n"
-                        "- Core concept in 1-2 sentences\n"
-                        "- Code (if needed) in a fenced block\n"
+                        "Provide an answer sized to the question:\n"
+                        "- Core concept with enough detail to be correct\n"
+                        "- Code (if needed) as plain text, not inside triple backticks or a separate code block\n"
                         "- Time & Space complexity in one line\n"
-                        "- NO lengthy explanations"
+                        "- No unrelated filler"
                     )
                 else:
                     user = (
@@ -3244,7 +3284,7 @@ def build_prompts(
                         "- Brief problem restatement\n"
                         "- Key points / edge cases\n"
                         "- Pseudocode or high-level plan\n"
-                        "- (If language requested) Provide code in that language in a fenced block\n"
+                        "- (If language requested) Provide code in that language as plain text, not inside triple backticks or a separate code block\n"
                         "- Time and Space complexity\n"
                     )
                     
@@ -3267,13 +3307,13 @@ def build_prompts(
                         f"Interviewer question: \"{question}\"\n\n"
                         f"{resume_context_block}"
                         f"{additional_context}"
-                        f"Provide a BRIEF, CONCISE answer to this question: \"{question}\"\n\n"
+                        f"Provide a direct answer to this question: \"{question}\"\n\n"
                         "Requirements:\n"
-                        "- Keep answer SHORT: 2-4 sentences or 3-5 bullet points MAXIMUM\n"
+                        "- Match the length to the question; keep simple answers short and detailed questions complete\n"
                         "- Be specific to THIS question only - no generic filler\n"
-                        "- Give the core answer immediately - no lengthy introductions\n"
+                        "- Give the core answer immediately - no long introductions\n"
                         "- Make it practical and directly usable\n"
-                        "- NO long explanations unless the question specifically asks for details"
+                        "- Include detailed explanation when the question asks for details"
                     )
                 else:
                     if coaching_mode:
@@ -3323,7 +3363,7 @@ def build_prompts(
         )
     # In strict mode with coach, simplify user prompt further to reduce model verbosity
     if strict and mode == "coach":
-        user += "\n\nOUTPUT RULES: Provide a single concise answer. No headings. No generic advice. No closing remarks."
+        user += "\n\nOUTPUT RULES: Provide a single direct answer. No generic advice. No closing remarks. Match the length to what the question requires."
     # Ensure relevance to the current question
     if os.getenv("ANSWER_RELEVANCE_ENFORCEMENT", "1").lower() in ("1", "true", "yes", "on"):
         system += (
@@ -3422,6 +3462,92 @@ def _is_followup_question(question: str) -> bool:
     return word_count <= 8 and bool(re.search(r"^(why|how|example|examples|complexity|code|continue)\b", q))
 
 
+def _normalize_question_type_name(question_type) -> str:
+    value = getattr(question_type, "value", question_type)
+    return str(value or "general_knowledge").lower()
+
+
+def _dynamic_response_max_tokens(
+    question: str,
+    question_type="general_knowledge",
+    context_type: str = "general",
+    strict: bool = False,
+    complexity: str = "",
+) -> int:
+    """Choose response size from question demand instead of using one fixed limit."""
+    q = question or ""
+    q_lower = q.lower()
+    qtype = _normalize_question_type_name(question_type)
+    complexity = str(complexity or "").lower()
+    word_count = len(re.findall(r"[a-z0-9+#.]+", q_lower))
+
+    asks_for_depth = bool(re.search(
+        r"\b(explain|detail|detailed|deep|elaborate|walk\s*through|dry\s*run|trace|example|examples|design|architecture|lld|hld|system design|complete|full|implement|code|solve)\b",
+        q_lower,
+    ))
+
+    if qtype == "coding" or re.search(r"\b(implement|code|algorithm|function|class|program|solve)\b", q_lower):
+        budget = 5200
+    elif qtype == "system_design" or re.search(r"\b(system design|design|architecture|scal(e|able|ing)|distributed)\b", q_lower):
+        budget = 7600
+    elif qtype in {"behavioral", "resume_hr", "resume_specific"}:
+        budget = 1800
+    elif qtype in {"technical", "general_knowledge"} and asks_for_depth:
+        budget = 3200
+    else:
+        budget = 1400
+
+    if complexity in {"hard", "complex"}:
+        budget += 1800
+    elif complexity in {"medium", "moderate"}:
+        budget += 800
+
+    if word_count > 80:
+        budget += 1400
+    elif word_count > 35:
+        budget += 700
+
+    if context_type == "transcription" and not asks_for_depth and qtype not in {"coding", "system_design"}:
+        budget = min(budget, 1800)
+
+    if strict and qtype not in {"coding", "system_design"} and not asks_for_depth:
+        budget = min(budget, 1600)
+
+    return max(900, min(budget, 10000))
+
+
+def _dynamic_strict_word_limit(question: str, question_type="general_knowledge") -> Optional[int]:
+    q_lower = (question or "").lower()
+    qtype = _normalize_question_type_name(question_type)
+    if qtype in {"coding", "system_design"}:
+        return None
+    if re.search(r"\b(explain|detail|detailed|elaborate|walk\s*through|example|examples|why|how)\b", q_lower):
+        return 320
+    if qtype in {"technical", "general_knowledge"}:
+        return 220
+    return 180
+
+
+def _generate_stream_with_budget(generate_stream_fn, messages, max_tokens: Optional[int]):
+    try:
+        return generate_stream_fn(messages, max_tokens=max_tokens)
+    except TypeError as exc:
+        if "max_tokens" not in str(exc):
+            raise
+        return generate_stream_fn(messages)
+
+
+def _generate_ai_stream_with_budget(llm_id: str, messages, max_tokens: Optional[int], use_override: bool):
+    if use_override:
+        try:
+            return generate_ai_response_for(llm_id, messages, max_tokens=max_tokens)
+        except TypeError as exc:
+            if "max_tokens" not in str(exc):
+                raise
+            return generate_ai_response_for(llm_id, messages)
+    return _generate_stream_with_budget(generate_ai_response, messages, max_tokens)
+
+
 def _compact_history_messages(messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
     compact: List[Dict[str, str]] = []
     for msg in messages:
@@ -3460,78 +3586,93 @@ def _recent_followup_history(
 
 
 def _repair_cpp_snippet(code: str, question: str = "") -> str:
-    repaired = (code or "").strip()
-    if not repaired:
-        return repaired
-
-    repaired = re.sub(r"^\s*#\s*include\s*(?=\n|$)", "#include <bits/stdc++.h>", repaired, count=1)
-    if "#include" not in repaired and re.search(r"\b(std::|vector<|int\s+\w+\s*\()", repaired):
-        repaired = "#include <bits/stdc++.h>\nusing namespace std;\n\n" + repaired
-    if "#include" in repaired and "using namespace std;" not in repaired and "std::" not in repaired:
-        repaired = re.sub(r"(#\s*include\s*<[^>]+>\s*)", r"\1\nusing namespace std;\n", repaired, count=1)
-
-    if "remove duplicate" in (question or "").lower():
-        repaired = re.sub(
-            r"\bstd::vector\s+([A-Za-z_]\w*)\s*\(\s*std::vector\s*&\s*([A-Za-z_]\w*)\s*\)",
-            r"vector<int> \1(vector<int>& \2)",
-            repaired,
-        )
-        repaired = re.sub(
-            r"\bvector\s+([A-Za-z_]\w*)\s*\(\s*vector\s*&\s*([A-Za-z_]\w*)\s*\)",
-            r"vector<int> \1(vector<int>& \2)",
-            repaired,
-        )
-
-    return repaired
+    return (code or "").strip()
 
 
 def _repair_fenced_cpp_blocks(answer: str, question: str = "") -> str:
-    if not answer or "```" not in answer:
-        return answer
+    return answer
 
-    def replace_block(match: re.Match) -> str:
-        lang = (match.group(1) or "").strip().lower()
-        code = match.group(2) or ""
-        is_cpp = lang in {"cpp", "c++", "cxx", "cc"} or (
-            not lang and _requested_code_language(question) == "cpp"
-        )
-        if not is_cpp:
-            return match.group(0)
-        repaired = _repair_cpp_snippet(code, question).strip()
-        return f"```cpp\n{repaired}\n```"
 
-    return re.sub(r"```([A-Za-z0-9_+#.-]*)\s*\n?([\s\S]*?)```", replace_block, answer)
+def _flatten_code_fences(text: str) -> str:
+    """Remove markdown fences while preserving the code text inside them."""
+    if not text or "```" not in text:
+        return _normalize_coding_section_headings(text)
+
+    def replace_fence(match: re.Match) -> str:
+        code = (match.group("code") or "").strip("\n")
+        return f"\n{code}\n"
+
+    flattened = re.sub(
+        r"```[a-zA-Z0-9_+#.-]*[ \t]*\n?(?P<code>[\s\S]*?)```",
+        replace_fence,
+        text,
+    )
+    return _normalize_coding_section_headings(flattened)
+
+
+def _strip_markdown_headings_outside_code(text: str) -> str:
+    """Remove markdown heading markers from prose without touching code fences."""
+    if not text or "```" not in text:
+        return re.sub(r"^#+\s*", "", text or "", flags=re.MULTILINE)
+
+    code_blocks = []
+
+    def stash_code_block(match: re.Match) -> str:
+        placeholder = f"@@STRICT_CODE_BLOCK_{len(code_blocks)}@@"
+        code_blocks.append(match.group(0))
+        return placeholder
+
+    protected = re.sub(r"```[\s\S]*?```", stash_code_block, text)
+    protected = re.sub(r"^#+\s*", "", protected, flags=re.MULTILINE)
+    for i, block in enumerate(code_blocks):
+        protected = protected.replace(f"@@STRICT_CODE_BLOCK_{i}@@", block)
+    return protected
+
+
+def _looks_like_cpp_answer(text: str) -> bool:
+    return bool(re.search(
+        r"```(?:cpp|c\+\+|cxx|cc)?|#?\s*include\s*<|std::|vector<|stack<|queue<|unordered_set<|class\s+\w+|struct\s+\w+",
+        text or "",
+        re.IGNORECASE,
+    ))
+
+
+def _apply_strict_coach_filter(text: str, question_type: str, question: str = "") -> str:
+    """Apply brevity cleanup without destroying ordered coding sections."""
+    if not text:
+        return text
+
+    filtered = text
+    filler_patterns = [
+        r"^Certainly[,!]?\s*",
+        r"^Sure[,!]?\s*",
+        r"^Here('?s| is)\s+",
+        r"^Of course[,!]?\s*",
+        r"^I'm happy to\s+help\s*with\s*that[:,]?\s*",
+    ]
+    for pat in filler_patterns:
+        filtered = re.sub(pat, "", filtered, flags=re.IGNORECASE)
+
+    is_code_answer = question_type == "coding" or _looks_like_cpp_answer(filtered)
+    if not is_code_answer:
+        filtered = _strip_markdown_headings_outside_code(filtered)
+
+    word_limit = _dynamic_strict_word_limit(question, question_type)
+    if word_limit and "```" not in filtered:
+        words = filtered.split()
+        if len(words) > word_limit:
+            filtered = " ".join(words[:word_limit])
+
+    if is_code_answer:
+        filtered = _ensure_coding_answer_has_fenced_code(filtered, question)
+
+    return filtered
 
 
 def _ensure_coding_answer_has_fenced_code(answer: str, question: str) -> str:
-    """Wrap unfenced code sections so the UI can render valid markdown code blocks."""
-    if not answer:
-        return answer
-    if "```" in answer:
-        return _repair_fenced_cpp_blocks(answer, question)
-
-    language = _requested_code_language(question)
-    if language != "cpp":
-        fence_language = language
-    else:
-        fence_language = "cpp"
-
-    code_section_pattern = re.compile(
-        r"(?P<header>\bClean\s+Code\b\s*:?\s*)(?P<code>.*?)(?=\n\s*(?:Edge\s+Cases|Time\s+Complexity|Space\s+Complexity)\b)",
-        re.IGNORECASE | re.DOTALL,
-    )
-    match = code_section_pattern.search(answer)
-    if not match:
-        return answer
-
-    code = match.group("code").strip()
-    if not re.search(r"(#\s*include|std::|vector<|for\s*\(|while\s*\(|return\b|class\s+\w+)", code):
-        return answer
-    if fence_language == "cpp":
-        code = _repair_cpp_snippet(code, question)
-
-    fenced = format_markdown_blocks(f"```{fence_language}\n{code}\n```")
-    return answer[:match.start()] + "Clean Code\n" + fenced + "\n\n" + answer[match.end():].lstrip()
+    """Keep coding answers in normal text flow; do not force separate code blocks."""
+    del question
+    return _flatten_code_fences(answer)
 
 
 async def ensure_ai_initialized():
@@ -3603,10 +3744,17 @@ async def stream_vision_to_llm(
     else:
         prompt += " Do not include coaching notes, answer templates, or generic interview advice."
 
+    vision_response_max_tokens = _dynamic_response_max_tokens(
+        prompt,
+        "coding" if re.search(r"\b(code|coding|algorithm|implement|function|class)\b", prompt.lower()) else "general_knowledge",
+        context_type="capture",
+        strict=False,
+    )
+
     system_prompt = (
         "You are an expert AI interview assistant. Analyze the provided screenshot and give a clear, "
         "accurate, complete answer. For coding problems provide working code with complexity analysis. "
-        "Use proper markdown for code and math. For HR, resume, and behavioral questions, answer naturally in first person. "
+        "Use plain text code in the normal answer flow, not triple-backtick code blocks. For HR, resume, and behavioral questions, answer naturally in first person. "
         "Avoid headers and bullets unless they are useful for code, technical comparisons, or system design."
     )
 
@@ -3639,7 +3787,11 @@ async def stream_vision_to_llm(
     # Resolve generator — respect BYOK session config
     try:
         vision_provider_instance = create_provider_from_config(provider_cfg)
-        gen = vision_provider_instance.generate_stream(messages)
+        gen = _generate_stream_with_budget(
+            vision_provider_instance.generate_stream,
+            messages,
+            vision_response_max_tokens,
+        )
 
         collected: List[str] = []
         async for token in gen:
@@ -3674,7 +3826,7 @@ async def stream_vision_to_llm(
             full_text = _ensure_coding_answer_has_fenced_code(full_text, user_prompt or "")
         if _has_answer_quality and os.getenv("ENABLE_POSTPROCESSING", "true").lower() in ("true", "1", "yes"):
             try:
-                full_text = postprocess_answer(full_text, create_seen_tokens_log(streamed_raw_text[:256]))
+                full_text = postprocess_answer(full_text, set())
             except Exception as e:
                 logger.warning("Vision response postprocessing failed: %s", e)
         full_text = enhance_response_formatting(full_text)
@@ -3807,6 +3959,23 @@ async def stream_llm(
     ctx: List[str] = []
     question_type = getattr(classification, "question_type", "general_knowledge") if classification else "general_knowledge"
     needs_resume = bool(getattr(classification, "needs_resume", False))
+    response_max_tokens = _dynamic_response_max_tokens(
+        facts,
+        question_type,
+        context_type=context_type,
+        strict=strict,
+        complexity=getattr(classification, "complexity", "") if classification else "",
+    )
+    routed_max_tokens = model_params.get("max_tokens") if isinstance(model_params, dict) else None
+    if isinstance(routed_max_tokens, int):
+        response_max_tokens = max(response_max_tokens, routed_max_tokens)
+    logger.info(
+        "Dynamic answer budget: %d max tokens (question_type=%s, context=%s, strict=%s)",
+        response_max_tokens,
+        _normalize_question_type_name(question_type),
+        context_type,
+        strict,
+    )
 
     # Get session-specific resume data
     session_data = session_resume_data.get(session_id, {}) if session_id else {}
@@ -4061,13 +4230,17 @@ async def stream_llm(
             )
             try:
                 byok_provider = create_provider_from_config(user_prov_cfg)
-                gen = byok_provider.generate_stream(messages)
+                gen = _generate_stream_with_budget(
+                    byok_provider.generate_stream,
+                    messages,
+                    response_max_tokens,
+                )
             except Exception as e:
                 logger.warning(f"BYOK provider creation failed, falling back to default: {e}")
-                gen = generate_ai_response_for(llm_id, messages) if use_override else generate_ai_response(messages)
+                gen = _generate_ai_stream_with_budget(llm_id, messages, response_max_tokens, use_override)
         else:
             # Stream response from AI providers; respect explicit llm_id overrides
-            gen = generate_ai_response_for(llm_id, messages) if use_override else generate_ai_response(messages)
+            gen = _generate_ai_stream_with_budget(llm_id, messages, response_max_tokens, use_override)
         
         # Send reset signal to start new response with context information
         context_label = {
@@ -4137,24 +4310,17 @@ async def stream_llm(
             enable_formatting=True  # Apply markdown formatting
         )
         full_text = sanitize_provider_error_text(full_text)
-        if question_type == "coding":
+        if question_type == "coding" or _looks_like_cpp_answer(full_text):
             full_text = _ensure_coding_answer_has_fenced_code(full_text, facts)
 
         # ============================================================================
         # 🎯 POSTPROCESSING: CLEAN UP STREAMED ANSWER
         # ============================================================================
-        seen_tokens_log: Set[str] = set()
         if _has_answer_quality and os.getenv("ENABLE_POSTPROCESSING", "true").lower() in ("true", "1", "yes"):
             try:
-                # Create seen tokens log from streamed chunks (for duplicate detection)
-                if collected:
-                    # Use first few chunks as seen tokens
-                    initial_text = ''.join(collected[:10])  # First 10 chunks
-                    seen_tokens_log = create_seen_tokens_log(initial_text, max_prefix_length=256)
-                
                 # Postprocess the answer to remove duplicates and improve quality
                 original_length = len(full_text)
-                full_text = postprocess_answer(full_text, seen_tokens_log)
+                full_text = postprocess_answer(full_text, set())
                 
                 if len(full_text) != original_length:
                     logger.info(
@@ -4172,21 +4338,21 @@ async def stream_llm(
         if _has_answer_quality and os.getenv("ENABLE_ENHANCED_CONFIDENCE", "true").lower() in ("true", "1", "yes"):
             try:
                 # Determine question type for confidence scoring
-                question_type = "general"
+                confidence_question_type = "general"
                 if classification:
-                    question_type = classification.primary_type.value
+                    confidence_question_type = classification.primary_type.value
                 
                 # Compute confidence using the new module
-                confidence_value, confidence_label = compute_confidence(full_text, question_type)
+                confidence_value, confidence_label = compute_confidence(full_text, confidence_question_type)
                 enhanced_confidence = {
                     "score": confidence_value,
                     "label": confidence_label,
-                    "question_type": question_type
+                    "question_type": confidence_question_type
                 }
                 
                 logger.info(
                     f"📊 Enhanced confidence: {confidence_value:.2f} ({confidence_label}) "
-                    f"for {question_type} question"
+                    f"for {confidence_question_type} question"
                 )
                 
                 # Broadcast to UI
@@ -4194,7 +4360,7 @@ async def stream_llm(
                     "type": "meta",
                     "confidence": confidence_value,
                     "confidence_label": confidence_label,
-                    "question_type": question_type
+                    "question_type": confidence_question_type
                 }, session_id=session_id)
                 
                 # Auto-retry on very low confidence (if enabled)
@@ -4400,7 +4566,7 @@ async def stream_llm(
             
             # Enhance response with formatting improvements
             full_text = enhance_response_formatting(full_text)
-            if question_type == "coding":
+            if question_type == "coding" or _looks_like_cpp_answer(full_text):
                 full_text = _ensure_coding_answer_has_fenced_code(full_text, facts)
         
         logger.info(f"📝 Full response collected: {len(full_text)} chars, first 100: '{full_text[:100]}'")
@@ -4429,23 +4595,7 @@ async def stream_llm(
         # the entire filtered text. Instead, we just update full_text for history/confidence.
         if strict and mode == "coach" and full_text:
             original = full_text
-            # Remove common generic prefaces
-            filler_patterns = [
-                r"^Certainly[,!]?\s*",
-                r"^Sure[,!]?\s*",
-                r"^Here('?s| is)\s+",
-                r"^Of course[,!]?\s*",
-                r"^I'm happy to\s+help\s*with\s*that[:,]?\s*",
-            ]
-            for pat in filler_patterns:
-                full_text = re.sub(pat, "", full_text, flags=re.IGNORECASE)
-            # If answer has headings but user didn't request them, strip heading markers
-            full_text = re.sub(r"^#+\s*", "", full_text, flags=re.MULTILINE)
-            # Enforce ~120 word soft cap unless code block present
-            if "```" not in full_text:
-                words = full_text.split()
-                if len(words) > 130:
-                    full_text = " ".join(words[:130])
+            full_text = _apply_strict_coach_filter(full_text, question_type, facts)
             
             # FIX: Don't re-broadcast the filtered text since we already streamed it
             # The user already saw the full response during streaming
@@ -4499,7 +4649,7 @@ async def stream_llm(
                 aggregate_text += "\n" + addition
             if aggregate_text != full_text:
                 full_text = aggregate_text
-                if question_type == "coding":
+                if question_type == "coding" or _looks_like_cpp_answer(full_text):
                     full_text = _ensure_coding_answer_has_fenced_code(full_text, facts)
                 if session_hist.get(history_key) and session_hist[history_key][-1].get("role") == "assistant":
                     session_hist[history_key][-1]["content"] = (full_text or "")[:3000]
@@ -4649,7 +4799,12 @@ async def handle_audio_streaming(ws, session_id=None):
         
         if not connected:
             logger.error("[Streaming] Failed to connect to streaming transcription provider")
-            await broadcast({"type": "error", "message": "Streaming transcription unavailable - check DEEPGRAM_API_KEY"}, session_id=session_id)
+            await broadcast({
+                "type": "error",
+                "code": getattr(streaming_engine_local, "last_error_code", None) or "TRANSCRIPTION_UNAVAILABLE",
+                "message": getattr(streaming_engine_local, "last_error_message", None)
+                or "Streaming transcription unavailable. Open Settings and check your Deepgram API key.",
+            }, session_id=session_id)
             return
         
         logger.info(f"[Streaming] Connected to {streaming_engine_local.provider_name} - ready for audio")

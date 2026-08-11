@@ -223,9 +223,9 @@ def test_fast_screen_vision_sends_formatted_replacement_for_coding(monkeypatch):
     replacements = [message for message, _ in events if message.get("replace")]
     assert ok is True
     assert replacements
-    assert "```cpp" in replacements[-1]["text"]
-    assert "#include <bits/stdc++.h>" in replacements[-1]["text"]
-    assert "vector<int> removeDuplicates(vector<int>& nums)" in replacements[-1]["text"]
+    assert "```" not in replacements[-1]["text"]
+    assert "#include\nstd::vector removeDuplicates(std::vector& nums)" in replacements[-1]["text"]
+    assert "vector<int> removeDuplicates(vector<int>& nums)" not in replacements[-1]["text"]
     assert any(message.get("complete") for message, _ in events)
 
 

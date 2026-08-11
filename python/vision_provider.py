@@ -178,13 +178,12 @@ Instructions:
 1. Identify the programming language
 2. Transcribe the code exactly as shown
 3. Preserve all formatting, indentation, and comments
-4. Format the output as a code block with language tag
+4. Return only plain text code. Do not use triple backticks or a separate code block.
 
 Example output:
-```python
 def example():
     return "code here"
-```"""
+"""
         
         result = await self.analyze_image(image_bytes, prompt, max_tokens=2000)
         return result
